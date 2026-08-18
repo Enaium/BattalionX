@@ -1,0 +1,278 @@
+package cn.enaium.battalion.game.hal
+
+import cn.enaium.battalion.data.Astar
+import cn.enaium.battalion.data.Tile
+import cn.enaium.battalion.data.Unit
+import cn.enaium.battalion.data.UnitData
+import cn.enaium.battalion.data.UnitManager
+import cn.enaium.battalion.game.ActionManager
+import cn.enaium.battalion.game.GameManager
+import cn.enaium.battalion.game.actions.EndTurnAction
+import cn.enaium.battalion.game.actions.AttackUnitAction
+import cn.enaium.battalion.game.actions.BuildUnitAction
+import cn.enaium.battalion.game.actions.CallbackAction
+import cn.enaium.battalion.game.actions.ExtractResourcesAction
+import cn.enaium.battalion.game.actions.MoveUnitAction
+import cn.enaium.battalion.game.actions.NoAttackAction
+import cn.enaium.battalion.game.controllers.HALController
+
+/**
+ * AI turn logic — a simplified port of the original HALTurn.as.
+ *
+ * The AI processes its units one at a time: each unit gets a chance to attack, move,
+ * build, or capture. Units that haven't acted after processing are marked as spent.
+ *
+ * The original HALTurn uses a complex goal/worker/builder system with priority queues.
+ * This simplified version achieves functional gameplay with much less code.
+ */
+class HALTurn(private val hal: HAL) {
+    private val game: GameManager = GameManager.instance
+    private val controller: HALController = hal.getController()
+    private var tick: Int = 0
+    private var unitsToProcess: List<Unit> = emptyList()
+    private var processedIndex: Int = 0
+    private var phase: Phase = Phase.CREATE_GOALS
+
+    enum class Phase {
+        CREATE_GOALS,
+        PROCESS_UNITS,
+        FINISH
+    }
+
+    init {
+        // Queue the goal-creation callback first.
+        ActionManager.add(CallbackAction({ createGoals() }, "HAL:createGoals"))
+        ActionManager.add(CallbackAction({ startUnitProcessing() }, "HAL:startProcessing"))
+    }
+
+    private fun createGoals() {
+        // Goal creation is implicit in this simplified AI — we just process units.
+    }
+
+    private fun startUnitProcessing() {
+        // Collect all units that belong to this controller and haven't acted yet.
+        unitsToProcess = game.units.filter {
+            it.controller === controller && it.isAvailable() && it.isDeployed()
+        }
+        processedIndex = 0
+        phase = Phase.PROCESS_UNITS
+    }
+
+    fun tick() {
+        when (phase) {
+            Phase.PROCESS_UNITS -> processNextUnit()
+            Phase.FINISH -> finish()
+            else -> {}
+        }
+    }
+
+    private fun processNextUnit() {
+        if (processedIndex >= unitsToProcess.size) {
+            phase = Phase.FINISH
+            return
+        }
+
+        val unit = unitsToProcess[processedIndex]
+        processedIndex++
+
+        if (!unit.isAlive() || !unit.isDeployed() || !unit.isAvailable()) {
+            return
+        }
+
+        // 1. Try to attack an enemy in range.
+        if (unit.canAttack() && !unit.hasFired()) {
+            val target = findBestTarget(unit)
+            if (target != null) {
+                val attack = AttackUnitAction(unit.x, unit.y, target.x, target.y)
+                attack.isNetworked = false
+                ActionManager.add(attack)
+                return
+            }
+        }
+
+        // 2. Try to move toward enemies.
+        if (unit.canMove() && !unit.hasMoved()) {
+            val moveTarget = findMoveTarget(unit)
+            if (moveTarget != null) {
+                val path = findPath(unit, moveTarget)
+                if (path != null) {
+                    val pathStrings = mutableListOf<String>()
+                    for (tile in path) {
+                        pathStrings.add(tile.x.toString())
+                        pathStrings.add(tile.y.toString())
+                    }
+                    val move = MoveUnitAction(unit.x, unit.y, MoveUnitAction.stringizePath(pathStrings))
+                    move.isNetworked = false
+                    ActionManager.add(move)
+                    return
+                }
+            }
+        }
+
+        // 3. For constructors: try to build units.
+        if (unit.unitData.hasModifier("Constructor") && unit.resourcePool >= 500) {
+            val buildTarget = findBuildTarget(unit)
+            if (buildTarget != null) {
+                val build = BuildUnitAction(unit.x, unit.y, buildTarget.name)
+                build.isNetworked = false
+                ActionManager.add(build)
+                return
+            }
+        }
+
+        // 4. For constructors: try to extract resources.
+        if (unit.unitData.hasModifier("Constructor") && unit.resourcePool >= 500) {
+            val tile = game.unitTile(unit)
+            if (tile != null && tile.terrain.hasModifier("Extractable")) {
+                val extract = ExtractResourcesAction(unit.x, unit.y)
+                extract.isNetworked = false
+                ActionManager.add(extract)
+                return
+            }
+        }
+
+        // 5. For capture units: try to capture structures.
+        if (unit.unitData.hasModifier("Capture")) {
+            val target = findCaptureTarget(unit)
+            if (target != null) {
+                // Move to an adjacent tile first.
+                val adjacentTile = findAdjacentTile(unit, target)
+                if (adjacentTile != null) {
+                    val path = findPath(unit, adjacentTile)
+                    if (path != null) {
+                        val pathStrings = mutableListOf<String>()
+                        for (tile in path) {
+                            pathStrings.add(tile.x.toString())
+                            pathStrings.add(tile.y.toString())
+                        }
+                        val move = MoveUnitAction(unit.x, unit.y, MoveUnitAction.stringizePath(pathStrings))
+                        move.isNetworked = false
+                        ActionManager.add(move)
+                        return
+                    }
+                }
+            }
+        }
+
+        // If nothing to do, mark as not attacking this turn.
+        val noAttack = NoAttackAction(unit.x, unit.y)
+        noAttack.isNetworked = false
+        ActionManager.add(noAttack)
+    }
+
+    private fun findBestTarget(unit: Unit): Unit? {
+        val attackRange = game.tilesInRange(unit)
+        var bestTarget: Unit? = null
+        var bestScore = Double.NEGATIVE_INFINITY
+
+        for (tile in attackRange) {
+            val target = tile.unit ?: continue
+            if (target.controller === unit.controller || unit.controller?.isAllied(target.controller) == true) continue
+            if (target.isCloaked()) continue
+
+            // Score based on damage we can deal vs health remaining.
+            val damage = game.resolveAttack(unit, target, useTiles = false)
+            val score = damage / target.getHealth().coerceAtLeast(1)
+            if (score > bestScore) {
+                bestScore = score
+                bestTarget = target
+            }
+        }
+        return bestTarget
+    }
+
+    private fun findMoveTarget(unit: Unit): Tile? {
+        val moveRange = game.tilesInMoveRange(unit)
+        var bestTile: Tile? = null
+        var bestScore = Double.NEGATIVE_INFINITY
+
+        for (tile in moveRange) {
+            if (tile.unit != null && tile.unit != unit) continue
+            var score = 0.0
+
+            // Prefer tiles closer to enemies.
+            for (other in game.units) {
+                if (other.controller !== unit.controller && unit.controller?.isAllied(other.controller) != true) {
+                    val dist = kotlin.math.abs(tile.x - other.x) + kotlin.math.abs(tile.y - other.y)
+                    score += 10.0 / (dist + 1)
+                }
+            }
+
+            // Prefer capturing structures.
+            if (tile.isStructure() && tile.controller !== unit.controller) {
+                score += 5.0
+            }
+
+            if (score > bestScore) {
+                bestScore = score
+                bestTile = tile
+            }
+        }
+        return bestTile
+    }
+
+    private fun findPath(unit: Unit, target: Tile): List<Tile>? {
+        val path = Astar.search(
+            game.unitTile(unit)!!,
+            target,
+            unit,
+            0.0
+        ) ?: return null
+        return path.filterIsInstance<Tile>()
+    }
+
+    private fun findBuildTarget(unit: Unit): UnitData? {
+        val factories = game.structures.filter {
+            it.terrain.hasModifier("Construction") &&
+                it.controller === unit.controller &&
+                it.unit == null
+        }
+        if (factories.isEmpty()) return null
+
+        // Build the cheapest unit we can afford.
+        var bestUnit: UnitData? = null
+        var bestCost = Int.MAX_VALUE
+        for (unitEntry in UnitManager.getAll()) {
+            val cost = unitEntry.getCost(unit.controller)
+            if (cost <= unit.resourcePool && cost < bestCost && (unit.controller?.isUnitEnabled(unitEntry.name) == true)) {
+                bestUnit = unitEntry
+                bestCost = cost
+            }
+        }
+        return bestUnit
+    }
+
+    private fun findCaptureTarget(unit: Unit): Tile? {
+        val moveRange = game.tilesInMoveRange(unit)
+        for (tile in moveRange) {
+            if (tile.isStructure() && tile.controller !== unit.controller) {
+                return tile
+            }
+        }
+        return null
+    }
+
+    private fun findAdjacentTile(unit: Unit, target: Tile): Tile? {
+        val tiles = listOf(
+            game.tileAt(target.x - 1, target.y),
+            game.tileAt(target.x + 1, target.y),
+            game.tileAt(target.x, target.y - 1),
+            game.tileAt(target.x, target.y + 1),
+        ).filterNotNull()
+        for (tile in tiles) {
+            if (tile.unit == null && tile.canBeMovedOnBy(unit)) {
+                return tile
+            }
+        }
+        return null
+    }
+
+    private fun finish() {
+        // All units processed — end the turn.
+        controller.endTurn(EndTurnAction.REASON_VOLUNTARY)
+    }
+
+    fun dispose() {
+        // Cleanup if needed.
+    }
+}

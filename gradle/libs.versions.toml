@@ -1,0 +1,42 @@
+# ============================================================================
+# BattalionX — Gradle version catalog
+#
+# All dependency versions are declared here, in one place, and referenced from
+# build.gradle.kts via the `libs.*` accessors. This keeps every library version
+# consistent and easy to bump.
+# ============================================================================
+
+[versions]
+# --- Kotlin toolchain ------------------------------------------------------
+kotlin = "2.4.10"                 # Kotlin Multiplatform compiler + plugins
+
+# --- Graphics / audio / fonts (KMP bindings published to Maven Central) ----
+sdl = "1.0.8"                     # SDL2 bindings (window, renderer, input)
+sdl-ttf = "1.0.0"                 # SDL2_ttf (TrueType font rendering)
+sdl-image = "1.0.0"               # SDL2_image (PNG / bitmap loading)
+sdl-mixer = "1.0.0"               # SDL2_mixer (sound & music playback)
+
+# --- Kotlinx ecosystem -----------------------------------------------------
+kotlinx-serialization = "1.9.0"   # JSON serialization for save / data files
+kotlinx-coroutines = "1.10.2"     # Coroutines for async asset loading / loops
+
+# --- File loading ----------------------------------------------------------
+filekit = "0.15.0"                # Cross-platform file loading (assets)
+
+[libraries]
+# Graphics / audio / fonts
+sdl-kmp = { module = "cn.enaium.sdl:sdl-kmp", version.ref = "sdl" }
+sdl-ttf-kmp = { module = "cn.enaium.sdl:sdl-ttf-kmp", version.ref = "sdl-ttf" }
+sdl-image-kmp = { module = "cn.enaium.sdl:sdl-image-kmp", version.ref = "sdl-image" }
+sdl-mixer-kmp = { module = "cn.enaium.sdl:sdl-mixer-kmp", version.ref = "sdl-mixer" }
+
+# Kotlinx
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+
+# File loading
+filekit-core = { module = "io.github.vinceglb:filekit-core", version.ref = "filekit" }
+
+[plugins]
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
