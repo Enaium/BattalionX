@@ -330,7 +330,10 @@ private fun shot(dir: String, mission: Int, skirmish: String?) {
         }
     }
 
-    // Shot 1: after startup, dialogue still active.
+    // Let the dialogue slide-in (500ms) complete so the panel is fully on-screen.
+    for (i in 1..40) { game.update(16); renderer.render() }
+
+    // Shot 1: after startup, dialogue still active (fully slid in, typing).
     snap("shot1_startup")
 
     // Dismiss dialogue.

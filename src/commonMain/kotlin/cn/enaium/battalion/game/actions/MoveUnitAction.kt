@@ -225,8 +225,9 @@ class MoveUnitAction(
             }
         }
 
-        // Dispatch move unit trigger
-        TriggerManager.add(MoveUnitTrigger(unit, destination?.let { listOf(it) } ?: emptyList()))
+        // Dispatch move unit trigger with the full walked path (each tile visited, from the
+        // unit's origin to its destination), mirroring the original MoveUnitTrigger(unit, path).
+        TriggerManager.add(MoveUnitTrigger(unit, unit.movePath))
 
         // Handle uncloaking of discovered units
         if (uncloakUnit != null) {

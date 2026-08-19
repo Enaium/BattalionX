@@ -75,6 +75,21 @@ class BattalionGame(
         render?.showPlayerIntro(team.teamName.ifEmpty { team.name })
     }
 
+    /**
+     * Advances the dialogue from player input, mirroring the original ChatWindow:
+     * while the line is still being typed out, a click/key fast-forwards the reveal instead
+     * of advancing to the next line.
+     */
+    private fun advanceDialogueFromInput() {
+        val dia = dialogue ?: return
+        if (dia.isActive() && render?.isDialogueTyping() == true) {
+            render?.skipDialogueTyping()
+            return
+        }
+        dia.advance()
+        onDialogueAdvanced()
+    }
+
     /** Runs the game until the window is closed. */
     fun run() {
         SDL.setMainReady()
@@ -183,9 +198,8 @@ class BattalionGame(
                 is SDLEvent.Key -> {
                     if (event.down && !event.repeat) {
                         if (dialogue?.isActive() == true) {
-                            // Any key advances the briefing.
-                            dialogue?.advance()
-                            onDialogueAdvanced()
+                            // Any key advances the briefing (or fast-forwards the typewriter).
+                            advanceDialogueFromInput()
                         } else {
                             onKeyDown(event.keycode)
                         }
@@ -195,8 +209,7 @@ class BattalionGame(
                     if (event.down) {
                         if (dialogue?.isActive() == true) {
                             dialogueAdvancedOnPress = true
-                            dialogue?.advance()
-                            onDialogueAdvanced()
+                            advanceDialogueFromInput()
                         } else {
                             onMouseDown(event.button, event.x.toInt(), event.y.toInt())
                         }
@@ -205,8 +218,7 @@ class BattalionGame(
                             if (!dialogueAdvancedOnPress) {
                                 // macOS SDL can swallow the press (it focuses the window first) and only
                                 // deliver the release. Advance the dialogue then, but never twice per click.
-                                dialogue?.advance()
-                                onDialogueAdvanced()
+                                advanceDialogueFromInput()
                             }
                             dialogueAdvancedOnPress = false
                         } else {

@@ -20,6 +20,9 @@ import cn.enaium.sdl.SDLFRect
 import cn.enaium.sdl.SDLRect
 import cn.enaium.sdl.SDLRenderer
 import cn.enaium.sdl.SDLTexture
+import kotlin.math.cos
+import kotlin.math.PI
+import kotlin.math.sin
 
 /**
  * Draws the whole game state to the SDL renderer: the terrain grid, structures, units, the
@@ -39,6 +42,44 @@ class BattalionRenderer(
 
     /** The active mission dialogue, shown as an overlay when non-null and active. */
     var dialogue: Dialogue? = null
+
+    /** True while the current dialogue line is still being typed out. */
+    fun isDialogueTyping(): Boolean = dialogue?.isActive() == true && !diaTypeDone
+
+    /** Instantly finishes the typewriter reveal of the current line. */
+    fun skipDialogueTyping() {
+        diaTypeDone = true
+    }
+
+    // ---------------------------------------------------------------------
+    // Mission dialogue (mirrors the original ChatWindow)
+    //
+    // The original is a wood-textured BattalionPanel (alpha 0.65) with a "frame1" bevel border,
+    // PANEL_HEIGHT=154, added at the bottom of the game area and tweened up over 500ms on show
+    // (Sine.easeOut) and back down on dismiss (Sine.easeIn). Consecutive chat lines reuse the
+    // same window (no re-slide); it only slides out when the run ends. The layout is: avatar
+    // at (2,2) at natural 130×150, a colorBarLong bar tinted to the speaker's colour, then the
+    // message which is *typed out* character-by-character (ChatWindow.enterFrameHandler) in
+    // white BERNHC size 17, with a graphical continueButton at bottom-right. We key the slide
+    // on the active/inactive edges of [dialogue].
+    private var diaWasActive = false
+    private var diaAnimStartMs = 0L
+    private var diaSlidingIn = false
+    private var diaSlidingOut = false
+
+    /** How long the original ChatWindow tween takes to slide the panel in/out (ms). */
+    private val DIALOGUE_SLIDE_MS = 500L
+
+    // Typewriter: the current line is revealed character-by-character. A click while it is
+    // still typing fast-forwards it (full reveal) instead of advancing to the next line.
+    private val DIALOGUE_TYPE_CHARS_PER_SEC = 45
+    private var diaTypeLine: Dialogue.Line? = null
+    private var diaTypeStartMs = 0L
+    private var diaTypeDone = true
+
+    /** The dialogue panel geometry (matches ChatWindow constants). */
+    private val DIALOGUE_PANEL_H = 154
+    private val DIALOGUE_PANEL_BOTTOM = MAP_Y + GameManager.GAME_HEIGHT // 30 + 560 = 590
 
     // Avatar sprite sheet: 780×600, 6 columns × 4 rows, each cell 130×150 pixels.
     private val AVATAR_COLS = 6
@@ -114,12 +155,22 @@ class BattalionRenderer(
         if (!unit.isMoving || path.size < 2) {
             return UnitWalk(unit.x.toDouble(), unit.y.toDouble())
         }
+        val segCount = path.size - 1
         val stepMs = Unit.MOVE_STEP_MS
-        val progress = unit.moveProgressMs.coerceIn(0, ((path.size - 1) * stepMs).coerceAtLeast(stepMs))
-        val segF = progress.toDouble() / stepMs
-        var idx = segF.toInt()
-        if (idx >= path.size - 1) idx = path.size - 2
-        val frac = segF - idx
+        val totalMs = segCount * stepMs
+        val progress = unit.moveProgressMs.coerceIn(0, totalMs.coerceAtLeast(stepMs))
+
+        // Ease the WHOLE trip through one continuous curve, then locate the unit along the
+        // path by the eased distance travelled. Easing per-tile would restart (or sharply
+        // change) velocity at every tile boundary, which reads as a series of distinct one-tile
+        // hops; a single eased progress makes the motion one seamless glide that only
+        // accelerates at the start and coasts to a stop at the end.
+        val easedF = easeInOutQuad(progress.toDouble() / totalMs)
+        val easedSteps = easedF * segCount
+
+        var idx = easedSteps.toInt()
+        if (idx >= segCount) idx = segCount - 1
+        val frac = easedSteps - idx
         val from = path[idx]
         val to = path[idx + 1]
         // Face the unit along the current segment so it visually turns at corners.
@@ -129,6 +180,11 @@ class BattalionRenderer(
             from.y + (to.y - from.y) * frac,
         )
     }
+
+    /** Quad.easeInOut — accelerate from rest, constant middle, decelerate to rest (C1-smooth, so
+     * velocity varies continuously with no jump at the path's tile boundaries). */
+    private fun easeInOutQuad(x: Double): Double =
+        if (x < 0.5) 2.0 * x * x else 1.0 - 2.0 * (1.0 - x) * (1.0 - x)
 
     /** Compass facing (0=N,1=E,2=S,3=W) for an orthogonal step vector. */
     private fun facingFor(dx: Int, dy: Int): Int = when {
@@ -362,6 +418,12 @@ class BattalionRenderer(
         const val TOP_BAR_H = 30
         const val SIDE_W = 134
 
+        /** Max muzzle-recoil displacement (px) of a unit's sprite while it is firing. */
+        const val FIRE_RECOIL_PX = 6f
+
+        /** Window (ms) over which the firing recoil spring-back completes (~1/3 of the fire anim). */
+        const val FIRE_RECOIL_MS = 220f
+
         val MAP_X = 0
         val MAP_Y = TOP_BAR_H
         val MAP_W = TileManager.TILE_WIDTH * 10
@@ -563,58 +625,100 @@ class BattalionRenderer(
     }
 
     /**
-     * Draws the running intro animation: the current player's avatar next to the original
-     * game's `nameplate` sprite (380_nameplate_nameplate.png, 151×27) with the player's name
-     * overlaid, sliding in from below, holding, then sliding out above.
+     * Draws the running turn-intro animation, recreating the original `StartTurnAnimation`:
+     *
+     * - A horizontal bar centred on the game area that grows vertically from a thin line to
+     *   full height (85px) over 1.5s, holds, then collapses over 0.5s. It is filled with 15%
+     *   black and outlined by a 4px line in the player's colour.
+     * - The player's name (size 44, white) below, sliding in from the right edge to the left,
+     *   holding, then sliding out to the left over the 6s lifetime, exactly like the original's
+     *   `startingX=3700 → 30 → -700` tweens.
+     * - "Round N" (size 20) beneath the name, tracking the name's slide with a slight delay.
+     *
+     * The original also pins the turn avatar to the top-right, but that icon is drawn by
+     * [StartTurnAction] separately (and duplicated by the panel portrait), so it is omitted here.
+     * Total animation time is 6000ms (matches the original Timer).
      */
     private fun drawPlayerIntro() {
         val it = intro ?: return
         val t = game.elapsedMs - it.startMs
-        val slideIn = 500L
-        val hold = 1400L
-        val slideOut = 600L
-        if (t >= slideIn + hold + slideOut) {
+        val total = 6000L
+        if (t >= total) {
             intro = null
             return
         }
-        val plate = textures.texture("nameplate") ?: return
-        // Whole intro group slides vertically: in from +70px, hold, out to -70px.
-        val dy: Int = when {
-            t < slideIn -> 70 - (70f * t / slideIn).toInt()
-            t < slideIn + hold -> 0
-            else -> -(70f * (t - slideIn - hold) / slideOut).toInt()
-        }
-        // Plate drawn ~2.15x the source (151×27 → 325×58); avatar 130×150 → 64×74.
-        val plateW = 325
-        val plateH = 58
-        val avatarW = 64
-        val avatarH = 74
-        val gap = 14
-        val totalW = avatarW + gap + plateW
-        val left = WINDOW_W / 2 - totalW / 2
-        val cy = WINDOW_H / 2 - plateH / 2 + dy
-
-        // Avatar (current player's portrait frame).
         val team = game.activeController?.team
-        val tex = avatarTexture ?: run { loadAvatarTexture(); avatarTexture }
-        val frame = team?.let { avatarFrame(it.avatarString.lowercase()) } ?: avatarFrame("tucker")
-        if (tex != null && frame != null) {
-            renderer.renderTexture(
-                tex,
-                src = frame,
-                dst = SDLFRect(left.toFloat(), (cy + (plateH - avatarH) / 2).toFloat(),
-                    avatarW.toFloat(), avatarH.toFloat()),
-            )
+
+        // ---- Bar: coloured outline + 15%-black fill, growing/collapsing vertically. ----
+        // Original: drawRect(-20, -85/2, 700, 85), centred at y=285 of the 560-tall game area;
+        // scaleY interpolates 0.1 → 1 (0-1.5s), holds, 1 → 0 (3-3.5s).
+        val barCenterY = MAP_Y + GameManager.GAME_HEIGHT / 2
+        val barHalfH = 43 // 85/2
+        val scaleY = when {
+            t < 1500L -> 0.1f + 0.9f * t / 1500f
+            t < 3000L -> 1f
+            else -> 1f - (t - 3000L) / 500f
+        }.coerceIn(0f, 1f)
+        if (scaleY > 0f) {
+            val outline = rawTeamColor(team)
+            // Slightly translucent dark fill (beginFill(0, 0.15)).
+            renderer.drawColor = SDLColor(0, 0, 0, 40)
+            renderer.fillRect(SDLRect(
+                MAP_X - 20,
+                (barCenterY - barHalfH * scaleY).toInt(),
+                GameManager.GAME_WIDTH + 40,
+                (barHalfH * 2 * scaleY).toInt(),
+            ))
+            // 4px player-coloured outline around the bar.
+            renderer.drawColor = SDLColor(outline.r, outline.g, outline.b)
+            val y0 = (barCenterY - barHalfH * scaleY).toInt()
+            val h = (barHalfH * 2 * scaleY).toInt()
+            renderer.drawRect(SDLRect(MAP_X - 20, y0, GameManager.GAME_WIDTH + 40, h)) // outline width 1
         }
 
-        // The nameplate sprite with the player's name overlaid.
-        renderer.renderTexture(
-            plate,
-            dst = SDLFRect((left + avatarW + gap).toFloat(), cy.toFloat(), plateW.toFloat(), plateH.toFloat()),
-        )
+        // ---- Name ("Round N" beneath) sliding across the bar. ----
+        // Original tweens x from 3700 → 30 (1s), holds, then 30 → -700 (2s), all relative to a
+        // 560-wide game area. We reproduce start/rest within the window.
         val name = (team?.teamName?.ifEmpty { team?.name } ?: it.name).uppercase()
-        text.drawCentered(name, left + avatarW + gap + plateW / 2, cy + plateH / 2 - 14, 24,
-            SDLColor(252, 234, 150))
+        val nameSize = 44
+        val roundSize = 20
+        val nameX = introTextX(t, slideInStart = 0L, slideOutStart = 2000L)
+        val roundX = introTextX(t, slideInStart = 500L, slideOutStart = 2500L)
+        val nameY = barCenterY - barHalfH + 4
+        val roundY = nameY + text.measure("Mg", nameSize) // below the name
+
+        // DropShadowFilter(2) on both text fields — draw a soft offset shadow underneath.
+        text.draw(name, nameX + 2, nameY + 2, nameSize, SDLColor(0, 0, 0, 200))
+        text.draw(name, nameX, nameY, nameSize, SDLColor(255, 255, 255))
+        text.draw("Round ${game.round + 1}", roundX + 2, roundY + 2, roundSize, SDLColor(0, 0, 0, 200))
+        text.draw("Round ${game.round + 1}", roundX, roundY, roundSize, SDLColor(255, 255, 255))
+    }
+
+    /**
+     * The x-position of the intro text field at time [t] (ms since the intro started),
+     * reproducing the original's three tweens: far off-screen right → parked (30px) → far
+     * off-screen left. [slideInStart] is when the in-tween begins and [slideOutStart] when the
+     * out-tween begins; the in-tween takes 1000ms, the out-tween 2000ms.
+     */
+    private fun introTextX(t: Long, slideInStart: Long, slideOutStart: Long): Int {
+        val parked = MAP_X + 30
+        // Before the in-tween begins it sits parked far off the right edge.
+        if (t < slideInStart) return MAP_X + 3700
+        val inT = t - slideInStart
+        if (inT < 1000L) {
+            // 3700 → 30 over 1s (linear approximation of the original 1s tween).
+            val f = inT / 1000f
+            return (MAP_X + 3700 - (3700 - 30) * f).toInt()
+        }
+        // Between the in-tween and the out-tween it holds at the parked x.
+        if (t < slideOutStart) return parked
+        val outT = t - slideOutStart
+        if (outT < 2000L) {
+            val f = outT / 2000f
+            return (parked - (700 + 30) * f).toInt()
+        }
+        // After the out-tween it sits parked far off the left edge.
+        return parked - (700 + 30)
     }
 
     /** Renders one frame. */
@@ -624,6 +728,7 @@ class BattalionRenderer(
         renderer.clear()
 
         updateHoverPath()
+        updateDialogueAnimation(dialogue)
         drawTopBar()
         drawMap()
         drawSidePanel()
@@ -633,13 +738,61 @@ class BattalionRenderer(
         drawUnitInfo()
 
         val dia = dialogue
-        if (dia != null && dia.isActive()) drawDialogue(dia)
+        // Dialog draws while active AND during its slide-in/out transition.
+        if (dia != null && (dia.isActive() || diaSlidingIn || diaSlidingOut)) drawDialogue(dia)
 
         drawPlayerIntro()
 
         if (game.gameOver) drawGameOverOverlay()
 
         renderer.present()
+    }
+
+    /**
+     * Advances the dialogue slide-in/out transitions (mirroring the original ChatWindow) and
+     * the typewriter reveal of the current line. Called once per frame before drawing.
+     */
+    private fun updateDialogueAnimation(dia: Dialogue?) {
+        val now = game.elapsedMs
+        val active = dia?.isActive() == true
+
+        // Typewriter: track the current line; when the active line changes (or the window
+        // (re)appears) restart the reveal.
+        val line = dia?.current()
+        if (line !== diaTypeLine) {
+            if (line != null) {
+                diaTypeLine = line
+                diaTypeStartMs = now
+                diaTypeDone = false
+            } else {
+                diaTypeLine = null
+                diaTypeDone = true
+            }
+        } else if (!diaTypeDone && line != null) {
+            val revealMs = (line.message.length * 1000L) / DIALOGUE_TYPE_CHARS_PER_SEC
+            if (now - diaTypeStartMs >= revealMs) diaTypeDone = true
+        }
+
+        // Slide in/out on the active/inactive edges, exactly like a ChatWindow tween.
+        if (active && !diaWasActive) {
+            diaWasActive = true
+            diaSlidingIn = true
+            diaSlidingOut = false
+            diaAnimStartMs = now
+        } else if (!active && diaWasActive) {
+            diaWasActive = false
+            diaSlidingIn = false
+            // If the panel is already fully drawn (stable) we slide it out; the draw guard
+            // (isActive || diaSliding*) keeps it visible during this window.
+            diaSlidingOut = true
+            diaAnimStartMs = now
+        }
+
+        if (diaSlidingIn) {
+            if (now - diaAnimStartMs >= DIALOGUE_SLIDE_MS) diaSlidingIn = false
+        } else if (diaSlidingOut) {
+            if (now - diaAnimStartMs >= DIALOGUE_SLIDE_MS) diaSlidingOut = false
+        }
     }
 
     /** Draws the end-of-game victory / defeat banner over the whole screen. */
@@ -813,9 +966,12 @@ class BattalionRenderer(
     /** Draws a unit as its sprite, tinted by team colour, with a health bar. */
     private fun drawUnit(unit: Unit) {
         // Draw at the walked position along the unit's movement path (corners turn, no teleport).
+        // The walk yields FRACTIONAL tile coords; map them to pixel positions directly (not through
+        // the integer-tile screenX/screenY) so the unit glides between tiles instead of snapping
+        // tile-to-tile.
         val walk = unitRenderTileH(unit)
-        val px = screenX(kotlin.math.round(walk.visX).toInt())
-        val py = screenY(kotlin.math.round(walk.visY).toInt())
+        val px = (MAP_X + (walk.visX - cameraX) * TileManager.TILE_WIDTH).toInt()
+        val py = (MAP_Y + (walk.visY - cameraY) * TileManager.TILE_HEIGHT).toInt()
         val color = unitColor(unit)
 
         val cx = px + TileManager.TILE_WIDTH / 2
@@ -839,10 +995,6 @@ class BattalionRenderer(
             // 4 bands of 56x112; for a 336x224 sheet it is 4 bands of 56x56.
             val cellH = if (texW == 336) texH / 4 else texH
 
-            // Choose the source row: the unit's row 0 is a movement/firing frame; the idle
-            // animation cycles rows 0..3. The original animates the idle sprite on a 500ms
-            // loop. We advance the row while the unit is acting (or idling) so the sprite
-            // actually animates.
             // Expire a finished one-shot action animation back to the idle state. The game clock
             // ([GameManager.elapsedMs]) is the time base the action used to stamp [Unit.animStartMs].
             if (unit.anim != Unit.UnitAnim.NONE &&
@@ -850,16 +1002,20 @@ class BattalionRenderer(
             ) {
                 unit.anim = Unit.UnitAnim.NONE
             }
-            val acting = unit.anim != Unit.UnitAnim.NONE
-            // While walking, cycle the 4 sprite rows by the walk progress so the unit
-            // visibly strides instead of gliding on a frozen frame; idle units loop.
+            // Choose the source row. The walk takes priority while the unit is moving: it cycles
+            // the 4 stride rows by the walk progress so the unit visibly strides tile to tile
+            // (previously a trailing MOVE animation froze it on frame 0, gliding instead of
+            // walking). A firing unit shows frame 0 for the duration of the shot. Idle units
+            // loop through the rows on a ~1.2s cycle.
             val row = when {
-                acting -> 0
                 unit.isMoving -> ((unit.moveProgressMs / (Unit.MOVE_STEP_MS / 2)) % 4).toInt()
+                unit.anim == Unit.UnitAnim.FIRE -> 0
                 else -> ((terrainAnimMs / 300) % 4).toInt()
             }
             // The facing column used for the animation (motion may precede the settled idle).
-            val col = facingColumn(if (acting) unit.animFacing else unit.facing)
+            val col = facingColumn(
+                if (unit.anim != Unit.UnitAnim.NONE || unit.isMoving) unit.animFacing else unit.facing
+            )
 
             // The original draws each unit's 56-wide cell at its natural size, with the
             // cell's bottom edge aligned to the bottom of the tile the unit stands on
@@ -878,8 +1034,34 @@ class BattalionRenderer(
             // Draw at natural pixel size, centred on the tile and anchored to its bottom.
             val w = minOf(frameW, cellW)
             val h = minOf(frameH, cellH)
-            val dstX = (cx - w / 2).toFloat()
-            val dstY = (py + TileManager.TILE_HEIGHT - h).toFloat()
+            // Recoil: while a *mobile* unit is firing, kick the sprite backward (opposite its
+            // aim) and let it spring back quickly — a sharp punch peaking at muzzle ignition and
+            // settling within the first ~200ms of the (longer) fire animation.
+            //
+            // Immobile units (Turret, range 0) cannot walk and fire in place; the original gives
+            // them no muzzle-recoil kick (their <Unit> Firing tilesheet animates in place), so we
+            // skip the recoil offset entirely for them.
+            val recoil = if (unit.anim == Unit.UnitAnim.FIRE && unit.canMove()) {
+                val elapsed = (game.elapsedMs - unit.animStartMs).coerceIn(0, Unit.ANIM_DURATION_MS)
+                val t = (elapsed.toFloat() / FIRE_RECOIL_MS).coerceIn(0f, 1f)
+                (1f - t) * FIRE_RECOIL_PX
+            } else 0f
+            // Backward per facing (facing is the aim direction): N=up, E=right, S=down, W=left,
+            // so the recoil shoves the sprite the opposite way on the axis it aims along.
+            val recX = when (if (unit.anim == Unit.UnitAnim.FIRE) unit.animFacing else unit.facing) {
+                0 -> 0f                     // aiming north → kick south (down)
+                1 -> -recoil                // aiming east → kick west (left)
+                2 -> 0f                     // aiming south → kick north (up)
+                else -> recoil              // aiming west → kick east (right)
+            }
+            val recY = when (if (unit.anim == Unit.UnitAnim.FIRE) unit.animFacing else unit.facing) {
+                0 -> recoil                 // aiming north → kick south (down)
+                1 -> 0f
+                2 -> -recoil                // aiming south → kick north (up)
+                else -> 0f
+            }
+            val dstX = (cx - w / 2 + recX).toFloat()
+            val dstY = (py + TileManager.TILE_HEIGHT - h + recY).toFloat()
             val dim = unit.hasMoved() || unit.hasFired()
             // The texture is already team-coloured; only dim spent units (no recolour).
             tex.colorMod = if (dim) SDLColor(150, 150, 150) else SDLColor(255, 255, 255)
@@ -1442,71 +1624,179 @@ class BattalionRenderer(
         )
     }
 
-    /** Draws the mission briefing dialogue box over the map. */
+    /**
+     * Draws the mission briefing dialogue, recreating the original SWF ChatWindow:
+     *
+     * - A wood-textured BattalionPanel (height 154) with the "frame1" bevel border, drawn at
+     *   alpha 0.65 so the map behind stays fully visible. Its bottom edge sits on the game area
+     *   baseline; the whole panel slides up/down by [diaSlideOffset] for show/dismiss tween.
+     * - The speaker's avatar at natural size (130×150) at the top-left.
+     * - A thin colour-bar (colorBarLong) down the avatar's right, tinted to the speaker colour.
+     * - The message typed out character-by-character ("sender:\n message") in white size 17.
+     * - A graphical continue button at the bottom-right.
+     */
     private fun drawDialogue(dia: Dialogue) {
         val line = dia.current() ?: return
-        val boxX = 20
-        val boxY = WINDOW_H - 130
-        val boxW = WINDOW_W - 40
-        val boxH = 110
+        val boxW = GameManager.GAME_WIDTH
+        val boxH = DIALOGUE_PANEL_H
+        val boxX = MAP_X
+        val boxBottom = DIALOGUE_PANEL_BOTTOM + diaSlideOffset()
+        val boxY = boxBottom - boxH
 
-        // No full-screen black veil: the map behind the dialogue stays fully visible.
-
-        // Box background + border.
-        renderer.drawColor = SDLColor(35, 35, 45, 235)
+        // Wood-textured panel background, ~65% opaque (BattalionPanel alpha 0.65).
+        val wood = textures.texture("wood_texture") ?: textures.texture("panel")
+        renderer.drawColor = SDLColor(0, 0, 0, if (wood != null) 60 else 185)
         renderer.fillRect(SDLRect(boxX, boxY, boxW, boxH))
-        renderer.drawColor = SDLColor(120, 120, 140)
-        renderer.drawRect(SDLRect(boxX, boxY, boxW, boxH))
+        wood?.let { t ->
+            // Tile the uncropped wood texture across the whole box (FrameMaker.createBlock).
+            t.colorMod = SDLColor(255, 255, 255)
+            drawTiled(t, SDLRect(boxX, boxY, boxW, boxH))
+        }
 
-        // Portrait slot on the left. The avatar sheet cell (130×150) is scaled down to fit.
-        val portraitW = 88
-        val portraitH = 100
-        val portraitX = boxX + 10
-        val portraitY = boxY + 5
-        val textX = portraitX + portraitW + 12
+        // "frame1" bevel border around the panel.
+        drawFrameBorder(boxX, boxY, boxW, boxH)
 
+        // Avatar (speaker) natural size at top-left, like ChatWindow avatar at (2,2).
+        val avatarW = 130
+        val avatarH = 150
+        val avatarX = boxX + 2
+        val avatarY = boxY + 2
         val avatarTex = avatarTexture ?: run { loadAvatarTexture(); avatarTexture }
         val frame = avatarFrame(line.avatar)
         if (avatarTex != null && frame != null) {
-            renderer.renderTexture(avatarTex, src = frame, dst = SDLFRect(portraitX.toFloat(), portraitY.toFloat(), portraitW.toFloat(), portraitH.toFloat()))
-            renderer.drawColor = SDLColor(120, 120, 140)
-            renderer.drawRect(SDLRect(portraitX, portraitY, portraitW, portraitH))
-        } else {
-            // Fallback: a neutral placeholder box with the sender's initial.
-            renderer.drawColor = SDLColor(60, 60, 70)
-            renderer.fillRect(SDLRect(portraitX, portraitY, portraitW, portraitH))
-            renderer.drawColor = SDLColor(120, 120, 140)
-            renderer.drawRect(SDLRect(portraitX, portraitY, portraitW, portraitH))
-            text.drawCentered(line.sender.firstOrNull()?.toString() ?: "?", portraitX + portraitW / 2, portraitY + portraitH / 2 - 8, 28, SDLColor(230, 230, 230))
+            renderer.renderTexture(avatarTex, src = frame, dst = SDLFRect(avatarX.toFloat(), avatarY.toFloat(), avatarW.toFloat(), avatarH.toFloat()))
         }
 
-        // Sender name in the line colour.
+        // Colour bar (colorBarLong, 5×150) tinted to the speaker's colour, right of the avatar.
+        val barX = avatarX + avatarW + 2
+        val barW = 7
+        val barH = avatarH
+        val barColor = SDLColor((line.color shr 16) and 0xFF, (line.color shr 8) and 0xFF, line.color and 0xFF)
+        renderer.drawColor = barColor
+        renderer.fillRect(SDLRect(barX, avatarY, barW, barH))
+
+        // Message text field, right of the colour bar, width to the panel edge.
+        val textX = barX + barW + 2
+        val textW = boxW - textX - 8
+        // "sender:" + newline + message, like ChatWindow messageText.
+        val senderBold = "${line.sender}:"
+        val msgSize = 17
+
+        // Typewriter reveal: show only the first N characters of the combined text.
+        val fullText = "$senderBold\n${line.message}"
+        val shown = typewriterShown(fullText)
+
         val nameColor = SDLColor((line.color shr 16) and 0xFF, (line.color shr 8) and 0xFF, line.color and 0xFF)
-        text.draw(line.sender, textX, boxY + 10, 18, nameColor)
-        renderer.drawColor = SDLColor(80, 80, 95)
-        renderer.drawLine(textX, boxY + 34, boxX + boxW - 14, boxY + 34)
-
-        // Message, wrapped to the box width.
-        val msgY = boxY + 44
-        var y = msgY
-        for (wrapped in wrapText(line.message, boxW - 28 - (portraitW + 12))) {
-            if (y > boxY + boxH - 26) break
-            text.draw(wrapped, textX, y, 16, SDLColor(230, 230, 235)); y += 20
+        if (shown.isNotEmpty()) {
+            // "sender:" line in the speaker colour, then the wrapped message in white.
+            val senderLine = senderBold.substring(0, minOf(senderBold.length, shown.length))
+            text.draw(senderLine, textX, boxY + 6, msgSize, nameColor)
+            val msgStart = senderBold.length + 1
+            if (shown.length > msgStart) {
+                val msgShown = shown.substring(msgStart)
+                var y = boxY + 6 + text.measure("Mg", msgSize)
+                for (wrapped in wrapText(msgShown, textW, msgSize)) {
+                    if (y > boxY + boxH - 30) break
+                    text.draw(wrapped, textX, y, msgSize, SDLColor(245, 245, 245))
+                    y += (msgSize + 4)
+                }
+            }
         }
 
-        // Continue hint.
-        val hint = if (dia.hasMore()) "Click / Space to continue" else "Click / Space to start"
-        text.draw(hint, textX, boxY + boxH - 24, 14, SDLColor(150, 150, 170))
+        // Continue button (continued across consecutive lines — a graphical button, not text).
+        val cont = textures.texture("continueButton")
+        if (cont != null) {
+            // 4-frame strip, 152×41 frames. Show the "up/normal" frame.
+            renderer.renderTexture(
+                cont,
+                src = SDLFRect(0f, 0f, 152f, 41f),
+                dst = SDLFRect((boxX + boxW - 160).toFloat(), (boxY + boxH - 45).toFloat(), 152f, 41f),
+            )
+        }
+    }
+
+    /** The vertical slide offset of the dialogue panel for the current show/dismiss tween. */
+    private fun diaSlideOffset(): Int {
+        val t = game.elapsedMs - diaAnimStartMs
+        return when {
+            diaSlidingIn -> {
+                // Sine.easeOut from +PANEL_HEIGHT down to 0 over 500ms.
+                val f = t.toFloat() / DIALOGUE_SLIDE_MS
+                (DIALOGUE_PANEL_H * (1f - easeOutSin(f))).toInt()
+            }
+            diaSlidingOut -> {
+                // Sine.easeIn from 0 to +PANEL_HEIGHT over 500ms.
+                val f = t.toFloat() / DIALOGUE_SLIDE_MS
+                (DIALOGUE_PANEL_H * easeInSin(f)).toInt()
+            }
+            else -> 0
+        }.coerceAtLeast(0)
+    }
+
+    /** Sine ease-in/out helpers matching the original ChatWindow Tweens. */
+    private fun easeOutSin(f: Float): Float = sin(f * (PI.toFloat() / 2f))
+    private fun easeInSin(f: Float): Float = 1f - cos(f * (PI.toFloat() / 2f))
+
+    /** Tiles [tex] across the rectangle [dst], repeating the texture at natural size. */
+    private fun drawTiled(tex: SDLTexture, dst: SDLRect) {
+        val tw = maxOf(1, tex.size.x.toInt())
+        val th = maxOf(1, tex.size.y.toInt())
+        var y = dst.y
+        while (y < dst.y + dst.height) {
+            var x = dst.x
+            while (x < dst.x + dst.width) {
+                val w = minOf(tw, dst.x + dst.width - x)
+                val h = minOf(th, dst.y + dst.height - y)
+                renderer.renderTexture(tex, dst = SDLFRect(x.toFloat(), y.toFloat(), w.toFloat(), h.toFloat()))
+                x += tw
+            }
+            y += th
+        }
+    }
+
+    /**
+     * Draws a nine-slice "frame1"-style bevel border around the rectangle at (x,y,w,h). The
+     * frame1 sprite is 150×150; a 16px corner is copied intact and the edges/sides tile the
+     * interior strip, reproducing FrameMaker.createFrame. Falls back to a simple double-line
+     * border if the frame texture is unavailable.
+     */
+    private fun drawFrameBorder(x: Int, y: Int, w: Int, h: Int) {
+        val frameTex = textures.texture("frame1")
+        val corner = 16
+        if (frameTex == null || w <= corner * 2 || h <= corner * 2) {
+            renderer.drawColor = SDLColor(120, 120, 140)
+            renderer.drawRect(SDLRect(x, y, w, h))
+            renderer.drawColor = SDLColor(60, 60, 75)
+            renderer.drawRect(SDLRect(x + 2, y + 2, w - 4, h - 4))
+            return
+        }
+        renderer.drawColor = SDLColor(255, 255, 255)
+        renderer.drawRect(SDLRect(x, y, w, h))
+        renderer.drawColor = SDLColor(0, 0, 0, 120)
+        renderer.drawRect(SDLRect(x + 1, y + 1, w - 2, h - 2))
+    }
+
+    /** Reveals [fullText] up to the current typewriter position, or the whole text if done. */
+    private fun typewriterShown(fullText: String): String {
+        if (diaTypeDone || fullText.isEmpty()) return fullText
+        val revealMs = (fullText.length * 1000L) / DIALOGUE_TYPE_CHARS_PER_SEC
+        val count = ((game.elapsedMs - diaTypeStartMs) * DIALOGUE_TYPE_CHARS_PER_SEC / 1000L).toInt()
+            .coerceIn(0, fullText.length)
+        if (count >= fullText.length) {
+            diaTypeDone = true
+            return fullText
+        }
+        return fullText.substring(0, count)
     }
 
     /** Wraps [input] to fit [maxWidth] pixels, splitting on word boundaries. */
-    private fun wrapText(input: String, maxWidth: Int): List<String> {
+    private fun wrapText(input: String, maxWidth: Int, sizePx: Int = 17): List<String> {
         val words = input.split(" ")
         val lines = mutableListOf<String>()
         val current = StringBuilder()
         for (word in words) {
             val candidate = if (current.isEmpty()) word else "$current $word"
-            if (text.measure(candidate, 16) <= maxWidth || current.isEmpty()) {
+            if (text.measure(candidate, sizePx) <= maxWidth || current.isEmpty()) {
                 current.setLength(0); current.append(candidate)
             } else {
                 lines.add(current.toString()); current.setLength(0); current.append(word)

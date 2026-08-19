@@ -79,7 +79,8 @@ class HALTurn(private val hal: HAL) {
             return
         }
 
-        // 1. Try to attack an enemy in range.
+        // 1. Attack an in-range target from the unit's current tile (weapon validity enforced:
+        //    only targets the weapon can actually fire at are chosen, so no wasted turns).
         if (unit.canAttack() && !unit.hasFired()) {
             val target = findBestTarget(unit)
             if (target != null) {
@@ -88,9 +89,39 @@ class HALTurn(private val hal: HAL) {
                 ActionManager.add(attack)
                 return
             }
+
+            // 1b. Move-then-attack (the original KillUnitGoal.processAttacker): a unit that
+            // cannot fire from its current tile moves into a position from which it can, then
+            // attacks the same turn. Ranged units may only attack from their own tile (they
+            // cannot move then shoot), so this path is for adjacent-only (melee) attackers.
+            if (!unit.isRanged() && unit.canMove() && !unit.hasMoved()) {
+                val moveTo = findAttackMove(unit)
+                if (moveTo != null) {
+                    val path = findPath(unit, moveTo)
+                    if (path != null) {
+                        val pathStrings = mutableListOf<String>()
+                        for (tile in path) {
+                            pathStrings.add(tile.x.toString())
+                            pathStrings.add(tile.y.toString())
+                        }
+                        val move = MoveUnitAction(unit.x, unit.y, MoveUnitAction.stringizePath(pathStrings))
+                        move.isNetworked = false
+                        ActionManager.add(move)
+
+                        // Attack from the move's destination tile (where the unit stands next).
+                        val target = bestAdjacentTarget(unit, moveTo.x, moveTo.y)
+                        if (target != null) {
+                            val attack = AttackUnitAction(moveTo.x, moveTo.y, target.x, target.y)
+                            attack.isNetworked = false
+                            ActionManager.add(attack)
+                        }
+                        return
+                    }
+                }
+            }
         }
 
-        // 2. Try to move toward enemies.
+        // 2. Otherwise move toward enemies / objectives.
         if (unit.canMove() && !unit.hasMoved()) {
             val moveTarget = findMoveTarget(unit)
             if (moveTarget != null) {
@@ -133,12 +164,19 @@ class HALTurn(private val hal: HAL) {
 
         // 5. For capture units: try to capture structures.
         if (unit.unitData.hasModifier("Capture")) {
+            // The structure this unit can reach this turn.
             val target = findCaptureTarget(unit)
-            if (target != null) {
-                // Move to an adjacent tile first.
-                val adjacentTile = findAdjacentTile(unit, target)
-                if (adjacentTile != null) {
-                    val path = findPath(unit, adjacentTile)
+
+            // Already standing on an enemy structure → capture it (crossing the enemy's
+            // structure tile is allowed for a Capture unit).
+            val currentTile = game.unitTile(unit)
+            val onStructure = currentTile != null && currentTile.isStructure() &&
+                currentTile.controller !== unit.controller
+
+            if (target != null || onStructure) {
+                val dest = if (target != null) target else currentTile!!
+                if (dest.unit != unit) {
+                    val path = findPath(unit, dest)
                     if (path != null) {
                         val pathStrings = mutableListOf<String>()
                         for (tile in path) {
@@ -150,6 +188,13 @@ class HALTurn(private val hal: HAL) {
                         ActionManager.add(move)
                         return
                     }
+                } else if (onStructure) {
+                    // NoAttack lets the unit wait on the structure; the capture itself
+                    // progresses (this unit ends its turn parked on the enemy HQ).
+                    val noAttack = NoAttackAction(unit.x, unit.y)
+                    noAttack.isNetworked = false
+                    ActionManager.add(noAttack)
+                    return
                 }
             }
         }
@@ -169,6 +214,10 @@ class HALTurn(private val hal: HAL) {
             val target = tile.unit ?: continue
             if (target.controller === unit.controller || unit.controller?.isAllied(target.controller) == true) continue
             if (target.isCloaked()) continue
+            // Only targets the weapon can actually fire at (air vs Skysweeper, submerged,
+            // canopy/shielded blocks, etc.) — otherwise AttackUnitAction rejects the attack
+            // and the turn is wasted.
+            if (!game.canWeaponsFireAtTarget(unit, target, true, unit.x, unit.y)) continue
 
             // Score based on damage we can deal vs health remaining.
             val damage = game.resolveAttack(unit, target, useTiles = false)
@@ -179,6 +228,60 @@ class HALTurn(private val hal: HAL) {
             }
         }
         return bestTarget
+    }
+
+    /**
+     * For a melee unit that cannot fire from its current tile: the closest tile in its move
+     * range from which it can attack a valid target this turn. Scans each reachable tile and
+     * returns the one minimizing distance to the nearest fireable enemy.
+     */
+    private fun findAttackMove(unit: Unit): Tile? {
+        val moveRange = game.tilesInMoveRange(unit)
+        var bestTile: Tile? = null
+        var bestDist = Double.MAX_VALUE
+
+        for (tile in moveRange) {
+            if (tile.unit != null && tile.unit != unit) continue
+            val path = game.unitTile(unit)?.let { Astar.path(it, tile, unit) } ?: continue
+            if (!game.canMove(unit, path)) continue
+
+            val targets = game.tilesInRange(unit, tile.x, tile.y)
+            for (t in targets) {
+                val target = t.unit ?: continue
+                if (target.controller === unit.controller || unit.controller?.isAllied(target.controller) == true) continue
+                if (target.isCloaked()) continue
+                if (!game.canWeaponsFireAtTarget(unit, target, true, tile.x, tile.y)) continue
+                val dist = Math.abs(tile.x - target.x) + Math.abs(tile.y - target.y)
+                if (dist < bestDist) {
+                    bestDist = dist.toDouble()
+                    bestTile = tile
+                }
+            }
+        }
+        return bestTile
+    }
+
+    /** The best adjacent enemy the melee unit can fire at from (x,y), or null. */
+    private fun bestAdjacentTarget(unit: Unit, x: Int, y: Int): Unit? {
+        var best: Unit? = null
+        var bestScore = Double.NEGATIVE_INFINITY
+        val neighbors = listOf(
+            game.tileAt(x - 1, y), game.tileAt(x + 1, y),
+            game.tileAt(x, y - 1), game.tileAt(x, y + 1),
+        )
+        for (t in neighbors) {
+            val target = t?.unit ?: continue
+            if (target.controller === unit.controller || unit.controller?.isAllied(target.controller) == true) continue
+            if (target.isCloaked()) continue
+            if (!game.canWeaponsFireAtTarget(unit, target, true, x, y)) continue
+            val damage = game.resolveAttack(unit, target, useTiles = false)
+            val score = damage / target.getHealth().coerceAtLeast(1)
+            if (score > bestScore) {
+                bestScore = score
+                best = target
+            }
+        }
+        return best
     }
 
     private fun findMoveTarget(unit: Unit): Tile? {

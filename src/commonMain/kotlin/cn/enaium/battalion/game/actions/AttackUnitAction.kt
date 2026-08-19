@@ -170,7 +170,11 @@ class AttackUnitAction(
                 expendAttacker()
             }
         } else {
-            killUnit(targetX, targetY)
+            // The target was destroyed. Mirror the original: the attacker is still expended
+            // after the kill (moved/fired set, or Scavenge reset) — otherwise a killer could
+            // act again the same turn, which only Scavenge units may do.
+            killUnit(attacker, targetX, targetY)
+            expendAttacker()
         }
 
         // Piercing damage to units behind the target
@@ -190,7 +194,7 @@ class AttackUnitAction(
                     attacker.controller?.team?.addStatistic(Team.RESOURCE_DAMAGE_CAUSED, pierceResourceDamage.toInt())
 
                     if (!piercedUnit.isAlive()) {
-                        killUnit(piercedX, piercedY)
+                        killUnit(attacker, piercedX, piercedY)
                     } else if (piercedUnit.isRepairing()) {
                         piercedUnit.repairing = false
                     }
@@ -215,7 +219,9 @@ class AttackUnitAction(
         target.controller?.team?.addStatistic(Team.RESOURCE_DAMAGE_CAUSED, resourceDamageCaused.toInt())
 
         if (!attacker.isAlive()) {
-            killUnit(attackerX, attackerY)
+            // The counterattacker (the original target) gets the kill credit: KILLED_PLAYER{idx},
+            // UNITS_KILLED and +0.01 morale go to `target`, UNITS_LOST/−0.01 to the dead attacker.
+            killUnit(target, attackerX, attackerY)
             finishAction()
         } else {
             attacker.cloaked = false
@@ -223,14 +229,22 @@ class AttackUnitAction(
         }
     }
 
-    private fun killUnit(targetX: Int, targetY: Int) {
+    /**
+     * Removes the unit at [targetX]/[targetY] and credits [killer] with the kill.
+     *
+     * Stats and morale mirror the original: the killer gets KILLED_PLAYER{idx} + UNITS_KILLED
+     * (+0.01 morale) and the victim gets UNITS_LOST (−0.01 morale). Scavenge (attacker resets
+     * instead of expending) is only honored when the killer is the attacking unit.
+     */
+    private fun killUnit(killer: Unit?, targetX: Int, targetY: Int) {
         val gameManager = GameManager.instance
-        val unit = gameManager.unitAt(attackerX, attackerY)
         val targetUnit = gameManager.unitAt(targetX, targetY)
 
         if (targetUnit == null || targetUnit.isAlive()) return
 
-        if (unit?.unitData?.hasModifier("Scavenge") == true) {
+        if (killer === gameManager.unitAt(attackerX, attackerY) &&
+            killer?.unitData?.hasModifier("Scavenge") == true
+        ) {
             activatedScavenge = true
         }
 
@@ -247,17 +261,17 @@ class AttackUnitAction(
             else -> -1
         }
         if (statIndex != -1) {
-            unit?.controller?.team?.addStatistic(statIndex, 1)
+            killer?.controller?.team?.addStatistic(statIndex, 1)
         }
         targetUnit.controller?.team?.addStatistic(Team.UNITS_LOST, 1)
-        unit?.controller?.team?.addStatistic(Team.UNITS_KILLED, 1)
+        killer?.controller?.team?.addStatistic(Team.UNITS_KILLED, 1)
 
         gameManager.removeUnit(targetUnit)
 
         // Morale changes
         gameManager.changeMorale(targetUnit.controller, MoraleChangeAmounts.UNITS_LOST, MoraleChangeAmounts.UNITS_LOST_DESCRIPTION)
-        if (unit != null) {
-            gameManager.changeMorale(unit.controller, MoraleChangeAmounts.UNITS_KILLED, MoraleChangeAmounts.UNITS_KILLED_DESCRIPTION)
+        if (killer != null) {
+            gameManager.changeMorale(killer.controller, MoraleChangeAmounts.UNITS_KILLED, MoraleChangeAmounts.UNITS_KILLED_DESCRIPTION)
         }
     }
 
