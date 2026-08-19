@@ -55,9 +55,24 @@ class BattalionGame(
     /** Last build message shown in the side panel (e.g. "Cannot afford"). */
     private var buildMessage: String = ""
 
+    /** True once the player-name intro animation has been shown for this mission. */
+    private var playerIntroShown = false
+
     private fun setBuildMessage(msg: String) {
         buildMessage = msg
         render?.buildMessage = msg
+    }
+
+    /**
+     * After the mission brief ends (control passes to the player), reveals the current
+     * player's name with the intro animation.
+     */
+    private fun onDialogueAdvanced() {
+        val dia = dialogue ?: return
+        if (dia.isActive() || playerIntroShown) return
+        playerIntroShown = true
+        val team = game?.activeController?.team ?: return
+        render?.showPlayerIntro(team.teamName.ifEmpty { team.name })
     }
 
     /** Runs the game until the window is closed. */
@@ -68,7 +83,7 @@ class BattalionGame(
         }
 
         window = SDL.createWindow(
-            title = "Battalion Vengeance",
+            title = "BattalionX",
             width = BattalionRenderer.WINDOW_W,
             height = BattalionRenderer.WINDOW_H,
         )
@@ -170,6 +185,7 @@ class BattalionGame(
                         if (dialogue?.isActive() == true) {
                             // Any key advances the briefing.
                             dialogue?.advance()
+                            onDialogueAdvanced()
                         } else {
                             onKeyDown(event.keycode)
                         }
@@ -180,13 +196,28 @@ class BattalionGame(
                         if (dialogue?.isActive() == true) {
                             dialogueAdvancedOnPress = true
                             dialogue?.advance()
+                            onDialogueAdvanced()
                         } else {
                             onMouseDown(event.button, event.x.toInt(), event.y.toInt())
                         }
-                    } else if (event.button == 1 && dialogue?.isActive() == true && !dialogueAdvancedOnPress) {
-                        // macOS SDL can swallow the press (it focuses the window first) and only
-                        // deliver the release. Advance the dialogue then, but never twice per click.
-                        dialogue?.advance()
+                    } else if (event.button == 1) {
+                        if (dialogue?.isActive() == true) {
+                            if (!dialogueAdvancedOnPress) {
+                                // macOS SDL can swallow the press (it focuses the window first) and only
+                                // deliver the release. Advance the dialogue then, but never twice per click.
+                                dialogue?.advance()
+                                onDialogueAdvanced()
+                            }
+                            dialogueAdvancedOnPress = false
+                        } else {
+                            // Release on a panel button triggers the action (press only shows
+                            // the pressed frame).
+                            val btn = render?.panelButtonAt(event.x.toInt(), event.y.toInt())
+                            if (btn != null && render?.pressedButton == btn) {
+                                onPanelButton(btn)
+                            }
+                            render?.pressedButton = null
+                        }
                     } else {
                         dialogueAdvancedOnPress = false
                     }
@@ -214,6 +245,16 @@ class BattalionGame(
 
     private fun onMouseDown(button: Int, sx: Int, sy: Int) {
         val g = game ?: return
+
+        // Panel buttons: record the press (the action fires on release).
+        if (button == 1) {
+            val btn = render?.panelButtonAt(sx, sy)
+            if (btn != null) {
+                render?.pressedButton = btn
+                return
+            }
+        }
+
         val human = human() ?: return
         val (tx, ty) = tileFromScreen(sx, sy) ?: return
         val tile = g.tileAt(tx, ty) ?: return
@@ -281,6 +322,29 @@ class BattalionGame(
         }
 
         human.selectUnit(null)
+    }
+
+    /** Executes the action of a clicked right-panel button (fires on mouse release). */
+    private fun onPanelButton(btn: BattalionRenderer.PanelButton) {
+        val human = human() ?: return
+        when (btn) {
+            BattalionRenderer.PanelButton.UNDO_MOVE -> human.dispatchUndoMove()
+            BattalionRenderer.PanelButton.NEXT_UNIT -> selectNextUnit()
+            BattalionRenderer.PanelButton.OPTIONS ->
+                setBuildMessage("Options menu not available in this build")
+            BattalionRenderer.PanelButton.END_TURN -> human.dispatchEndTurn()
+        }
+    }
+
+    /** Selects the player's next unit that can still act this turn (wrapping). */
+    private fun selectNextUnit() {
+        val g = game ?: return
+        val human = human() ?: return
+        val units = g.units.filter { it.controller === human && it.isDeployed() && it.isAvailable() }
+        if (units.isEmpty()) return
+        val current = human.selectedUnit
+        val idx = units.indexOfFirst { it === current }
+        human.selectUnit(units[(idx + 1) % units.size])
     }
 
     /**

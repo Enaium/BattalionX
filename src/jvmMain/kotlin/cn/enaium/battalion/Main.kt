@@ -411,3 +411,5 @@ private fun selftest(dir: String, mission: Int, skirmish: String?) {
     }
     println("SELFTEST OK")
 }
+
+// TEMPORARY health+panel verification — removed after verification.

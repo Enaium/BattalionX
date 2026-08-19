@@ -90,10 +90,10 @@ class Unit(
 
     /** The duration of a movement or firing animation, in ms. */
     companion object {
-        const val ANIM_DURATION_MS = 400L
+        const val ANIM_DURATION_MS = 650L
 
-        /** How long one tile step of the walk takes (snappy but visible). */
-        const val MOVE_STEP_MS = 130L
+        /** How long one tile step of the walk takes (readable, not rushed). */
+        const val MOVE_STEP_MS = 180L
 
         /** Monotonic counter assigning each unit a stable [Unit.walkId]. */
         private var nextWalkId: Int = 0

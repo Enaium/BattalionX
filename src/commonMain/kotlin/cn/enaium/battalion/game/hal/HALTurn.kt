@@ -183,11 +183,17 @@ class HALTurn(private val hal: HAL) {
 
     private fun findMoveTarget(unit: Unit): Tile? {
         val moveRange = game.tilesInMoveRange(unit)
+        val start = game.unitTile(unit)
         var bestTile: Tile? = null
         var bestScore = Double.NEGATIVE_INFINITY
 
         for (tile in moveRange) {
             if (tile.unit != null && tile.unit != unit) continue
+            // The move-range flood can include tiles no ordered path reaches (e.g. behind a
+            // jammer's no-fly zone for air units): only consider tiles the unit can actually
+            // walk to, so the queued MoveUnitAction is valid and the walk animation plays.
+            val path = start?.let { Astar.path(it, tile, unit) } ?: continue
+            if (!game.canMove(unit, path)) continue
             var score = 0.0
 
             // Prefer tiles closer to enemies.
@@ -212,11 +218,14 @@ class HALTurn(private val hal: HAL) {
     }
 
     private fun findPath(unit: Unit, target: Tile): List<Tile>? {
-        val path = Astar.search(
+        // A real ordered path within the unit's movement range (Astar.search returns the
+        // flood-fill of visited nodes, not a walkable path — feeding that into a
+        // MoveUnitAction made every AI move fail its `canMove` check, so enemy units never
+        // walked and the walk animation never played).
+        val path = Astar.path(
             game.unitTile(unit)!!,
             target,
-            unit,
-            0.0
+            unit
         ) ?: return null
         return path.filterIsInstance<Tile>()
     }

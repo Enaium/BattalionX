@@ -28,10 +28,18 @@ class AttackUnitTrigger(
     val targetY: Int,
     val unit: Unit,
     val target: Unit,
-) : Trigger("attackUnit")
+) : Trigger(NAME) {
+    companion object {
+        const val NAME = "attackUnit"
+    }
+}
 
 /** A unit was destroyed. */
-class KillUnitTrigger(val unitX: Int, val unitY: Int, val unit: Unit) : Trigger("killUnit")
+class KillUnitTrigger(val unitX: Int, val unitY: Int, val unit: Unit) : Trigger(NAME) {
+    companion object {
+        const val NAME = "killUnit"
+    }
+}
 
 /** A unit was built by a constructor. */
 class BuildUnitTrigger(val unit: Unit) : Trigger("buildUnit")

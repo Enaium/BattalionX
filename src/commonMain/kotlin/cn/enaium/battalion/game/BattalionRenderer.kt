@@ -1,15 +1,21 @@
 package cn.enaium.battalion.game
 
+import cn.enaium.battalion.data.Astar
 import cn.enaium.battalion.data.Tile
 import cn.enaium.battalion.data.TileManager
 import cn.enaium.battalion.data.TileSwatch
 import cn.enaium.battalion.data.Unit
 import cn.enaium.battalion.game.controllers.HALController
 import cn.enaium.battalion.game.controllers.HumanController
+import cn.enaium.battalion.game.triggers.AttackUnitTrigger
+import cn.enaium.battalion.game.triggers.KillUnitTrigger
 import cn.enaium.battalion.game.ui.Dialogue
 import cn.enaium.battalion.game.ui.TextRenderer
 import cn.enaium.battalion.game.ui.TextureManager
+import cn.enaium.sdl.SDL
 import cn.enaium.sdl.SDLColor
+import cn.enaium.sdl.SDLFlipMode
+import cn.enaium.sdl.SDLFloatPoint
 import cn.enaium.sdl.SDLFRect
 import cn.enaium.sdl.SDLRect
 import cn.enaium.sdl.SDLRenderer
@@ -40,18 +46,28 @@ class BattalionRenderer(
     private val AVATAR_CELL_W = 130
     private val AVATAR_CELL_H = 150
 
-    // Avatar name -> (column, row) in the sprite sheet.
-    // These positions are based on visual inspection of the sprite sheet.
-    private val avatarPositions = mapOf(
-        "tucker" to (0 to 0),           // Top-left
-        "yurik" to (1 to 0),            // Second from left, top row
-        "hayne" to (2 to 0),            // Third from left, top row
-        "mullen" to (3 to 0),           // Fourth from left, top row
-        "pearl" to (4 to 0),            // Fifth from left, top row
-        "argent" to (5 to 0),           // Rightmost, top row
-        "akadian_3" to (0 to 1),        // Leftmost, second row
-        "evil_durand" to (1 to 1),      // Second from left, second row
-        "evil_durand_dark" to (2 to 1), // Third from left, second row
+    // Avatar name -> frame index in the 6×4 sheet. The indices are the original tilesheet's
+    // `<animation name="..."><frame frame="N"/></animation>` entries (_assets/3316.bin),
+    // frame = row * 6 + column in the 780×600 sheet, NOT a visual-inspection ordering.
+    private val avatarFrames = mapOf(
+        "durand" to 0,
+        "mullen" to 1,
+        "pearl" to 2,
+        "tucker" to 3,
+        "argent" to 4,
+        "general" to 5,
+        "evil_durand" to 6,
+        "mayjor" to 7,
+        "akadian_3" to 8,
+        "evil_durand_dark" to 9,
+        "hayne" to 10,
+        "blank" to 11,
+        "usul" to 12,
+        "drag_2" to 13,
+        "drag_3" to 14,
+        "blank_asdasddd" to 15,
+        "blank_asdzxc" to 16,
+        "yurik" to 17,
     )
 
     // Avatar texture, loaded once.
@@ -61,8 +77,9 @@ class BattalionRenderer(
      * Returns the source rectangle for the avatar with the given [name], or null if unknown.
      */
     private fun avatarFrame(name: String): SDLFRect? {
-        val pos = avatarPositions[name.lowercase()] ?: return null
-        val (col, row) = pos
+        val index = avatarFrames[name.lowercase()] ?: return null
+        val col = index % AVATAR_COLS
+        val row = index / AVATAR_COLS
         return SDLFRect(
             (col * AVATAR_CELL_W).toFloat(),
             (row * AVATAR_CELL_H).toFloat(),
@@ -127,6 +144,27 @@ class BattalionRenderer(
     // terrain sprite key -> texture, resolved once from the map palette's image codes.
     private val terrainTextures = mutableMapOf<String, SDLTexture?>()
 
+    // ---------------------------------------------------------------------
+    // Explosion effects
+    //
+    // The original plays a small explosion at the target when a unit attacks and a big
+    // explosion when a unit is destroyed (tilesheets "Small Explosion" / "Explosion" in
+    // _assets/3316.bin). Both are one-shot bitmap animations; we subscribe to the game's
+    // attack/kill triggers and draw the sheet frame for the current age of the effect.
+    // ---------------------------------------------------------------------
+
+    private class ExplosionFx(val x: Int, val y: Int, val startMs: Long, val big: Boolean)
+
+    private val explosions = mutableListOf<ExplosionFx>()
+
+    /** The active attack/death explosion sprites, keyed as in _assets/3316.bin. */
+    private val explosionSheet = "explosion"          // 16 frames, 75 ms, 56×72 each, 4×4 grid
+    private val smallExplosionSheet = "small_explosion" // 8 frames, 100 ms, 56×56 each, 4×2 grid
+
+    private fun addExplosion(x: Int, y: Int, big: Boolean) {
+        explosions.add(ExplosionFx(x, y, game.elapsedMs, big))
+    }
+
     /** Resolves and caches the terrain textures from the map palette. */
     fun setupTextures() {
         for (swatch in game.map.palette) {
@@ -137,13 +175,192 @@ class BattalionRenderer(
                 terrainTextures[key] = textures.textureOrFallback(key)
             }
         }
+
+        // Attack impact (small puff on the target) and destruction (big blast) effects.
+        TriggerManager.addListener(AttackUnitTrigger.NAME) { trigger ->
+            val t = trigger as? AttackUnitTrigger ?: return@addListener
+            if (!game.gameOver) addExplosion(t.targetX, t.targetY, big = false)
+        }
+        TriggerManager.addListener(KillUnitTrigger.NAME) { trigger ->
+            val t = trigger as? KillUnitTrigger ?: return@addListener
+            if (!game.gameOver) addExplosion(t.unitX, t.unitY, big = true)
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Mouse hover move-path preview
+    //
+    // With a selected unit, the map shows the same path the unit will actually walk if the
+    // player clicks the hovered tile: movement_start on the unit's tile, movement_straight
+    // along straight segments, movement_turn at corners, movement_end at the destination
+    // (each rotated to its travel direction), plus the small selectedArrow riding the cursor.
+    // ---------------------------------------------------------------------
+
+    /** The path from the selected unit to the hovered tile (empty when there is none). */
+    private var hoverPath: List<Tile> = emptyList()
+
+    /**
+     * Recomputes [hoverPath] from the cursor position. The path is computed exactly like the
+     * click handler (Astar.path + canMove), so the preview *is* the final movement path.
+     */
+    private fun updateHoverPath() {
+        hoverPath = emptyList()
+        val human = game.activeController as? HumanController ?: return
+        val unit = human.selectedUnit ?: return
+        if (!unit.isAvailable() || !unit.canMove() || unit.isMoving) return
+        if (!unit.isDeployed()) return
+
+        // Hovered tile from the cursor (a float offset the mouse is inside the map area).
+        val mouse = SDL.mouseState
+        if (mouse.x < MAP_X || mouse.y < MAP_Y) return
+        val tx = ((mouse.x - MAP_X) / TileManager.TILE_WIDTH).toInt() + cameraX
+        val ty = ((mouse.y - MAP_Y) / TileManager.TILE_HEIGHT).toInt() + cameraY
+        val g = game
+        if (tx < 0 || ty < 0 || tx >= g.map.width || ty >= g.map.height) return
+        if (tx == unit.x && ty == unit.y) return
+
+        // Enemy units the player can attack this turn get the red target markers instead of a
+        // path (a click there attacks, it does not move there).
+        val hoveredUnit = g.unitAt(tx, ty)
+        if (hoveredUnit != null && g.unitsAttackableThisTurn(unit).contains(hoveredUnit)) return
+
+        val start = g.tileAt(unit.x, unit.y) ?: return
+        val end = g.tileAt(tx, ty) ?: return
+        val path = Astar.path(start, end, unit) ?: return
+        if (!g.canMove(unit, path)) return
+        hoverPath = path.filterIsInstance<Tile>().toList()
+    }
+
+    /** Compass direction (0=N,1=E,2=S,3=W) of the step [from]→[to]. */
+    private fun pathDirFrom(from: Tile, to: Tile): Int = when {
+        to.y < from.y -> 0
+        to.y > from.y -> 2
+        to.x > from.x -> 1
+        else -> 3
+    }
+
+    /** Rotation angle (degrees, base sprites point east) for a compass direction. */
+    private fun pathAngle(dir: Int): Double = when (dir) {
+        1 -> 0.0    // east
+        2 -> 90.0   // south
+        3 -> 180.0  // west
+        else -> 270.0 // north
+    }
+
+    /** Draws a single 56×56 path marker sprite on tile (x, y), rotated to face [dir]. */
+    private fun drawPathMarker(sprite: String, x: Int, y: Int, dir: Int) {
+        val tex = textures.texture(sprite) ?: return
+        renderer.renderTextureRotated(
+            tex,
+            dst = SDLFRect(screenX(x).toFloat(), screenY(y).toFloat(),
+                TileManager.TILE_WIDTH.toFloat(), TileManager.TILE_HEIGHT.toFloat()),
+            angle = pathAngle(dir),
+            center = SDLFloatPoint(TileManager.TILE_WIDTH / 2f, TileManager.TILE_HEIGHT / 2f),
+        )
+    }
+
+    /**
+     * Draws the corner marker for a 90° change of direction.
+     *
+     * The base sprite is an elbow whose incoming arm approaches from the east and whose
+     * outgoing arm leaves south (the arrowhead cut sits on the incoming arm's tip). A
+     * clockwise corner (out = in + 1) is that shape rotated onto the incoming direction; a
+     * counter-clockwise corner (out = in - 1) needs the horizontal mirror first, otherwise
+     * the elbow's chirality comes out flipped (e.g. an up→left corner looks like down→left).
+     */
+    private fun drawPathCorner(x: Int, y: Int, inDir: Int, outDir: Int) {
+        val tex = textures.texture("movement_turn") ?: return
+        val clockwise = (outDir - inDir + 4) % 4 == 1
+        val angle = pathAngle(inDir) + if (clockwise) 0.0 else 180.0
+        renderer.renderTextureRotated(
+            tex,
+            dst = SDLFRect(screenX(x).toFloat(), screenY(y).toFloat(),
+                TileManager.TILE_WIDTH.toFloat(), TileManager.TILE_HEIGHT.toFloat()),
+            angle = angle,
+            center = SDLFloatPoint(TileManager.TILE_WIDTH / 2f, TileManager.TILE_HEIGHT / 2f),
+            flip = if (clockwise) SDLFlipMode.NONE else SDLFlipMode.HORIZONTAL,
+        )
+    }
+
+    /** Draws the whole hover path chain plus the cursor arrow. */
+    private fun drawHoverPath() {
+        val g = game
+        val unit = (g.activeController as? HumanController)?.selectedUnit ?: return
+        if (hoverPath.size < 2) return
+
+        // Start marker on the unit's tile, pointing along the first step.
+        drawPathMarker("movement_start", unit.x, unit.y, pathDirFrom(hoverPath[0], hoverPath[1]))
+
+        // Intermediate tiles: straight markers, or corner markers where the path turns.
+        for (i in 1 until hoverPath.size) {
+            val cur = hoverPath[i]
+            if (i == hoverPath.size - 1) {
+                // Destination marker points along the last step.
+                drawPathMarker("movement_end", cur.x, cur.y, pathDirFrom(hoverPath[i - 1], cur))
+            } else {
+                val inDir = pathDirFrom(hoverPath[i - 1], cur)
+                val outDir = pathDirFrom(cur, hoverPath[i + 1])
+                if (inDir != outDir) {
+                    drawPathCorner(cur.x, cur.y, inDir, outDir)
+                } else {
+                    drawPathMarker("movement_straight", cur.x, cur.y, inDir)
+                }
+            }
+        }
+
+        // The small arrow follows the cursor.
+        val mouse = SDL.mouseState
+        val arrow = textures.texture("selectedArrow") ?: return
+        val size = textures.textureSize("selectedArrow") ?: (9 to 10)
+        renderer.renderTexture(
+            arrow,
+            dst = SDLFRect(mouse.x - size.first / 2f, mouse.y - size.second / 2f,
+                size.first.toFloat(), size.second.toFloat()),
+        )
+    }
+
+            /** Advances and draws every active explosion effect (above units, below the selection frame). */
+    private fun drawExplosions() {
+        if (explosions.isEmpty()) return
+        val cellW = 56
+        val iter = explosions.iterator()
+        while (iter.hasNext()) {
+            val fx = iter.next()
+            val frameCount = if (fx.big) 16 else 8
+            val waitMs = if (fx.big) 75L else 100L
+            val frame = ((game.elapsedMs - fx.startMs) / waitMs).toInt()
+            if (frame >= frameCount) {
+                iter.remove()
+                continue
+            }
+            val sheet = if (fx.big) explosionSheet else smallExplosionSheet
+            val tex = textures.texture(sheet) ?: continue
+            // Deep frames (tall explosion) span 72 source px; the tilesheet declares the
+            // logical cell as 96 tall, so the blast is drawn scaled to 56×96.
+            val srcH = if (fx.big) 72 else 56
+            val dstH = if (fx.big) 96 else 56
+            val srcX = (frame % 4) * cellW
+            val srcY = (frame / 4) * srcH
+            val px = screenX(fx.x)
+            val py = screenY(fx.y)
+            renderer.renderTexture(
+                tex,
+                src = SDLFRect(srcX.toFloat(), srcY.toFloat(), cellW.toFloat(), srcH.toFloat()),
+                dst = SDLFRect(px.toFloat(), (py + TileManager.TILE_HEIGHT - dstH).toFloat(),
+                    cellW.toFloat(), dstH.toFloat()),
+            )
+        }
     }
 
     companion object {
-        const val WINDOW_W = 800
+        // The window is the mission map (560) plus the info panel. The panel is the `mainframe`
+        // sprite scaled to the panel HEIGHT (560/600 → 0.933) with its 10px transparent left
+        // edge cropped off, so the frame's metal starts flush at the map's right edge: no gap,
+        // no overlap covering the last map column. 144 source px × 0.933 ≈ 134.
+        const val WINDOW_W = 694
         const val WINDOW_H = 590
         const val TOP_BAR_H = 30
-        const val SIDE_W = 240
+        const val SIDE_W = 134
 
         val MAP_X = 0
         val MAP_Y = TOP_BAR_H
@@ -328,18 +545,97 @@ class BattalionRenderer(
         else -> 3  // north / unknown → column 3 ("up")
     }
 
+    // ---------------------------------------------------------------------
+    // Player-name intro animation
+    //
+    // After the mission brief (when the player gets control), the current player's name is
+    // revealed with a slide-in / hold / slide-out animation on a dark panel, mirroring the
+    // original game's turn-intro.
+    // ---------------------------------------------------------------------
+
+    private class PlayerIntro(val name: String, val startMs: Long)
+
+    private var intro: PlayerIntro? = null
+
+    /** Shows the player-name intro animation (replaces any running one). */
+    fun showPlayerIntro(name: String) {
+        intro = PlayerIntro(name, game.elapsedMs)
+    }
+
+    /**
+     * Draws the running intro animation: the current player's avatar next to the original
+     * game's `nameplate` sprite (380_nameplate_nameplate.png, 151×27) with the player's name
+     * overlaid, sliding in from below, holding, then sliding out above.
+     */
+    private fun drawPlayerIntro() {
+        val it = intro ?: return
+        val t = game.elapsedMs - it.startMs
+        val slideIn = 500L
+        val hold = 1400L
+        val slideOut = 600L
+        if (t >= slideIn + hold + slideOut) {
+            intro = null
+            return
+        }
+        val plate = textures.texture("nameplate") ?: return
+        // Whole intro group slides vertically: in from +70px, hold, out to -70px.
+        val dy: Int = when {
+            t < slideIn -> 70 - (70f * t / slideIn).toInt()
+            t < slideIn + hold -> 0
+            else -> -(70f * (t - slideIn - hold) / slideOut).toInt()
+        }
+        // Plate drawn ~2.15x the source (151×27 → 325×58); avatar 130×150 → 64×74.
+        val plateW = 325
+        val plateH = 58
+        val avatarW = 64
+        val avatarH = 74
+        val gap = 14
+        val totalW = avatarW + gap + plateW
+        val left = WINDOW_W / 2 - totalW / 2
+        val cy = WINDOW_H / 2 - plateH / 2 + dy
+
+        // Avatar (current player's portrait frame).
+        val team = game.activeController?.team
+        val tex = avatarTexture ?: run { loadAvatarTexture(); avatarTexture }
+        val frame = team?.let { avatarFrame(it.avatarString.lowercase()) } ?: avatarFrame("tucker")
+        if (tex != null && frame != null) {
+            renderer.renderTexture(
+                tex,
+                src = frame,
+                dst = SDLFRect(left.toFloat(), (cy + (plateH - avatarH) / 2).toFloat(),
+                    avatarW.toFloat(), avatarH.toFloat()),
+            )
+        }
+
+        // The nameplate sprite with the player's name overlaid.
+        renderer.renderTexture(
+            plate,
+            dst = SDLFRect((left + avatarW + gap).toFloat(), cy.toFloat(), plateW.toFloat(), plateH.toFloat()),
+        )
+        val name = (team?.teamName?.ifEmpty { team?.name } ?: it.name).uppercase()
+        text.drawCentered(name, left + avatarW + gap + plateW / 2, cy + plateH / 2 - 14, 24,
+            SDLColor(252, 234, 150))
+    }
+
     /** Renders one frame. */
     fun render() {
         terrainAnimMs += 16
         renderer.drawColor = SDLColor(30, 30, 35)
         renderer.clear()
 
+        updateHoverPath()
         drawTopBar()
         drawMap()
         drawSidePanel()
 
+        // Selected-unit info bar across the whole bottom of the window (hidden when nothing
+        // is selected). Drawn under the dialogue/game-over overlays.
+        drawUnitInfo()
+
         val dia = dialogue
         if (dia != null && dia.isActive()) drawDialogue(dia)
+
+        drawPlayerIntro()
 
         if (game.gameOver) drawGameOverOverlay()
 
@@ -409,9 +705,28 @@ class BattalionRenderer(
                         TileManager.TILE_WIDTH.toFloat(), TileManager.TILE_HEIGHT.toFloat()))
                 }
             }
-            // Red "selectRed" + target overlay: enemy units the unit can attack this turn —
-            // reachable by walking into weapon range, not merely what is in range from the
-            // unit's current spot.
+        }
+
+        // Move-path preview for the hovered tile (the path a click would walk).
+        if (hoverPath.isNotEmpty()) drawHoverPath()
+
+        // Structures.
+        for (row in fromRow until toRow) {
+            for (col in fromCol until toCol) {
+                val tile = game.tileAt(col, row) ?: continue
+                if (tile.hasStructure) drawStructure(tile)
+            }
+        }
+
+        // Units.
+        for (unit in game.units) {
+            if (!unit.isDeployed()) continue
+            if (unit.x in fromCol until toCol && unit.y in fromRow until toRow) drawUnit(unit)
+        }
+
+        // Attackable-target markers are drawn ABOVE the unit sprites so the target frame is
+        // not hidden behind the vehicle's art.
+        if (selected != null && selected.controller === game.activeController && selected.isAvailable()) {
             for (target in game.unitsAttackableThisTurn(selected)) {
                 if (target.x < cameraX || target.x >= cameraX + VIEW_COLS) continue
                 if (target.y < cameraY || target.y >= cameraY + VIEW_ROWS) continue
@@ -433,19 +748,8 @@ class BattalionRenderer(
             }
         }
 
-        // Structures.
-        for (row in fromRow until toRow) {
-            for (col in fromCol until toCol) {
-                val tile = game.tileAt(col, row) ?: continue
-                if (tile.hasStructure) drawStructure(tile)
-            }
-        }
-
-        // Units.
-        for (unit in game.units) {
-            if (!unit.isDeployed()) continue
-            if (unit.x in fromCol until toCol && unit.y in fromRow until toRow) drawUnit(unit)
-        }
+        // Explosion effects float above the units.
+        drawExplosions()
 
         // Selection highlight: the white "marker2" frame under the selected unit.
         if (selected != null) {
@@ -455,6 +759,7 @@ class BattalionRenderer(
                     TileManager.TILE_HEIGHT.toFloat()))
             }
         }
+
     }
 
     /** Loads (and caches) a 56×56 range-marker texture by sprite name. */
@@ -546,7 +851,13 @@ class BattalionRenderer(
                 unit.anim = Unit.UnitAnim.NONE
             }
             val acting = unit.anim != Unit.UnitAnim.NONE
-            val row = if (acting) 0 else ((terrainAnimMs / 300) % 4).toInt()
+            // While walking, cycle the 4 sprite rows by the walk progress so the unit
+            // visibly strides instead of gliding on a frozen frame; idle units loop.
+            val row = when {
+                acting -> 0
+                unit.isMoving -> ((unit.moveProgressMs / (Unit.MOVE_STEP_MS / 2)) % 4).toInt()
+                else -> ((terrainAnimMs / 300) % 4).toInt()
+            }
             // The facing column used for the animation (motion may precede the settled idle).
             val col = facingColumn(if (acting) unit.animFacing else unit.facing)
 
@@ -584,16 +895,53 @@ class BattalionRenderer(
             text.drawCentered(unit.unitData.name.firstOrNull()?.toString() ?: "?", cx, cy - 8, 18, SDLColor(255, 255, 255))
         }
 
-        // Health bar.
+        // Health bar — self-drawn: four tall (vertical) slot rectangles, each a mini progress bar
+        // (not four discrete pips). All four full = green, three remaining = yellow, two or
+        // fewer = orange. Damage depletes from the top of each slot downward, and slots
+        // empty leftmost-first. A fixed black backdrop covers the full 4-slot area and never
+        // changes with the health. Scaled ~0.8 of the original attempt.
         val health = unit.getHealth()
         val maxHealth = unit.baseUnitData.health
         val ratio = (health.toDouble() / maxHealth).coerceIn(0.0, 1.0)
-        val barW = TileManager.TILE_WIDTH - 8
-        val barY = py + TileManager.TILE_HEIGHT - 6
-        renderer.drawColor = SDLColor(20, 20, 20)
-        renderer.fillRect(SDLRect(px + 4, barY, barW, 4))
-        renderer.drawColor = if (ratio > 0.5) SDLColor(80, 200, 80) else if (ratio > 0.25) SDLColor(220, 200, 60) else SDLColor(220, 60, 60)
-        renderer.fillRect(SDLRect(px + 4, barY, (barW * ratio).toInt(), 4))
+        val slots = 4
+        val slotW = (8 * 0.8).toInt()          // 6
+        val slotH = (16 * 0.8).toInt()         // 12
+        val gap = (2 * 0.8).toInt()            // 1
+        val totalW = slots * slotW + (slots - 1) * gap
+        val barX = px + (TileManager.TILE_WIDTH - totalW) / 2
+        val barY = py + TileManager.TILE_HEIGHT - slotH - 2
+
+        // An undamaged unit shows no health bar at all (neither the backdrop nor the fill).
+        if (ratio >= 0.999) return
+
+        // Fixed black backdrop sized for all four slots.
+        renderer.drawColor = SDLColor(8, 8, 10)
+        renderer.fillRect(SDLRect(barX, barY, totalW, slotH))
+
+        // Remaining "full slots" decide the colour band.
+        val remaining = ratio * slots
+        val fullSlots = kotlin.math.floor(remaining).toInt()
+        val fill = when {
+            fullSlots >= 4 -> SDLColor(80, 200, 80)     // all four full: green
+            fullSlots == 3 -> SDLColor(220, 200, 60)    // three left: yellow
+            else -> SDLColor(240, 150, 40)              // two or fewer: orange
+        }
+        // Each slot is a vertical mini progress bar anchored to the BOTTOM of the slot, so the
+        // filled part grows up from the slot's base and damage empties the slot from the TOP
+        // downward. Slots empty leftmost-first: slot i (0 = left) holds
+        // clamp(remaining - (slots - 1 - i), 0, 1) of its height.
+        for (i in 0 until slots) {
+            val fillFrac = (remaining - (slots - 1 - i)).coerceIn(0.0, 1.0)
+            if (fillFrac > 0.01) {
+                renderer.drawColor = fill
+                renderer.fillRect(SDLRect(
+                    barX + i * (slotW + gap),
+                    barY + slotH - (slotH * fillFrac).toInt(),
+                    slotW,
+                    (slotH * fillFrac).toInt(),
+                ))
+            }
+        }
     }
 
     /** For a `+` composite whose piece is plain "sea_0_v1", the directional sea strip it stands in for. */
@@ -755,53 +1103,343 @@ class BattalionRenderer(
         }
     }
 
+    // ---------------------------------------------------------------------
+    // Right-hand info panel
+    //
+    // Top to bottom (mirroring the original game's HUD): a mini-map, a row of three
+    // texture buttons (undo move / next unit / options), the current player's portrait,
+    // the selected unit's details, the player list (team colour background = vehicle
+    // colour), and the end-turn button. All buttons carry their sprite material
+    // (normal/pressed frame halves) and report their rects through [panelButtonAt].
+    // ---------------------------------------------------------------------
+
+    /** Which panel button is under the cursor / was pressed. */
+    enum class PanelButton { UNDO_MOVE, NEXT_UNIT, OPTIONS, END_TURN }
+
+    /** The panel button under screen point (sx, sy), or null. */
+    fun panelButtonAt(sx: Int, sy: Int): PanelButton? =
+        btnRects.firstOrNull { sx >= it.x && sx < it.x + it.w && sy >= it.y && sy < it.y + it.h }?.btn
+
+    /** The button currently held down by the mouse (used to show the pressed frame). */
+    var pressedButton: PanelButton? = null
+
+    private data class BtnHit(val btn: PanelButton, val x: Int, val y: Int, val w: Int, val h: Int)
+
+    /** Rectangles of the clickable buttons, rebuilt every frame in [drawSidePanel]. */
+    private val btnRects = mutableListOf<BtnHit>()
+
+    /** Panel layout constants (SIDE_W = 240). */
+    private object Panel {
+        const val PAD = 14
+        const val MINIMAP_W = 200
+        const val MINIMAP_H = 96
+        const val MINIMAP_Y = 42
+        const val BUTTONS_Y = 184
+        const val BUTTON_W = 66
+        const val BUTTON_H = 40
+        const val MINIMAP_OFFSET_X = 10      // extra right shift of the minimap
+        const val MINIMAP_SCALE = 1.12f      // minimap enlargement
+        const val PORTRAIT_OFFSET_X = 6      // right shift of the portrait window
+        const val PORTRAIT_OFFSET_Y = -12    // up shift of the portrait window
+        const val END_TURN_Y = 504
+    }
+
+    /**
+     * The mapped rectangle (screen coords) of the `mainframe` sprite drawn in the panel.
+     * It is scaled to the panel HEIGHT (600 → 560) so the frame is never height-compressed.
+     * Source x 0..9 is transparent padding; it is cropped (src x=10..154 → 144 px × 0.933
+     * ≈ 134) so the frame's metal starts flush against the map's right edge.
+     */
+    private fun mainframeRect(): SDLRect {
+        val mfScale = (WINDOW_H - SIDE_Y).toFloat() / 600f
+        val mfW = ((154 - 10) * mfScale).toInt()
+        return SDLRect(
+            SIDE_X,
+            SIDE_Y,
+            mfW,
+            WINDOW_H - SIDE_Y,
+        )
+    }
+
+    /**
+     * Draws the whole right-hand panel. The `mainframe` sprite (500_mainframe_mainframe.png,
+     * 154×600) is the hollow frame; minimap and portrait are drawn *under* it so the baked-in
+     * border/portrait frame overlays their edges (they read as embedded, not floating on top).
+     * Buttons, player rows and END TURN sit on the frame's opaque areas, so they draw above it.
+     */
     private fun drawSidePanel() {
-        renderer.drawColor = SDLColor(40, 40, 48)
+        renderer.drawColor = SDLColor(26, 27, 30)
         renderer.fillRect(SDLRect(SIDE_X, SIDE_Y, SIDE_W, WINDOW_H - SIDE_Y))
+        btnRects.clear()
 
-        var y = SIDE_Y + 12
+        // Content inside the hollow windows, drawn below the frame.
+        drawMiniMap()
+        drawPortrait()
 
+        // The frame itself overlays the content's edges. Source x 0..9 is transparent
+        // padding; crop it so the metal starts at the map edge.
+        textures.texture("mainframe")?.let { mf ->
+            val mr = mainframeRect()
+            renderer.renderTexture(
+                mf,
+                src = SDLFRect(10f, 0f, 144f, 600f),
+                dst = SDLFRect(mr.x.toFloat(), mr.y.toFloat(), mr.width.toFloat(), mr.height.toFloat()),
+            )
+        }
+
+        drawPanelButtons()
+        drawPlayerList()
+        drawEndTurnButton()
+    }
+
+    /**
+     * The mapped rectangle (screen coords) of the mainframe's transparent portrait window
+     * (source x 20..134, y 240..392) — the full inner opening of the baked-in portrait
+     * frame. The avatar is drawn into this rect.
+     */
+    private fun portraitWindow(): SDLRect {
+        val mr = mainframeRect()
+        val mfScale = (WINDOW_H - SIDE_Y).toFloat() / 600f
+        return SDLRect(
+            (mr.x + (20 - 10) * mfScale).toInt() + Panel.PORTRAIT_OFFSET_X,
+            (mr.y + 240 * mfScale).toInt() + Panel.PORTRAIT_OFFSET_Y,
+            ((134 - 20) * mfScale).toInt(),
+            ((392 - 240) * mfScale).toInt(),
+        )
+    }
+
+    /** Self-drawn mini-map: terrain colour per tile, units as dots, viewport box. */
+    private fun drawMiniMap() {
+        val map = game.map
+        // Enlarged by MINIMAP_SCALE and shifted right by MINIMAP_OFFSET_X.
+        val cell = minOf(Panel.MINIMAP_W.toDouble() / map.width, Panel.MINIMAP_H.toDouble() / map.height) * Panel.MINIMAP_SCALE
+        val mmW = (cell * map.width).toInt()
+        val mmH = (cell * map.height).toInt()
+        val x0 = SIDE_X + (SIDE_W - mmW) / 2 + Panel.MINIMAP_OFFSET_X
+        val y0 = Panel.MINIMAP_Y + (Panel.MINIMAP_H - mmH) / 2
+
+        // No solid backdrop: the minimap sits directly on the (hollow) mainframe background,
+        // matching the portrait. Only a thin outline separates it.
+
+        for (row in 0 until map.height) {
+            for (col in 0 until map.width) {
+                val tile = game.tileAt(col, row) ?: continue
+                val dst = SDLFRect(
+                    (x0 + (col * cell).toInt()).toFloat(),
+                    (y0 + (row * cell).toInt()).toFloat(),
+                    kotlin.math.ceil(cell).toFloat(), kotlin.math.ceil(cell).toFloat())
+                // Draw the tile's actual terrain texture (not a flat colour) so the minimap
+                // looks like the real map. Use the first sprite key of the tile's swatch.
+                val keys = tile.spriteKeys
+                val tex = if (keys.isNotEmpty()) textures.textureOrFallback(keys[0]) else null
+                if (tex != null) {
+                    renderer.renderTexture(tex, dst = dst)
+                } else {
+                    renderer.drawColor = terrainColor(tile.terrain.name)
+                    renderer.fillRect(SDLRect(dst.x.toInt(), dst.y.toInt(), dst.width.toInt(), dst.height.toInt()))
+                }
+            }
+        }
+        // Units as team-coloured dots.
+        for (unit in game.units) {
+            if (!unit.isDeployed()) continue
+            renderer.drawColor = unitColor(unit)
+            renderer.fillRect(SDLRect(
+                x0 + (unit.x * cell).toInt(), y0 + (unit.y * cell).toInt(),
+                kotlin.math.ceil(cell).toInt(), kotlin.math.ceil(cell).toInt()))
+        }
+        // Viewport box + frame.
+        renderer.drawColor = SDLColor(255, 255, 255)
+        renderer.drawRect(SDLRect(
+            x0 + (cameraX * cell).toInt(), y0 + (cameraY * cell).toInt(),
+            (VIEW_COLS * cell).toInt(), (VIEW_ROWS * cell).toInt()))
+        renderer.drawColor = SDLColor(120, 120, 140)
+        renderer.drawRect(SDLRect(x0, y0, mmW, mmH))
+    }
+
+    /** The three small action buttons in a row (undo move / next unit / options). */
+    private fun drawPanelButtons() {
+        // Buttons render at their native sprite frame size (28/33×40) so the metal texture
+        // is never distorted; the row is centered in the panel.
+        val h = Panel.BUTTON_H
+        val widths = listOf(28, 33, 28)
+        val gap = 10
+        val totalW = widths.sum() + gap * 2
+        val y = Panel.BUTTONS_Y
+        // Centred, then shifted right a little so the row reads against the frame's right edge.
+        var x = SIDE_X + (SIDE_W - totalW) / 2 + 6
+        val human = game.activeController as? HumanController
+
+        drawPanelButton(PanelButton.UNDO_MOVE, "undo_move_button", widths[0], h,
+            SDLRect(x, y, widths[0], h), disabled = human?.undoAction == null)
+        x += widths[0] + gap
+        drawPanelButton(PanelButton.NEXT_UNIT, "nextUnitButton", widths[1], h,
+            SDLRect(x, y, widths[1], h), disabled = !hasSelectableUnit())
+        x += widths[1] + gap
+        drawPanelButton(PanelButton.OPTIONS, "optionsButton", widths[2], h,
+            SDLRect(x, y, widths[2], h), disabled = false)
+    }
+
+    /** True when the active human player still has a selectable (available) unit. */
+    private fun hasSelectableUnit(): Boolean {
+        val human = game.activeController as? HumanController ?: return false
+        return game.units.any { it.controller === human && it.isDeployed() && it.isAvailable() }
+    }
+
+/**
+     * Draws one texture button with its 4-frame sprite strip (frame 0 = normal, 1 = hover,
+     * 2 = pressed, 3 = disabled) and records its hit rect.
+     */
+    private fun drawPanelButton(
+        btn: PanelButton,
+        sprite: String,
+        frameW: Int,
+        frameH: Int,
+        dst: SDLRect,
+        disabled: Boolean,
+    ) {
+        btnRects.add(BtnHit(btn, dst.x, dst.y, dst.width, dst.height))
+        val tex = textures.texture(sprite) ?: return
+        val held = pressedButton == btn && (SDL.mouseState.buttons and 1) != 0
+        val hover = (SDL.mouseState.buttons and 1) == 0 &&
+            panelButtonAt(SDL.mouseState.x.toInt(), SDL.mouseState.y.toInt()) == btn
+        val frame = when {
+            disabled -> 3
+            held -> 2
+            hover -> 1
+            else -> 0
+        }
+        renderer.renderTexture(
+            tex,
+            src = SDLFRect((frame * frameW).toFloat(), 0f, frameW.toFloat(), frameH.toFloat()),
+            dst = SDLFRect(dst.x.toFloat(), dst.y.toFloat(), dst.width.toFloat(), dst.height.toFloat()),
+        )
+    }
+
+    /** The current player's portrait inside the mainframe's baked-in portrait window. */
+    private fun drawPortrait() {
+        val team = game.activeController?.team ?: return
+        val tex = avatarTexture ?: run { loadAvatarTexture(); avatarTexture }
+        val frame = avatarFrame(team.avatarString.lowercase()) ?: avatarFrame("tucker")
+
+        // The portrait window baked into mainframe (transparent); the 130×150 avatar is
+        // scaled up to fill the window (slightly larger than a strict fit so it visibly
+        // fills the frame) and centred on the window's centre.
+        val win = portraitWindow()
+        val scale = maxOf(win.width.toFloat() / 130f, win.height.toFloat() / 150f)
+        val fitW = (130 * scale).toInt()
+        val fitH = (150 * scale).toInt()
+        val fitX = win.x + (win.width - fitW) / 2
+        val fitY = win.y + (win.height - fitH) / 2
+        if (tex != null && frame != null) {
+            renderer.renderTexture(
+                tex,
+                src = frame,
+                dst = SDLFRect(fitX.toFloat(), fitY.toFloat(), fitW.toFloat(), fitH.toFloat()),
+            )
+        } else {
+            renderer.drawColor = SDLColor(60, 60, 70)
+            renderer.fillRect(SDLRect(fitX, fitY, fitW, fitH))
+        }
+
+        // Turn status under the portrait (over the panel below the window).
+        val name = team.teamName.ifEmpty { team.name }
+        text.drawCentered(name, win.x + win.width / 2, win.y + win.height + 4, 14,
+            teamColor(game.activeController?.team))
+        val status = if (game.activeController is HALController) "AI thinking..." else "Your turn"
+        text.drawCentered(status, win.x + win.width / 2, win.y + win.height + 24, 12,
+            SDLColor(180, 180, 195))
+    }
+
+    /**
+ * Selected unit details as a full-width bar across the bottom of the window, with a solid
+ * background. Hidden entirely when nothing is selected. A transient build message shows in
+ * the same bar.
+ */
+    private fun drawUnitInfo() {
         val selected = (game.activeController as? HumanController)?.selectedUnit
-        if (selected != null) {
-            text.draw("Unit", SIDE_X + 10, y, 15, SDLColor(150, 150, 170)); y += 20
-            text.draw(selected.unitData.name, SIDE_X + 10, y, 20, SDLColor(255, 255, 255)); y += 30
-            y += 6
-
-            text.draw("Health: ${selected.getHealth()}/${selected.baseUnitData.health}", SIDE_X + 10, y, 15, SDLColor(230, 230, 230)); y += 22
-            text.draw("Damage: ${selected.unitData.damage}", SIDE_X + 10, y, 15, SDLColor(230, 230, 230)); y += 22
-            text.draw("Range: ${selected.unitData.weaponRangeMin}-${selected.unitData.weaponRangeMax}", SIDE_X + 10, y, 15, SDLColor(230, 230, 230)); y += 22
-            text.draw("Move: ${selected.unitData.range}", SIDE_X + 10, y, 15, SDLColor(230, 230, 230)); y += 22
-
+        val line = if (selected != null) {
             val moved = if (selected.hasMoved()) "moved" else "ready"
             val fired = if (selected.hasFired()) "fired" else "ready"
-            text.draw("Move: $moved | Fire: $fired", SIDE_X + 10, y, 15, SDLColor(200, 200, 200)); y += 26
+            "${selected.unitData.name}   HP ${selected.getHealth()}/${selected.baseUnitData.health}   " +
+                "DMG ${selected.unitData.damage}   RNG ${selected.unitData.weaponRangeMin}-${selected.unitData.weaponRangeMax}   " +
+                "MOV ${selected.unitData.range}   [$moved/$fired]"
+        } else if (buildMessage.isNotEmpty()) {
+            buildMessage
         } else {
-            text.draw("No unit selected", SIDE_X + 10, y, 15, SDLColor(150, 150, 170)); y += 26
+            return
         }
 
-        if (buildMessage.isNotEmpty()) {
-            y += 4
-            text.draw(buildMessage, SIDE_X + 10, y, 14, SDLColor(255, 220, 120)); y += 22
-        }
+        val barH = 24
+        val barY = WINDOW_H - barH
+        renderer.drawColor = SDLColor(22, 22, 26)
+        renderer.fillRect(SDLRect(0, barY, WINDOW_W, barH))
+        renderer.drawColor = SDLColor(90, 90, 100)
+        renderer.drawLine(0, barY, WINDOW_W, barY)
+        text.draw(line, 8, barY + 5, 13, SDLColor(235, 235, 235))
+    }
 
-        y += 4
-        renderer.drawColor = SDLColor(70, 70, 80)
-        renderer.drawLine(SIDE_X + 8, y, SIDE_X + SIDE_W - 8, y)
-        y += 12
-
-        text.draw("Controls", SIDE_X + 10, y, 15, SDLColor(150, 150, 170)); y += 22
-        for (line in listOf(
-            "Left-click: select / move",
-            "Left-click enemy: attack",
-            "Right-click: clear selection",
-            "N: no attack (wait)",
-            "E: end turn",
-            "B: build (on factory)",
-            "X: extract ore (WM)",
-            "R: repair selected unit",
-        )) {
-            text.draw(line, SIDE_X + 10, y, 13, SDLColor(210, 210, 210)); y += 18
+    /**
+     * Player list: the four slots baked into the bottom of the `mainframe` background
+     * (source y ≈ 390..590, four equal bands), each HALF the band height so the END TURN
+     * button (native 71px) fits below. Slots are right-aligned with the END TURN button
+     * (their right edges line up) and separated by a ~4px vertical gap. Each active
+     * player's slot is filled with their faction colour (semi-transparent so the metal
+     * shows through), with the name on top; the current player gets a bright outline.
+     * No nameplate strip, no flag, no rank.
+     */
+    private fun drawPlayerList() {
+        val players = game.controllers.filterNotNull().filter { it.team.active }
+        val mr = mainframeRect()
+        val mfScale = (WINDOW_H - SIDE_Y).toFloat() / 600f
+        val slotsTop = (mr.y + 390 * mfScale).toInt()
+        // Per-item height 24px with a 4px inter-slot gap → 28px stride.
+        val gap = 4
+        val fillH = 24
+        val slotH = fillH + gap
+        // The slot runs to the screen's right edge (WINDOW_W), inset 16px on the left.
+        val slotX = mr.x + mfScale.toInt() + 8
+        val slotRight = WINDOW_W
+        val slotW = slotRight - slotX
+        players.forEachIndexed { i, c ->
+            val y = slotsTop + i * slotH
+            val faction = rawTeamColor(c.team)
+            val isCurrent = c === game.activeController
+            // Faction-coloured slot background (metal shows through).
+            renderer.drawColor = SDLColor(faction.r, faction.g, faction.b, if (isCurrent) 150 else 110)
+            renderer.fillRect(SDLRect(slotX, y + gap / 2, slotW, fillH))
+            if (isCurrent) {
+                renderer.drawColor = SDLColor(255, 255, 255)
+                renderer.drawRect(SDLRect(slotX, y + gap / 2, slotW, fillH))
+            }
+            val luma = 0.299 * faction.r + 0.587 * faction.g + 0.114 * faction.b
+            val fg = if (luma > 150) SDLColor(25, 25, 25) else SDLColor(245, 245, 245)
+            text.draw(c.team.name, slotX + 4, y + (slotH - 13) / 2, 13, fg)
         }
+    }
+
+    /** The END TURN button at the bottom of the panel (4-frame sprite strip, 126×71 frames). */
+    private fun drawEndTurnButton() {
+        val w = 126
+        val h = 71
+        val x = SIDE_X + (SIDE_W - w) / 2 + 4
+        val y = Panel.END_TURN_Y
+        btnRects.add(BtnHit(PanelButton.END_TURN, x, y, w, h))
+        val tex = textures.texture("endturnbutton") ?: return
+        val held = pressedButton == PanelButton.END_TURN && (SDL.mouseState.buttons and 1) != 0
+        val hover = (SDL.mouseState.buttons and 1) == 0 &&
+            panelButtonAt(SDL.mouseState.x.toInt(), SDL.mouseState.y.toInt()) == PanelButton.END_TURN
+        val frame = when {
+            game.gameOver -> 3
+            held -> 2
+            hover -> 1
+            else -> 0
+        }
+        renderer.renderTexture(
+            tex,
+            src = SDLFRect((frame * 126).toFloat(), 0f, 126f, 71f),
+            dst = SDLFRect(x.toFloat(), y.toFloat(), w.toFloat(), h.toFloat()),
+        )
     }
 
     /** Draws the mission briefing dialogue box over the map. */
@@ -812,9 +1450,7 @@ class BattalionRenderer(
         val boxW = WINDOW_W - 40
         val boxH = 110
 
-        // Dim the map behind the box.
-        renderer.drawColor = SDLColor(0, 0, 0, 140)
-        renderer.fillRect(SDLRect(0, 0, WINDOW_W, WINDOW_H))
+        // No full-screen black veil: the map behind the dialogue stays fully visible.
 
         // Box background + border.
         renderer.drawColor = SDLColor(35, 35, 45, 235)

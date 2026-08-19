@@ -29,6 +29,16 @@ class AttackUnitAction(
 ) : Action() {
     private var activatedScavenge = false
 
+    /** The game-clock ms when the firing animation started (drives [update]'s delay). */
+    private var animStartMs: Long = -1
+
+    /** True once the damage/resolution step has run. */
+    private var resolved = false
+
+    /** True while a *counterattack* animation is playing (started by [startCounterattack]). */
+    private var counterFiring = false
+    private var counterStartMs: Long = -1
+
     override fun usesUnit(aUnit: Unit): Boolean {
         val gameManager = GameManager.instance
         val unit = gameManager.unitAt(attackerX, attackerY)
@@ -40,7 +50,48 @@ class AttackUnitAction(
         gameManager.activeController?.resetIdleTime()
         super.fire()
         verifyAction()
+        // Kick off the firing animation only; the damage itself is applied in [update]
+        // after the animation has played, so enemy attacks and counterattacks are visible
+        // instead of resolving in a single frame.
+        val attacker = gameManager.unitAt(attackerX, attackerY)
+        if (attacker != null) {
+            attacker.facing = facingFor(attacker.x, attacker.y, targetX, targetY)
+            attacker.animFacing = attacker.facing
+            attacker.startAnim(Unit.UnitAnim.FIRE)
+        }
+        animStartMs = GameManager.instance.elapsedMs
+        resolved = false
+    }
+
+    override fun update() {
+        val gameManager = GameManager.instance
+        if (counterFiring) {
+            // Counterattack animation: wait it out, then resolve the return fire.
+            if (gameManager.elapsedMs - counterStartMs < Unit.ANIM_DURATION_MS) return
+            counterFiring = false
+            resolveCounterattack()
+            completeAction()
+            return
+        }
+        if (resolved) {
+            completeAction()
+            return
+        }
+        // Wait out the firing animation before applying damage.
+        if (gameManager.elapsedMs - animStartMs < Unit.ANIM_DURATION_MS) return
+        resolved = true
         updateGameStateAfterAttack()
+    }
+
+    /** Plays the counterattacker's firing animation; damage lands in [update]. */
+    private fun startCounterattack() {
+        val gameManager = GameManager.instance
+        val target = gameManager.unitAt(targetX, targetY) ?: return
+        target.facing = facingFor(target.x, target.y, attackerX, attackerY)
+        target.animFacing = target.facing
+        target.startAnim(Unit.UnitAnim.FIRE)
+        counterFiring = true
+        counterStartMs = gameManager.elapsedMs
     }
 
     private fun verifyAction() {
@@ -74,10 +125,7 @@ class AttackUnitAction(
         val attacker = gameManager.unitAt(attackerX, attackerY) ?: return
         val target = gameManager.unitAt(targetX, targetY) ?: return
 
-        // Face the attacker toward its target and play the firing animation.
-        attacker.facing = facingFor(attacker.x, attacker.y, target.x, target.y)
-        attacker.animFacing = attacker.facing
-        attacker.startAnim(Unit.UnitAnim.FIRE)
+        // (The firing animation was started in [fire]; facing is already set.)
 
         gameManager.activeController?.setMovedAUnitThisTurn(true)
         gameManager.activeController?.resetTurnsSinceLastAttackCounter()
@@ -102,11 +150,11 @@ class AttackUnitAction(
                 target.repairing = false
                 expendAttacker()
             } else if (gameManager.canAttack(target, attacker, true)) {
-                // Counterattack resolution
+                // Counterattack resolution. Any combat-capable defender returns fire —
+                // including ranged units (the original only let ranged units counter when
+                // they carried the "Counter Battery" tag; the user wants every capable
+                // defender to counterattack).
                 var returnFire = true
-                if (target.isRanged() && !target.unitData.hasModifier("Counter Battery")) {
-                    returnFire = false
-                }
                 if (target.unitData.hasModifier("Blind Spot")) {
                     returnFire = false
                 }
@@ -114,7 +162,7 @@ class AttackUnitAction(
                     returnFire = false
                 }
                 if (returnFire) {
-                    updateGameStateAfterCounterattack()
+                    startCounterattack()
                 } else {
                     expendAttacker()
                 }
@@ -151,10 +199,15 @@ class AttackUnitAction(
         }
     }
 
-    private fun updateGameStateAfterCounterattack() {
+    /** Applies the counterattack damage after its animation has played. */
+    private fun resolveCounterattack() {
         val gameManager = GameManager.instance
         val attacker = gameManager.unitAt(attackerX, attackerY) ?: return
         val target = gameManager.unitAt(targetX, targetY) ?: return
+
+        // Dispatch the attack trigger so the impact explosion and weapon sound play on the
+        // original attacker (the counterattacker is `target`, the hit unit is `attacker`).
+        TriggerManager.add(AttackUnitTrigger(targetX, targetY, attackerX, attackerY, target, attacker))
 
         // Resolve counterattack damage
         attacker.takeDamage(gameManager.resolveAttack(target, attacker, null, null, false))
@@ -163,6 +216,7 @@ class AttackUnitAction(
 
         if (!attacker.isAlive()) {
             killUnit(attackerX, attackerY)
+            finishAction()
         } else {
             attacker.cloaked = false
             expendAttacker()

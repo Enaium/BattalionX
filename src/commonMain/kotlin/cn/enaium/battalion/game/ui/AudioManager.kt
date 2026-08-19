@@ -81,10 +81,21 @@ class AudioManager(private val assetsDir: String) {
         val dir = "$assetsDir/sounds"
         for (file in Fio.listDir(dir).orEmpty()) {
             if (!file.endsWith(".mp3")) continue
-            // Strip the numeric prefix and the trailing .mp3, e.g.
-            // "217_ExplosionSound_ExplosionSound.mp3" -> "ExplosionSound".
-            val base = file.substringAfterLast('_').removeSuffix(".mp3")
-            if (base.isNotEmpty()) soundFiles[base] = "$dir/$file"
+            // The exported filename is `<id>_<name>_<name>.mp3` where the meaningful event
+            // name is the repeated segment. Splitting on '_' and taking the tail is wrong
+            // when the name itself contains underscores: "419_PlayerLoopWAV_3_...mp3" would
+            // resolve to "3" instead of "PlayerLoopWAV_3". Strip the leading `<id>_` and the
+            // doubled name, like TextureManager does: name = the first half of the remainder.
+            val rest = file.substringAfter('_').removeSuffix(".mp3") // "PlayerLoopWAV_3_PlayerLoopWAV_3"
+            val half = rest.length / 2
+            val secondHalfStart = (rest.length + 1) / 2
+            val name = if (rest.length >= 2 && rest.substring(0, half) == rest.substring(secondHalfStart)) {
+                rest.substring(0, half)
+            } else {
+                // Fallback: last underscore segment (single-word names like "UIWAV").
+                rest.substringAfterLast('_')
+            }
+            if (name.isNotEmpty()) soundFiles[name] = "$dir/$file"
         }
     }
 
@@ -208,9 +219,12 @@ class AudioManager(private val assetsDir: String) {
             val track = mixer?.createTrack() ?: return
             if (!track.setAudio(audio)) return
             track.gain = MUSIC_GAIN
-            track.loops = -1            // loop indefinitely
             track.tag("music")
             if (!track.play()) return
+            // The loop count only sticks while the track is playing: MIX_SetTrackLoops has no
+            // effect on a stopped track (a later play() resets it), so set loops AFTER play().
+            // Setting it before play() made the background music play exactly once and stop.
+            track.loops = -1            // loop indefinitely
             musicTrack = track
             currentMusic = name
         } catch (t: Throwable) {
