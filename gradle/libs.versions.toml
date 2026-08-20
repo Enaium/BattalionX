@@ -11,10 +11,10 @@
 kotlin = "2.4.10"                 # Kotlin Multiplatform compiler + plugins
 
 # --- Graphics / audio / fonts (KMP bindings published to Maven Central) ----
-sdl = "1.0.8"                     # SDL2 bindings (window, renderer, input)
-sdl-ttf = "1.0.0"                 # SDL2_ttf (TrueType font rendering)
-sdl-image = "1.0.0"               # SDL2_image (PNG / bitmap loading)
-sdl-mixer = "1.0.0"               # SDL2_mixer (sound & music playback)
+sdl = "1.0.9"                     # SDL3 bindings (window, renderer, input)
+sdl-ttf = "1.0.0"                 # SDL3_ttf (TrueType font rendering)
+sdl-image = "1.0.0"               # SDL3_image (PNG / bitmap loading)
+sdl-mixer = "1.0.0"               # SDL3_mixer (sound & music playback)
 
 # --- Kotlinx ecosystem -----------------------------------------------------
 kotlinx-serialization = "1.9.0"   # JSON serialization for save / data files

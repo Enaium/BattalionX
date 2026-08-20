@@ -25,6 +25,8 @@ object GameLoader {
         val name: String,
         val mapUrl: String,
         val mapSettingsXml: XmlNode,
+        /** The mission brief (from the campaign `<level><brief/>`), for the mission-select panel. */
+        val brief: String = "",
     )
 
     /**
@@ -58,12 +60,14 @@ object GameLoader {
             val name = level.attr("name")
             val map = level.child("map") ?: continue
             val mapSettings = level.children("mapsettings").firstOrNull() ?: continue
+            val brief = level.child("brief")?.attr("value") ?: ""
             missions.add(
                 MissionInfo(
                     number = number,
                     name = name,
                     mapUrl = map.attr("url"),
                     mapSettingsXml = mapSettings,
+                    brief = brief,
                 )
             )
         }
@@ -146,6 +150,9 @@ object GameLoader {
     /** True when a campaign [MissionInfo]'s map file is actually present and loadable. */
     fun isMissionLoadable(assetsDir: String, mission: MissionInfo): Boolean =
         findMapXml(assetsDir, mission.mapUrl) != null
+
+    /** Public access to the parsed `<map>` XML for a mission, or null (used by the menu minimap). */
+    fun findMapXmlPublic(assetsDir: String, url: String): XmlNode? = findMapXml(assetsDir, url)
 
     /**
      * Loads a skirmish / multiplayer map. [mapFile] is the name of the map `.bin` file in the

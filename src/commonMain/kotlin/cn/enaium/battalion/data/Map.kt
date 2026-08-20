@@ -110,6 +110,13 @@ class GameMap(
         return if (ref in palette.indices) palette[ref].getTeam() else 0
     }
 
+    /** The terrain swatch name at (col, row), or empty when out of range. */
+    fun terrainNameAt(col: Int, row: Int): String {
+        if (row !in data.indices || col !in data[0].indices) return ""
+        val ref = data[row][col]
+        return if (ref in palette.indices) palette[ref].name else ""
+    }
+
     fun hasStructures(): Boolean = structures.isNotEmpty()
 
     /**

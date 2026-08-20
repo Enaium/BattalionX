@@ -55,24 +55,33 @@ class BattalionGame(
     /** Last build message shown in the side panel (e.g. "Cannot afford"). */
     private var buildMessage: String = ""
 
-    /** True once the player-name intro animation has been shown for this mission. */
-    private var playerIntroShown = false
-
     private fun setBuildMessage(msg: String) {
         buildMessage = msg
         render?.buildMessage = msg
     }
 
-    /**
-     * After the mission brief ends (control passes to the player), reveals the current
-     * player's name with the intro animation.
-     */
-    private fun onDialogueAdvanced() {
-        val dia = dialogue ?: return
-        if (dia.isActive() || playerIntroShown) return
+    /** Holds the player's name (from [triggerPlayerIntro]) so it is only shown once per mission. */
+    private var playerIntroShown = false
+
+    /** Reveals the current player's name with the intro animation (once per mission). */
+    private fun triggerPlayerIntro() {
+        if (playerIntroShown) return
         playerIntroShown = true
         val team = game?.activeController?.team ?: return
         render?.showPlayerIntro(team.teamName.ifEmpty { team.name })
+    }
+
+    /** Called immediately after the mission brief is shown: the intro plays as the box appears. */
+    private fun onDialogueShown() {
+        triggerPlayerIntro()
+    }
+
+    /**
+     * After the mission brief ends (control passes to the player): a no-op fallback — the intro
+     * already fired when the brief was shown, and this only matters if the brief has no content.
+     */
+    private fun onDialogueAdvanced() {
+        triggerPlayerIntro()
     }
 
     /**
@@ -125,8 +134,13 @@ class BattalionGame(
             var skirmish = skirmishMap
 
             if (!menuExplicit) {
+                // The mission-select pages reproduce the original SWF's 700×600 CampaignMenu
+                // stage, so switch the window to that size while the menu is shown and restore
+                // the game size afterwards.
+                window.size = cn.enaium.sdl.SDLPoint(700, 600)
                 val start = StartScreen(assetsDir, renderer, text, textures)
                 val selection = start.run()
+                window.size = cn.enaium.sdl.SDLPoint(BattalionRenderer.WINDOW_W, BattalionRenderer.WINDOW_H)
                 if (selection.quit) break
                 mission = selection.missionIndex
                 if (selection.bootcampIndex != null) {
@@ -147,10 +161,13 @@ class BattalionGame(
             render!!.setupTextures()
             game!!.startGame()
 
-            // Load the mission briefing and play it over the start of the match.
+            // Load the mission briefing and play it over the start of the match. The player-name
+            // intro is revealed as soon as the briefing box appears (not after it ends), so it
+            // plays behind / around the dialogue while the mission brief is on screen.
             dialogue = Dialogue(game!!.map.getScript())
             render!!.dialogue = dialogue
             dialogue!!.play("startGame")
+            onDialogueShown()
 
             lastTick = SDL.getTicks().toLong()
             gameLoop()
@@ -289,11 +306,15 @@ class BattalionGame(
         val (tx, ty) = tileFromScreen(sx, sy) ?: return
         val tile = g.tileAt(tx, ty) ?: return
 
-        if (button == 3) { // right click: clear selection
+        if (button == 3) { // right click: clear selection and blank the info strip
             human.selectUnit(null)
+            render?.setFocusTile(null)
             return
         }
         if (button != 1) return // left click only
+
+        // The bottom recon strip follows the clicked tile (mouse-down), not hover.
+        render?.setFocusTile(tile)
 
         val selected = human.selectedUnit
 

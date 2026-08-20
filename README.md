@@ -2,9 +2,9 @@
 
 A Kotlin Multiplatform reimplementation (port) of the Flash game **Battalion Vengeance**.
 
-All game logic (rules engine, AI, turn system, data model) lives in `commonMain`; each desktop platform (JVM / macOS / Linux) only provides an entry point and asset loading. Graphics, audio and fonts are SDL2-based (via KMP bindings).
+All game logic (rules engine, AI, turn system, data model) lives in `commonMain`; each desktop platform (JVM / macOS / Linux) only provides an entry point and asset loading. Graphics, audio and fonts are SDL3-based (via KMP bindings).
 
-![](https://img.cdn1.vip/i/6a85bfd754855_1787150295.webp)
+![](https://img.cdn1.vip/i/6a87265fb762b_1787242079.webp)
 
 ## Assets
 

@@ -353,7 +353,7 @@ private fun shot(dir: String, mission: Int, skirmish: String?) {
                 else GameLoader.loadCampaignMission(dir, mission)
     SDL.setMainReady()
     SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)
-    val win = SDL.createWindow("shot", 800, 590)
+    val win = SDL.createWindow("shot", 800, 602)
     val r = SDL.createRenderer(win)
     val text = cn.enaium.battalion.game.ui.TextRenderer(r); text.load()
     val tm = cn.enaium.battalion.game.ui.TextureManager(dir, r); tm.load()
