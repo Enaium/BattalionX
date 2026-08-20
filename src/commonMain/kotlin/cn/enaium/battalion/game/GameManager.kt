@@ -669,8 +669,9 @@ class GameManager(
         turnStart.isNetworked = false
         ActionManager.add(turnStart)
 
-        // In non-arena single-player games, morale is disabled.
-        isMoraleEnabled = true
+        // The original disables morale for non-arena (solo single-player) games — morale
+        // (and morale-driven surrender) only applies in the multiplayer arena.
+        isMoraleEnabled = !isSoloGame
     }
 
     fun endGame() {

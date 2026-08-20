@@ -14,8 +14,9 @@ import cn.enaium.battalion.game.triggers.UpgradeUnitTrigger
  * adjacent friendly ground/short unit, upgrading that unit to ride inside (its effective
  * [Unit.sprite] / [Unit.unitData] swap to the transport's). Unloading restores the passenger.
  *
- * Cost model matches the original: on classic maps loading a unit costs the passenger unit's
- * full cost in resources; non-classic maps charge no resources for loading.
+ * Cost model matches the original: on classic maps loading a unit costs the transport's full
+ * cost in resources (validated and spent against the transport); non-classic maps charge no
+ * resources for loading. Loading/unloading never consumes the unit's move/attack for the turn.
  */
 class UpgradeUnitAction(
     private val unitX: Int,
@@ -60,19 +61,20 @@ class UpgradeUnitAction(
                 throw Error("UpgradeUnitAction::Unknown unit type: $unitType")
             }
             if (gameManager.map.isClassic) {
-                val bUD = unit.baseUnitData
-                if (unit.controller?.getResources() ?: 0 < bUD.getCost(unit.controller)) {
+                // Classic maps charge the TRANSPORT's cost for loading a passenger. The original
+                // validates against `newUnit.getCost()` and, after the upgrade, spends
+                // `unit.getUnitData().getCost()` — which is the transport's template. (The port
+                // previously charged the passenger's base cost instead.)
+                if (unit.controller?.getResources() ?: 0 < newUnit.getCost(unit.controller)) {
                     throw Error("UpgradeUnitAction::Controller cannot afford unit")
                 }
-                unit.controller?.spendResources(bUD.getCost(unit.controller))
+                unit.controller?.spendResources(newUnit.getCost(unit.controller))
             }
             unit.upgrade(newUnit)
         }
 
-        // The upgrade/downgrade is the unit's action for this turn.
-        unit.moved = true
-        unit.fired = true
-        unit.darken()
+        // NOTE: the original UpgradeUnitAction does NOT consume the unit's action — loading or
+        // unloading a passenger is a free utility, so the unit stays movable/attackable this turn.
 
         fireImplied(unit)
         gameManager.activeController?.resetIdleTime()

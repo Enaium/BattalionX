@@ -11,6 +11,7 @@ import cn.enaium.battalion.game.actions.EndTurnAction
 import cn.enaium.battalion.game.actions.AttackUnitAction
 import cn.enaium.battalion.game.actions.BuildUnitAction
 import cn.enaium.battalion.game.actions.CallbackAction
+import cn.enaium.battalion.game.actions.WMBuildUnitAction
 import cn.enaium.battalion.game.actions.ExtractResourcesAction
 import cn.enaium.battalion.game.actions.MoveUnitAction
 import cn.enaium.battalion.game.actions.NoAttackAction
@@ -141,18 +142,42 @@ class HALTurn(private val hal: HAL) {
         }
 
         // 3. For constructors: try to build units.
-        if (unit.unitData.hasModifier("Constructor") && unit.resourcePool >= 500) {
-            val buildTarget = findBuildTarget(unit)
+        if (unit.unitData.hasModifier("Constructor")) {
+            // A Warmachine builds onto an adjacent clear tile from its own resource pool via
+            // WMBuildUnitAction. A factory constructor builds onto its (Construction) tile using
+            // the controller's resources. We only build when we can afford the cheapest unit.
+            val buildTarget = if (unit.resourcePool >= 500) findBuildTarget(unit) else findFactoryBuildTarget(unit)
             if (buildTarget != null) {
-                val build = BuildUnitAction(unit.x, unit.y, buildTarget.name)
-                build.isNetworked = false
-                ActionManager.add(build)
-                return
+                val builderTile = game.unitTile(unit)
+                val onFactory = builderTile?.terrain?.hasModifier("Construction") == true
+                if (!onFactory) {
+                    // Warmachine constructor on open terrain: place the new unit adjacent to it.
+                    val adjacent = builderTile?.let { findAdjacentTile(unit, it) }
+                    if (adjacent != null) {
+                        val build = WMBuildUnitAction(
+                            controllerIndex = game.getControllerIndex(controller),
+                            destinationTileX = adjacent.x,
+                            destinationTileY = adjacent.y,
+                            unitName = buildTarget.name,
+                            builderTileX = unit.x,
+                            builderTileY = unit.y,
+                        )
+                        build.isNetworked = false
+                        ActionManager.add(build)
+                        return
+                    }
+                } else {
+                    // Factory constructor: build onto the factory tile (controller resources).
+                    val build = BuildUnitAction(unit.x, unit.y, buildTarget.name)
+                    build.isNetworked = false
+                    ActionManager.add(build)
+                    return
+                }
             }
         }
 
-        // 4. For constructors: try to extract resources.
-        if (unit.unitData.hasModifier("Constructor") && unit.resourcePool >= 500) {
+        // 4. For extractors: try to extract resources.
+        if (unit.unitData.hasModifier("Extractor") && unit.resourcePool < 2000) {
             val tile = game.unitTile(unit)
             if (tile != null && tile.terrain.hasModifier("Extractable")) {
                 val extract = ExtractResourcesAction(unit.x, unit.y)
@@ -333,20 +358,35 @@ class HALTurn(private val hal: HAL) {
         return path.filterIsInstance<Tile>()
     }
 
+    /** The cheapest unit the warmachine can afford from its own [Unit.resourcePool]. */
     private fun findBuildTarget(unit: Unit): UnitData? {
+        var bestUnit: UnitData? = null
+        var bestCost = Int.MAX_VALUE
+        for (unitEntry in UnitManager.getAll()) {
+            if (unit.controller?.isUnitEnabled(unitEntry.name) != true) continue
+            val cost = unitEntry.getCost(unit.controller)
+            if (cost > 0 && cost <= unit.resourcePool && cost < bestCost) {
+                bestUnit = unitEntry
+                bestCost = cost
+            }
+        }
+        return bestUnit
+    }
+
+    /** The cheapest buildable unit when standing on a factory (spent against controller resources). */
+    private fun findFactoryBuildTarget(unit: Unit): UnitData? {
         val factories = game.structures.filter {
             it.terrain.hasModifier("Construction") &&
                 it.controller === unit.controller &&
                 it.unit == null
         }
         if (factories.isEmpty()) return null
-
-        // Build the cheapest unit we can afford.
         var bestUnit: UnitData? = null
         var bestCost = Int.MAX_VALUE
         for (unitEntry in UnitManager.getAll()) {
+            if (unit.controller?.isUnitEnabled(unitEntry.name) != true) continue
             val cost = unitEntry.getCost(unit.controller)
-            if (cost <= unit.resourcePool && cost < bestCost && (unit.controller?.isUnitEnabled(unitEntry.name) == true)) {
+            if (cost > 0 && cost <= (unit.controller?.getResources() ?: 0) && cost < bestCost) {
                 bestUnit = unitEntry
                 bestCost = cost
             }

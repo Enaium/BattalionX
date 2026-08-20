@@ -70,11 +70,23 @@ object GameLoader {
         return missions.sortedBy { it.number }
     }
 
-    /** Finds a `<campaign>` XML document in the assets, preferring the Ep3 single-player campaign. */
-    fun findCampaign(assetsDir: String): List<MissionInfo>? {
+    /** Finds the Ep3 single-player campaign (not bootcamp). */
+    fun findCampaign(assetsDir: String): List<MissionInfo>? =
+        findCampaignNamed(assetsDir, isBootcamp = false)
+
+    /** Finds the Ep3 bootcamp campaign. */
+    fun findBootcamp(assetsDir: String): List<MissionInfo>? =
+        findCampaignNamed(assetsDir, isBootcamp = true)
+
+    /**
+     * Finds a `<campaign>` XML document in the assets, preferring the Ep3 single-player campaign.
+     *
+     * [isBootcamp] selects the Ep3 bootcamp campaign vs the main campaign (a bootcamp filename
+     * contains "bootcamp"; the main campaign is "ep3" + "campaign" but not "bootcamp").
+     */
+    fun findCampaignNamed(assetsDir: String, isBootcamp: Boolean): List<MissionInfo>? {
         val files = Fio.listDir(binDir(assetsDir)).orEmpty()
         var fallback: List<MissionInfo>? = null
-        var ep3Fallback: List<MissionInfo>? = null
         for (file in files) {
             if (!file.endsWith(".bin")) continue
             val text = Fio.readText("${binDir(assetsDir)}/$file") ?: continue
@@ -82,18 +94,19 @@ object GameLoader {
             if (root.name != "campaign") continue
             val missions = parseCampaign(root)
             val lower = file.lowercase()
-            // Prefer the main Ep3 campaign (not bootcamp/side-campaigns).
-            // The real campaign file contains "ep3" and "campaign" but NOT "bootcamp".
-            if (lower.contains("ep3") && lower.contains("campaign") && !lower.contains("bootcamp")) {
-                return missions
-            }
-            // Also collect a secondary Ep3 fallback (bootcamp, etc.) in case the main one is missing.
-            if (lower.contains("ep3") && ep3Fallback == null) {
-                ep3Fallback = missions
+            // Require the actual "ep3" embed specifically. (Every file path contains
+            // "com.gamedozer.battalion", so a generic "battalion" test would match them all and
+            // the Arena campaign — which sorts first — would wrongly win over the Ep3 campaign.)
+            val isEp3 = lower.contains("ep3")
+            if (isBootcamp) {
+                if (lower.contains("bootcamp")) return missions
+            } else {
+                // Prefer the main Ep3 campaign (not bootcamp/side-campaigns).
+                if (isEp3 && lower.contains("campaign") && !lower.contains("bootcamp")) return missions
             }
             if (fallback == null) fallback = missions
         }
-        return ep3Fallback ?: fallback
+        return fallback
     }
 
     /**
@@ -112,6 +125,27 @@ object GameLoader {
             ?: error("GameLoader: could not find map for '${mission.mapUrl}'")
         return buildGame(mapNode, mission.mapSettingsXml)
     }
+
+    /**
+     * Loads a single-player bootcamp mission (the "Boot Camp" tutorial campaign).
+     * [missionIndex] selects which bootcamp mission to play (0-based).
+     */
+    fun loadBootcampMission(assetsDir: String, missionIndex: Int): GameManager {
+        loadAssets(assetsDir)
+        val missions = findBootcamp(assetsDir)
+            ?: error("GameLoader: no bootcamp XML found in $assetsDir")
+        if (missionIndex !in missions.indices) {
+            error("GameLoader: bootcamp mission $missionIndex out of range (0..${missions.lastIndex})")
+        }
+        val mission = missions[missionIndex]
+        val mapNode = findMapXml(assetsDir, mission.mapUrl)
+            ?: error("GameLoader: could not find map for '${mission.mapUrl}'")
+        return buildGame(mapNode, mission.mapSettingsXml)
+    }
+
+    /** True when a campaign [MissionInfo]'s map file is actually present and loadable. */
+    fun isMissionLoadable(assetsDir: String, mission: MissionInfo): Boolean =
+        findMapXml(assetsDir, mission.mapUrl) != null
 
     /**
      * Loads a skirmish / multiplayer map. [mapFile] is the name of the map `.bin` file in the

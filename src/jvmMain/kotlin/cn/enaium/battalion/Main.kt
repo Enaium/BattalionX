@@ -59,11 +59,57 @@ fun main(args: Array<String>) {
         shot(dir, mission, skirmish)
         return
     }
+    if (args.contains("--menushot")) {
+        menushot(dir)
+        return
+    }
+    val bootcampArg = args.indexOf("--bootselftest")
+    val bootMission = if (bootcampArg >= 0) args[bootcampArg + 1].toIntOrNull() ?: 0 else -1
+    if (bootMission >= 0) {
+        bootselftest(dir, bootMission)
+        return
+    }
     if (selftest) {
         selftest(dir, mission, skirmish)
         return
     }
-    BattalionGame(dir, mission, skirmish).run()
+    // The game shows the start menu by default; only a real --mission/--skirmish flag pins a
+    // specific mission (passing a non-null default would skip the menu and jump into mission 0).
+    val playMission = if (missionArg >= 0) mission else null
+    BattalionGame(dir, playMission, skirmish).run()
+}
+
+/**
+ * Diagnostic: renders one frame of each StartScreen menu (main / campaign / bootcamp) and
+ * saves PNGs so the menu presentation can be verified headlessly.
+ */
+private fun menushot(dir: String) {
+    SDL.setMainReady()
+    SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)
+    val win = SDL.createWindow("menushot", 800, 600)
+    val r = SDL.createRenderer(win)
+    val text = cn.enaium.battalion.game.ui.TextRenderer(r); text.load()
+    val tm = cn.enaium.battalion.game.ui.TextureManager(dir, r); tm.load()
+
+    fun snap(screen: String, name: String) {
+        val start = cn.enaium.battalion.game.ui.StartScreen(dir, r, text, tm)
+        start.setScreenForCapture(screen)
+        // Draw several frames with present() + a delay so the backbuffer delivers the current
+        // frame (renderReadPixels lags one present otherwise).
+        for (i in 1..4) { start.renderFrameForCapture(); SDL.delay(20) }
+        val surf = r.renderReadPixels(null)
+        if (surf != null) {
+            cn.enaium.sdl.image.SDLImage.savePNG(surf, "/Users/enaium/.claude/jobs/19cccc80/tmp/$name.png")
+            println("saved /Users/enaium/.claude/jobs/19cccc80/tmp/$name.png")
+            surf.close()
+        } else println("capture failed for $name")
+    }
+
+    snap("main", "menu_main")
+    snap("campaign", "menu_campaign")
+    snap("bootcamp", "menu_bootcamp")
+
+    tm.close(); text.close(); r.close(); win.close(); SDL.quit()
 }
 
 /**
@@ -369,6 +415,22 @@ private fun shot(dir: String, mission: Int, skirmish: String?) {
     }
 
     tm.close(); text.close(); r.close(); win.close(); SDL.quit()
+}
+
+/**
+ * Loads a bootcamp mission (headless) and ticks the loop to confirm the bootcamp campaign
+ * loads and the turn loop runs, like [selftest] does for the main campaign.
+ */
+private fun bootselftest(dir: String, mission: Int) {
+    val game = GameLoader.loadBootcampMission(dir, mission)
+    println("Map: ${game.map.name} (${game.map.width}x${game.map.height})")
+    println("Controllers: " + game.controllers.mapIndexed { i, c ->
+        "${i}=${c?.team?.name ?: "?"}(${c?.team?.controllerType ?: "?"})"
+    }.joinToString(", "))
+    game.startGame()
+    for (i in 1..30) game.update(16)
+    println("After 30 ticks: turn=${game.turn} round=${game.round} active=${game.activeController?.team?.name}")
+    println("BOOTSELFTEST OK")
 }
 
 /**

@@ -69,12 +69,13 @@ class RepairUnitAction(
                 )
             }
             unit.repairing = true
+            // Repairing is the unit's action for the turn — but only when it was actually
+            // damaged. The original sets moved/fired/darken inside the health<max branch, so
+            // repairing an undamaged unit consumes nothing.
+            unit.moved = true
+            unit.fired = true
+            unit.darken()
         }
-
-        // Repairing is the unit's action for the turn.
-        unit.moved = true
-        unit.fired = true
-        unit.darken()
 
         TriggerManager.add(RepairUnitTrigger(unit))
         gameManager.activeController?.resetIdleTime()

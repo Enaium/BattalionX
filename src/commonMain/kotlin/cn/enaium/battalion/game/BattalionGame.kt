@@ -115,37 +115,51 @@ class BattalionGame(
         textures.load()
 
         // Pick the mission: an explicit CLI mission/skirmish skips the menu, otherwise show the
-        // start screen so the player can choose.
-        var mission = missionIndex
-        var skirmish = skirmishMap
-        if (mission == null && skirmish == null) {
-            val start = StartScreen(assetsDir, renderer, text, textures)
-            val selection = start.run()
-            if (selection.quit) {
-                text.close(); audio.close(); textures.close(); renderer.close(); window.close(); SDL.quit()
-                return
+        // start screen so the player can choose between Campaign missions, Bootcamp missions,
+        // the bonus map, or quit. After a match ends (game over → ESC) we return to this menu
+        // so the player can pick another mission without restarting the app.
+        var menuExplicit = missionIndex != null || skirmishMap != null
+        while (running) {
+            var mission = missionIndex
+            var bootcamp = false
+            var skirmish = skirmishMap
+
+            if (!menuExplicit) {
+                val start = StartScreen(assetsDir, renderer, text, textures)
+                val selection = start.run()
+                if (selection.quit) break
+                mission = selection.missionIndex
+                if (selection.bootcampIndex != null) {
+                    mission = selection.bootcampIndex
+                    bootcamp = true
+                }
+                skirmish = selection.skirmishMap
             }
-            mission = selection.missionIndex
-            skirmish = selection.skirmishMap
+
+            // Load the game. Skirmish mode plays any map as a free-for-all; a bootcamp mission
+            // selects from the bootcamp tutorial campaign; otherwise a campaign mission.
+            game = when {
+                skirmish != null -> GameLoader.loadSkirmish(assetsDir, skirmish)
+                bootcamp -> GameLoader.loadBootcampMission(assetsDir, mission ?: 0)
+                else -> GameLoader.loadCampaignMission(assetsDir, mission ?: 0)
+            }
+            render = BattalionRenderer(game!!, text, renderer, textures)
+            render!!.setupTextures()
+            game!!.startGame()
+
+            // Load the mission briefing and play it over the start of the match.
+            dialogue = Dialogue(game!!.map.getScript())
+            render!!.dialogue = dialogue
+            dialogue!!.play("startGame")
+
+            lastTick = SDL.getTicks().toLong()
+            gameLoop()
+
+            if (menuExplicit) break   // single-shot CLI mode
+            // Otherwise loop back to the menu for the next match.
         }
 
-        // Load the game. Skirmish mode plays any map as a free-for-all; otherwise a campaign mission.
-        game = if (skirmish != null) {
-            GameLoader.loadSkirmish(assetsDir, skirmish)
-        } else {
-            GameLoader.loadCampaignMission(assetsDir, mission ?: 0)
-        }
-        render = BattalionRenderer(game!!, text, renderer, textures)
-        render!!.setupTextures()
-        game!!.startGame()
-
-        // Load the mission briefing and play it over the start of the match.
-        dialogue = Dialogue(game!!.map.getScript())
-        render!!.dialogue = dialogue
-        dialogue!!.play("startGame")
-
-        lastTick = SDL.getTicks().toLong()
-        gameLoop()
+        text.close(); audio.close(); textures.close(); renderer.close(); window.close(); SDL.quit()
     }
 
     /**
@@ -166,8 +180,12 @@ class BattalionGame(
         if (dx != 0 || dy != 0) r.scrollCamera(dx, dy)
     }
 
+    /** True during the in-match loop; set false to leave the current match. */
+    private var inMatch = true
+
     private fun gameLoop() {
-        while (running) {
+        inMatch = true
+        while (inMatch) {
             val now = SDL.getTicks().toLong()
             val dt = (now - lastTick).toInt()
             lastTick = now
@@ -180,21 +198,21 @@ class BattalionGame(
             SDL.delay(16)
         }
 
-        text.close()
-        audio.close()
-        textures.close()
-        renderer.close()
-        window.close()
-        SDL.quit()
+        // Tear down the match's state (the window, renderer, text and textures survive so the
+        // menu can reuse them for the next match).
+        render = null
+        game = null
+        dialogue = null
+        buildMessage = ""
     }
 
     private fun pollEvents() {
         while (true) {
             val event = SDL.pollEvent() ?: break
             when (event) {
-                is SDLEvent.Quit -> running = false
+                is SDLEvent.Quit -> { running = false; inMatch = false }
                 is SDLEvent.Window ->
-                    if (event.type == SDLWindowEventType.CLOSE_REQUESTED) running = false
+                    if (event.type == SDLWindowEventType.CLOSE_REQUESTED) { running = false; inMatch = false }
                 is SDLEvent.Key -> {
                     if (event.down && !event.repeat) {
                         if (dialogue?.isActive() == true) {
@@ -408,7 +426,7 @@ class BattalionGame(
 
         when (keycode) {
             SDLKeycode.ESCAPE -> {
-                if (g.gameOver) { running = false; return }
+                if (g.gameOver) { inMatch = false; return }
                 human.selectUnit(null)
             }
             SDLKeycode.N -> human.dispatchNoAttack()

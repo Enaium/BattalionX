@@ -1,5 +1,6 @@
 package cn.enaium.battalion.game
 
+import cn.enaium.battalion.data.MoraleChangeAmounts
 import cn.enaium.battalion.data.Team
 import cn.enaium.battalion.data.Tile
 import cn.enaium.battalion.data.Unit
@@ -309,6 +310,22 @@ open class Controller(val team: Team) {
         ++turnsSincePlayerAttacked
         turnTime = 0
         idleTime = 0
+
+        // Sudden-death: once the game runs past round 16, morale bleeds every turn, growing
+        // with each round over the limit (matches original Controller.startCurrentTurn).
+        if (GameManager.instance.isMoraleEnabled) {
+            val deathMarchTurnThreshold = 16
+            val round = GameManager.instance.round
+            if (round > deathMarchTurnThreshold) {
+                val turnsOverLimit = round - deathMarchTurnThreshold
+                val penalty = MoraleChangeAmounts.PER_TURN_SUDDEN_DEATH_PENALTY * turnsOverLimit
+                GameManager.instance.changeMorale(
+                    this,
+                    penalty,
+                    MoraleChangeAmounts.PER_TURN_SUDDEN_DEATH_PENALTY_DESCRIPTION,
+                )
+            }
+        }
     }
 
     protected open fun startRound() {}
