@@ -63,6 +63,10 @@ fun main(args: Array<String>) {
         menushot(dir)
         return
     }
+    if (args.contains("--carddiag")) {
+        carddiag(dir)
+        return
+    }
     val bootcampArg = args.indexOf("--bootselftest")
     val bootMission = if (bootcampArg >= 0) args[bootcampArg + 1].toIntOrNull() ?: 0 else -1
     if (bootMission >= 0) {
@@ -344,6 +348,71 @@ private fun imgcheck(dir: String) {
 }
 
 /**
+ * Diagnostic: renders each unit's team-coloured sprite cell EXACTLY as the build card slices
+ * it (src (0,0,56,cellH), cellH = texH/4 for 336-wide sheets, capped at 56) onto a black
+ * window and saves one PNG per unit, to isolate what the build page actually shows.
+ */
+private fun carddiag(dir: String) {
+    SDL.setMainReady()
+    SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)
+    val win = SDL.createWindow("carddiag", 800, 800)
+    val r = SDL.createRenderer(win)
+    val tm = cn.enaium.battalion.game.ui.TextureManager(dir, r); tm.load()
+    val teamColor = cn.enaium.sdl.SDLColor(143, 222, 101) // green ramp
+    val units = listOf(
+        "Scorpion Tank" to "scorpion",
+        "Stealth Tank" to "stealth",
+        "Hunter Support" to "hunter",
+        "Strike Commando" to "commando",
+        "Heavy Commando" to "hcommando",
+        "Flak Tank" to "flak",
+        "Mortar Truck" to "mortar",
+        "Intrepid" to "intrepid",
+        "Leviathan Barge" to "leviathan",
+    )
+    var y = 0
+    for ((name, key) in units) {
+        val tex = tm.textureForTeam(key, teamColor)
+        val size = tm.textureSize(key)
+        if (tex == null || size == null) {
+            println("CARDDIAG $name key=$key MISSING")
+            continue
+        }
+        val tw = size.first; val th = size.second
+        val cellH = if (tw == 336) th / 4 else th
+        val bodyH = minOf(cellH, 56)
+        r.drawColor = cn.enaium.sdl.SDLColor(0, 0, 0)
+        r.fillRect(cn.enaium.sdl.SDLRect(0, y, 800, 76))
+        // Reproduce drawCard EXACTLY: frame texture first (92x97), then sprite on top.
+        val frame = "build_unitFrame_overlay"
+        tm.texture(frame)?.let {
+            r.renderTexture(it, dst = cn.enaium.sdl.SDLFRect(y % 800 * 0f, 0f, 0f, 0f)) // placeholder
+        }
+        val frameTex = tm.texture(frame)
+        if (frameTex != null) {
+            r.renderTexture(frameTex, dst = cn.enaium.sdl.SDLFRect(0f, y.toFloat(), 92f, 97f))
+        } else {
+            println("CARDDIAG frame $frame MISSING")
+        }
+        // sprite drawn at x+18, y+10
+        val dw = 56; val dh = bodyH
+        r.renderTexture(
+            tex,
+            src = cn.enaium.sdl.SDLFRect(0f, 0f, 56f, bodyH.toFloat()),
+            dst = cn.enaium.sdl.SDLFRect(18f, (y + 10).toFloat(), dw.toFloat(), dh.toFloat()),
+        )
+        println("CARDDIAG $name key=$key sheet=${tw}x$th cellH=$cellH bodyH=$bodyH")
+        y += 76
+    }
+    val surf = r.renderReadPixels(null)
+    if (surf != null) {
+        cn.enaium.sdl.image.SDLImage.savePNG(surf, "/Users/enaium/.claude/jobs/19cccc80/tmp/carddiag.png")
+        surf.close()
+    }
+    tm.close(); r.close(); win.close(); SDL.quit()
+}
+
+/**
  * Opens the window, renders the game, captures screenshots to verify the rendering fixes
  * (RGB/BGR, shore strips, unit facing) and simulates a click-to-move to verify movement.
  * Saves PNGs to the job tmp dir.
@@ -411,6 +480,70 @@ private fun shot(dir: String, mission: Int, skirmish: String?) {
             }
         } else {
             println("no human unit found")
+        }
+
+        // Build-page verification: open a Warmachine's build page, snap the unit grid, then
+        // confirm into the direction picker stage and snap that too.
+        val wmType = cn.enaium.battalion.data.UnitManager.getAll()
+            .firstOrNull { it.hasModifier("Constructor") }
+        if (wmType != null) {
+            // Find a clear tile for the constructor (empty, passable, no structure).
+            var wx = -1; var wy = -1
+            outer@ for (y in 0 until game.map.height - 1) {
+                for (x in 0 until game.map.width - 2) {
+                    val t = game.tileAt(x, y)
+                    val dest = game.tileAt(x + 1, y)
+                    if (t != null && dest != null && t.unit == null && dest.unit == null &&
+                        !t.isStructure() && !dest.isStructure() &&
+                        t.getMovementCost(cn.enaium.battalion.data.Unit(wmType)) != Double.POSITIVE_INFINITY) {
+                        wx = x; wy = y; break@outer
+                    }
+                }
+            }
+            if (wx >= 0) {
+                val wm = cn.enaium.battalion.data.Unit(wmType, wx, wy, human)
+                wm.deployed = true
+                wm.resourcePool = 4000
+                game.tileAt(wx, wy)!!.unit = wm
+                game.addUnit(human, wm)
+                human.selectUnit(wm)
+                if (human.openBuildMenu()) {
+                    // DIAG: dump every card's resolved sprite key + texture size to find the
+                    // build page's blank / mis-sliced thumbnails.
+                    val menu = human.buildMenu
+                    if (menu != null) {
+                        for ((i, u) in menu.units.withIndex()) {
+                            val key = renderer.debugSpriteKeyFor(u.name, u.sprite)
+                            val path = tm.pathFor(key)
+                            val tex = tm.texture(key)
+                            val size = tm.textureSize(key)
+                            val tc = human.team.color
+                            val teamColor = cn.enaium.sdl.SDLColor(
+                                ((tc shr 16) and 0xffu).toInt(),
+                                ((tc shr 8) and 0xffu).toInt(),
+                                (tc and 0xffu).toInt(),
+                            )
+                            val teamTex = tm.textureForTeam(key, teamColor)
+                            println("BUILDCARD $i ${u.name} key=$key path=${path != null} loaded=${tex != null} size=$size team=${teamTex != null}")
+                        }
+                    }
+                    snap("shot5_buildpage_units")
+                    // Confirm the focused unit -> direction picker stage.
+                    if (human.confirmBuild() && human.buildMenu != null) {
+                        snap("shot6_buildpage_direction")
+                    } else {
+                        println("build page did not advance to direction stage")
+                    }
+                    // Close it cleanly.
+                    human.cancelBuild()
+                } else {
+                    println("no build menu opened for the warmachine")
+                }
+            } else {
+                println("no clear tile found for build-page verification")
+            }
+        } else {
+            println("no Constructor unit type in roster for build-page verification")
         }
     }
 

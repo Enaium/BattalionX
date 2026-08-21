@@ -207,6 +207,30 @@ open class Controller(val team: Team) {
         return possible
     }
 
+    /**
+     * Every unit template this controller may order from a factory — enabled and buildable
+     * (not "Unbuildable"). Mirrors the SWF `BuildMenu.createUnitLists`, which lists ALL such
+     * units; support by the controller's control structures is surfaced per-card by the build
+     * page (greyed out when unavailable) rather than filtering the list here.
+     */
+    fun buildableUnits(): List<cn.enaium.battalion.data.UnitData> =
+        cn.enaium.battalion.data.UnitManager.getAll()
+            .filter { !it.hasModifier("Unbuildable") }
+            .filter { isUnitEnabled(it.name) }
+
+    /**
+     * Every unit template a Warmachine constructor of this controller may build onto an
+     * adjacent tile — enabled and buildable (not "Unbuildable"). Mirrors the SWF
+     * `WMBuildMenu.createUnitLists`: war-machine construction ignores control structures
+     * (and the empty `WM_FORBIDDEN_UNITS` list), so all enabled units are shown and the
+     * build page greys out ones the constructor's [pool] cannot afford.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun buildableUnitsFromWarmachine(pool: Int): List<cn.enaium.battalion.data.UnitData> =
+        cn.enaium.battalion.data.UnitManager.getAll()
+            .filter { !it.hasModifier("Unbuildable") }
+            .filter { isUnitEnabled(it.name) }
+
     // ---- Allies -------------------------------------------------------------
 
     fun isAllied(other: Controller?): Boolean {

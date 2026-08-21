@@ -137,7 +137,9 @@ class TextureManager(
             sizes[name] = surface.width to surface.height
             surface.close()
             t.blendMode = SDLBlendMode.BLEND
-            t.scaleMode = SDLScaleMode.LINEAR
+            // The source art is pixel art — nearest sampling keeps it crisp when scaled;
+            // linear filtering blurred the sprites/menus.
+            t.scaleMode = SDLScaleMode.NEAREST
             t
         } catch (t: Throwable) {
             null
@@ -212,7 +214,8 @@ class TextureManager(
             t.update(null, out, pitch)
             sizes[name] = w to h
             t.blendMode = SDLBlendMode.BLEND
-            t.scaleMode = SDLScaleMode.LINEAR
+            // Pixel-art source: nearest sampling (see textureFromPath).
+            t.scaleMode = SDLScaleMode.NEAREST
             t
         } catch (t: Throwable) {
             null

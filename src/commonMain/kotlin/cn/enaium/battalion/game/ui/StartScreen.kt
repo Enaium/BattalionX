@@ -232,11 +232,26 @@ class StartScreen(
         bootcampMissions = GameLoader.findBootcamp(assetsDir).orEmpty()
     }
 
+    /**
+     * The window's size in LOGICAL drawing coordinates.
+     *
+     * [SDLRenderer.outputSize] is the render target's size in pixels, which is 2× the window
+     * size on a high-pixel-density (Retina) display — and the renderer is scaled by that same
+     * 2× factor ([SDL scale]) so all drawing uses logical units. Dividing the pixel size by the
+     * scale recovers the logical window size (e.g. 700×600 for the menu), which the backdrop
+     * and header tiling must stretch over.
+     */
+    private fun logicalWindowSize(): Pair<Int, Int> {
+        val s = renderer.scale
+        val sx = if (s.x > 0f) s.x else 1f
+        val sy = if (s.y > 0f) s.y else 1f
+        return (renderer.outputSize.x / sx).toInt() to (renderer.outputSize.y / sy).toInt()
+    }
+
     private fun drawBackdrop() {
         // Tile the wood over the renderer's real drawing area (not a hardcoded 800×600) so the
         // background always fills the whole window no matter its size.
-        val winW = renderer.outputSize.x
-        val winH = renderer.outputSize.y
+        val (winW, winH) = logicalWindowSize()
         val wood = textures.texture("wood_texture")
         if (wood != null) {
             val w = wood.size.x.toInt()
@@ -263,8 +278,7 @@ class StartScreen(
      * small title bar over the wood texture.
      */
     private fun drawMainBackdrop() {
-        val winW = renderer.outputSize.x
-        val winH = renderer.outputSize.y
+        val (winW, winH) = logicalWindowSize()
         val title = textures.texture("title_3")
         if (title != null) {
             // Stretch the full background+title image to cover the entire window.
@@ -412,7 +426,7 @@ class StartScreen(
     /** Draws a texture stretched across the full window width at [y]..[y+h]. */
     private fun drawFullWidth(key: String, x: Int, y: Int, h: Int) {
         val tex = textures.texture(key) ?: return
-        val winW = renderer.outputSize.x
+        val winW = logicalWindowSize().first
         renderer.renderTexture(tex, dst = SDLFRect(x.toFloat(), y.toFloat(), winW.toFloat(), h.toFloat()))
     }
 

@@ -17,6 +17,7 @@ import cn.enaium.battalion.game.actions.StartTurnAction
 import cn.enaium.battalion.game.controllers.HALController
 import cn.enaium.battalion.game.controllers.HumanController
 import cn.enaium.battalion.game.triggers.PlayerTrigger
+import cn.enaium.battalion.game.triggers.TimePassedTrigger
 
 /**
  * Central game-state manager. A singleton that owns the tile map, controllers, unit list,
@@ -60,14 +61,31 @@ class GameManager(
     var isSoloGame: Boolean = true
     val surrenderedControllers = mutableListOf<Controller>()
 
-    private val movementCombiner = Any() // placeholder for MovementCombiner
-    private val killerSuggestionEngine = Any() // placeholder for KillerSuggestionEngine
+    val movementCombiner: MovementCombiner by lazy { MovementCombiner() }
+    /** Recommends what a factory/warmachine should build to counter a target (build UI + AI). */
+    val killerSuggestionEngine = KillerSuggestionEngine
+
+    /** Owns the map-script [GameEvent]s (conditions/responses for campaign & tutorials). */
+    val gameEventManager = GameEventManager()
+
+    /** Standalone manager for chat/highlight/scroll script responses (visible/sim output). */
+    val responseDisplay = cn.enaium.battalion.game.responses.ResponseDisplay
 
     // ActionManager is exposed for Unit.isInActionQueue().  In the original, ActionManager
     // was a separate singleton.  We keep it as a direct property here for simplicity.
     val actionManager = ActionManager
 
     init {
+        // Start each game with a clean event bus and script queue. This matches the original
+        // app-lifetime singletons being (re)initialised per match, and keeps tests independent
+        // (they share one JVM and these are global objects).
+        TriggerManager.clearAll()
+        ResponseManager.clear()
+        // Dump any actions still queued from a previous match/game. Without this, stale
+        // actions bleed between games (and between tests sharing one JVM), which wedged the
+        // action queue behind leftover work from an earlier turn.
+        ActionManager.clear()
+
         instance = this
 
         // Build controllers from the teams.
@@ -712,10 +730,19 @@ class GameManager(
         // 1. Dispatch queued triggers.
         TriggerManager.update()
 
-        // 2. Run the next queued action.
+        // 1a. Feed real elapsed time to time-based script conditions (TimePassedTrigger is not
+        //     part of the event-bus flush above; it is fired directly every frame).
+        TriggerManager.add(TimePassedTrigger(ms))
+        TriggerManager.update()
+
+        // 2. Evaluate scripted game events (conditions) and run their responses.
+        gameEventManager.update()
+        ResponseManager.update()
+
+        // 3. Run the next queued action.
         ActionManager.update()
 
-        // 3. Update every active controller (AI thinks during its turn here).
+        // 4. Update every active controller (AI thinks during its turn here).
         for (controller in controllers) {
             if (controller?.team?.active == true) {
                 controller.update(ms)

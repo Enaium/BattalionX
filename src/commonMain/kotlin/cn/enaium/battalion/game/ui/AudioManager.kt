@@ -3,7 +3,7 @@ package cn.enaium.battalion.game.ui
 import cn.enaium.battalion.game.GameManager
 import cn.enaium.battalion.game.Trigger
 import cn.enaium.battalion.game.TriggerManager
-import cn.enaium.battalion.game.triggers.AttackUnitTrigger
+import cn.enaium.battalion.game.triggers.AttackStartTrigger
 import cn.enaium.battalion.game.triggers.BuildUnitTrigger
 import cn.enaium.battalion.game.triggers.CaptureTerrainTrigger
 import cn.enaium.battalion.game.triggers.ExtractResourcesTrigger
@@ -47,17 +47,21 @@ class AudioManager(private val assetsDir: String) {
     /** The name of the soundtrack currently looping (to avoid restarts that don't change it). */
     private var currentMusic: String? = null
 
-    /** Looping background soundtracks: the player-side ("good") and enemy-side ("evil") loops. */
+    /** Looping background soundtracks: the menu, the player-side ("good") and enemy-side ("evil") loops. */
     private companion object {
+        /** Main-menu BGM: the original MainMenu loops UIWAV as its "background" sound. */
+        const val MENU_LOOP = "UIWAV"
         const val PLAYER_LOOP = "PlayerLoopWAV_3"
         const val ENEMY_LOOP = "AILoopWAV_3"
         const val MUSIC_GAIN = 0.5f
     }
 
     /**
-     * Scans the `sounds/` directory and subscribes to the game's triggers. Safe to call once
-     * before the game starts; if SDL_mixer can't initialise (no audio device), the manager
-     * simply stays silent.
+     * Initialises SDL_mixer and indexes the sounds directory. Safe to call once before the
+     * game starts; if SDL_mixer can't initialise (no audio device), the manager simply stays
+     * silent. [subscribe] must be called separately — once per game, AFTER the [GameManager]
+     * is constructed, because constructing a game clears the whole trigger event bus
+     * (`TriggerManager.clearAll`), which would otherwise wipe the listeners registered here.
      */
     fun load() {
         if (!SDLMixer.init()) {
@@ -73,7 +77,6 @@ class AudioManager(private val assetsDir: String) {
         }
         available = true
         indexSounds()
-        subscribe()
     }
 
     /** Indexes every MP3 in the sounds directory by its event name. */
@@ -99,8 +102,15 @@ class AudioManager(private val assetsDir: String) {
         }
     }
 
-    /** Subscribes the manager to the gameplay triggers that map to sounds. */
-    private fun subscribe() {
+    /**
+     * Subscribes the manager to the gameplay triggers that map to sounds.
+     *
+     * MUST be called once per match, AFTER the [GameManager] is constructed: `GameManager`'s
+     * init clears every [TriggerManager] listener (`clearAll`), so listeners registered before
+     * the game exists are dropped and music/sfx never play. Called from the game loop after
+     * each mission load.
+     */
+    fun subscribe() {
         TriggerManager.addListener("killUnit") { t ->
             if (t is KillUnitTrigger) play("ExplosionSound")
         }
@@ -119,8 +129,10 @@ class AudioManager(private val assetsDir: String) {
         TriggerManager.addListener("moveUnit") { t ->
             if (t is MoveUnitTrigger) playMoveSound(t.unit.unitData.name)
         }
-        TriggerManager.addListener("attackUnit") { t ->
-            if (t is AttackUnitTrigger) playAttackSound(t.unit.unitData.name)
+        // Weapon sound fires at the muzzle flash (attackStart), simultaneous with the firing
+        // animation — the impact AttackUnitTrigger only drives the explosion visual.
+        TriggerManager.addListener(AttackStartTrigger.NAME) { t ->
+            if (t is AttackStartTrigger) playAttackSound(t.unit.unitData.name)
         }
         TriggerManager.addListener(PlayerTrigger.START_TURN) {
             // Start (or switch) the background music for whose turn it is, then play the
@@ -196,6 +208,9 @@ class AudioManager(private val assetsDir: String) {
             // Ignore transient playback errors; sound is best-effort.
         }
     }
+
+    /** Starts the main-menu BGM loop. No-op once it is already playing. */
+    fun startMenuMusic() = startMusic(MENU_LOOP)
 
     /**
      * Starts (or switches to) a looping background-music track. Only one soundtrack plays at a

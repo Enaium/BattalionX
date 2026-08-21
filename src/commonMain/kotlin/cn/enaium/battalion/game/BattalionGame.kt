@@ -5,6 +5,7 @@ import cn.enaium.battalion.data.GameLoader
 import cn.enaium.battalion.data.TileManager
 import cn.enaium.battalion.data.UnitManager
 import cn.enaium.battalion.game.controllers.HumanController
+import cn.enaium.battalion.game.triggers.PlayerTrigger
 import cn.enaium.battalion.game.ui.AudioManager
 import cn.enaium.battalion.game.ui.Dialogue
 import cn.enaium.battalion.game.ui.StartScreen
@@ -18,6 +19,7 @@ import cn.enaium.sdl.SDLKeycode
 import cn.enaium.sdl.SDLRenderer
 import cn.enaium.sdl.SDLWindow
 import cn.enaium.sdl.SDLWindowEventType
+import cn.enaium.sdl.SDLWindowFlags
 
 /**
  * The Battalion Vengeance desktop app: initialises SDL, loads a mission, and runs the game loop.
@@ -60,30 +62,6 @@ class BattalionGame(
         render?.buildMessage = msg
     }
 
-    /** Holds the player's name (from [triggerPlayerIntro]) so it is only shown once per mission. */
-    private var playerIntroShown = false
-
-    /** Reveals the current player's name with the intro animation (once per mission). */
-    private fun triggerPlayerIntro() {
-        if (playerIntroShown) return
-        playerIntroShown = true
-        val team = game?.activeController?.team ?: return
-        render?.showPlayerIntro(team.teamName.ifEmpty { team.name })
-    }
-
-    /** Called immediately after the mission brief is shown: the intro plays as the box appears. */
-    private fun onDialogueShown() {
-        triggerPlayerIntro()
-    }
-
-    /**
-     * After the mission brief ends (control passes to the player): a no-op fallback — the intro
-     * already fired when the brief was shown, and this only matters if the brief has no content.
-     */
-    private fun onDialogueAdvanced() {
-        triggerPlayerIntro()
-    }
-
     /**
      * Advances the dialogue from player input, mirroring the original ChatWindow:
      * while the line is still being typed out, a click/key fast-forwards the reveal instead
@@ -96,7 +74,6 @@ class BattalionGame(
             return
         }
         dia.advance()
-        onDialogueAdvanced()
     }
 
     /** Runs the game until the window is closed. */
@@ -106,12 +83,18 @@ class BattalionGame(
             error("SDL_Init failed: ${SDL.error()}")
         }
 
+        // High-pixel-density window: on Retina (2x) displays SDL then renders into a backing
+        // at the display's native pixel scale, which [applyRenderScale] compensates for. Without
+        // this, SDL would render a 1x backing that macOS upscales to the Retina grid with
+        // smoothing — the residual blur that per-texture NEAREST sampling cannot fix.
         window = SDL.createWindow(
             title = "BattalionX",
             width = BattalionRenderer.WINDOW_W,
             height = BattalionRenderer.WINDOW_H,
+            flags = SDLWindowFlags.HIGH_PIXEL_DENSITY,
         )
         renderer = SDL.createRenderer(window)
+        applyRenderScale()
         text = TextRenderer(renderer)
         text.load()
 
@@ -138,9 +121,15 @@ class BattalionGame(
                 // stage, so switch the window to that size while the menu is shown and restore
                 // the game size afterwards.
                 window.size = cn.enaium.sdl.SDLPoint(700, 600)
+                applyRenderScale()
+                // Menu BGM (the original MainMenu loops UIWAV on the "background" channel).
+                // The in-match START_TURN handler switches to the faction loop when the game
+                // starts; this call switches back when the match ends and we return here.
+                audio.startMenuMusic()
                 val start = StartScreen(assetsDir, renderer, text, textures)
                 val selection = start.run()
                 window.size = cn.enaium.sdl.SDLPoint(BattalionRenderer.WINDOW_W, BattalionRenderer.WINDOW_H)
+                applyRenderScale()
                 if (selection.quit) break
                 mission = selection.missionIndex
                 if (selection.bootcampIndex != null) {
@@ -157,6 +146,19 @@ class BattalionGame(
                 bootcamp -> GameLoader.loadBootcampMission(assetsDir, mission ?: 0)
                 else -> GameLoader.loadCampaignMission(assetsDir, mission ?: 0)
             }
+            // The GameManager constructor clears the whole trigger event bus, including the
+            // audio listeners load() registered — subscribe per match, only now that the bus
+            // is stable, so START_TURN starts the BGM and unit actions play their SFX.
+            audio.subscribe()
+            // Turn-intro animation: fires on EVERY controller's turn (the player's AND the
+            // AI's), with that faction's own colour — the original StartTurnAction creates
+            // StartTurnAnimation for the active controller each turn.
+            TriggerManager.addListener(PlayerTrigger.START_TURN) { trigger ->
+                val pt = trigger as? PlayerTrigger ?: return@addListener
+                val g = game ?: return@addListener
+                val team = g.getController(pt.player)?.team ?: return@addListener
+                render?.showPlayerIntro(team.teamName.ifEmpty { team.name })
+            }
             render = BattalionRenderer(game!!, text, renderer, textures)
             render!!.setupTextures()
             game!!.startGame()
@@ -167,7 +169,9 @@ class BattalionGame(
             dialogue = Dialogue(game!!.map.getScript())
             render!!.dialogue = dialogue
             dialogue!!.play("startGame")
-            onDialogueShown()
+
+            // Route mid-game script responses (chat / highlight / scroll) to visible feedback.
+            installScriptFeedback()
 
             lastTick = SDL.getTicks().toLong()
             gameLoop()
@@ -177,6 +181,50 @@ class BattalionGame(
         }
 
         text.close(); audio.close(); textures.close(); renderer.close(); window.close(); SDL.quit()
+    }
+
+    /**
+     * Keeps the renderer's output scale in sync with the window's backing pixel ratio.
+     *
+     * With a high-pixel-density window the drawable is [window.sizeInPixels] (e.g. 2× the
+     * logical size on a Retina display). All game drawing uses logical coordinates
+     * ([BattalionRenderer.WINDOW_W]×…), so the renderer must be scaled by exactly the backing
+     * ratio — an integer 2× upscale that keeps pixel-art textures crisp (NEAREST sampling)
+     * instead of the OS compositor's smoothed fractional upscale. Call again after every
+     * [SDLWindow.size] change (the menu runs at a different size than the game).
+     */
+    private fun applyRenderScale() {
+        val size = window.size
+        if (size.x <= 0 || size.y <= 0) return
+        val px = window.sizeInPixels
+        renderer.scale = cn.enaium.sdl.SDLFloatPoint(
+            px.x.toFloat() / size.x,
+            px.y.toFloat() / size.y,
+        )
+    }
+
+    /**
+     * Surfaces scripted `chat` / `highlight` / `scroll` responses (from map `<script>` events)
+     * as visible in-game feedback. Chat is shown in the recon bar; highlights are announced the
+     * same way; scroll moves the camera to the given tile.
+     */
+    private fun installScriptFeedback() {
+        val human = human()
+        cn.enaium.battalion.game.responses.ResponseDisplay.hook =
+            object : cn.enaium.battalion.game.responses.ResponseDisplay.Hook {
+                override fun showChat(sender: String, message: String, avatar: String, color: Int) {
+                    setBuildMessage("$sender: $message")
+                }
+                override fun highlightTile(x: Int, y: Int, show: Boolean, updateCamera: Boolean) {
+                    setBuildMessage(if (show) "Direct your attention to ($x, $y)" else "")
+                    if (show && updateCamera) {
+                        render?.centerCameraOn(x, y)
+                    }
+                }
+                override fun scrollTo(x: Int, y: Int) {
+                    render?.centerCameraOn(x, y)
+                }
+            }
     }
 
     /**
@@ -293,6 +341,12 @@ class BattalionGame(
     private fun onMouseDown(button: Int, sx: Int, sy: Int) {
         val g = game ?: return
 
+        // Build page is modal: it swallows every click while open (unit card, back, WM arrows).
+        if ((g.activeController as? HumanController)?.isBuildMenuFocused() == true) {
+            if (button == 1) handleBuildPageClick(sx, sy)
+            return
+        }
+
         // Panel buttons: record the press (the action fires on release).
         if (button == 1) {
             val btn = render?.panelButtonAt(sx, sy)
@@ -303,6 +357,28 @@ class BattalionGame(
         }
 
         val human = human() ?: return
+
+        // Floating unit action menu: clicking the "more options" marker above the selected unit
+        // toggles the action bar; clicking an action in the open bar dispatches it. These take
+        // priority over map clicks so the bar is not occluded by tile selection.
+        if (button == 1) {
+            if (render?.unitOptionsButtonAt(sx, sy) == true) {
+                human.toggleUnitOptions()
+                return
+            }
+            val action = render?.unitMenuActionAt(sx, sy)
+            if (action != null) {
+                handleUnitMenuAction(human, action)
+                return
+            }
+        }
+
+        // While the floating action menu is open, every map click is swallowed: the player
+        // must pick an action (or close the menu) before they can move / attack / reselect.
+        // The menu is a modal for the selected unit's actions — map interactions must not fire
+        // under it even though the move/attack preview textures are hidden.
+        if (human.unitOptionsOpen) return
+
         val (tx, ty) = tileFromScreen(sx, sy) ?: return
         val tile = g.tileAt(tx, ty) ?: return
 
@@ -366,13 +442,92 @@ class BattalionGame(
         // 4. Select a friendly factory (for building).
         if (tile.hasStructure && tile.controller === g.activeController) {
             human.selectUnit(null)
-            // Selecting a factory: store it through the selected-unit slot is not possible,
-            // so we just clear the selection and let the player press B while hovering.
+            human.setBuildFocus(tx, ty)
             setBuildMessage("Press B to build here")
             return
         }
 
         human.selectUnit(null)
+    }
+
+    /** Executes a clicked floating unit-menu action. */
+    private fun handleUnitMenuAction(human: HumanController, action: BattalionRenderer.UnitMenuAction) {
+        val unit = human.selectedUnit ?: return
+        when (action) {
+            BattalionRenderer.UnitMenuAction.ALBATROSS -> {
+                human.dispatchUpgradeTransport(unit, "Albatross Transport")
+                human.closeUnitOptions()
+            }
+            BattalionRenderer.UnitMenuAction.LEVIATHAN -> {
+                human.dispatchUpgradeTransport(unit, "Leviathan Barge")
+                human.closeUnitOptions()
+            }
+            BattalionRenderer.UnitMenuAction.UNLOAD -> {
+                human.dispatchUnload()
+                human.closeUnitOptions()
+            }
+            BattalionRenderer.UnitMenuAction.BUILD -> {
+                human.closeUnitOptions()
+                if (human.openBuildMenu()) updateBuildMenuMessage(human) else setBuildMessage("Nothing buildable here")
+            }
+            BattalionRenderer.UnitMenuAction.EXTRACT -> {
+                human.dispatchExtract(unit.x, unit.y)
+                human.closeUnitOptions()
+            }
+            BattalionRenderer.UnitMenuAction.REPAIR -> {
+                human.dispatchRepair()
+                human.closeUnitOptions()
+            }
+            BattalionRenderer.UnitMenuAction.CANCEL -> {
+                human.closeUnitOptions()
+                human.selectUnit(null)
+            }
+        }
+    }
+
+    /**
+     * Routes a click on the open build page: a buildable-unit card, the Back button, or (in the
+     * WM direction phase) a cardinal arrow or the cancel/back button.
+     */
+    private fun handleBuildPageClick(sx: Int, sy: Int) {
+        val human = human() ?: return
+        val render = render ?: return
+        val menu = human.buildMenu ?: return
+
+        when (menu.phase) {
+            HumanController.BuildPhase.WM_DIRECTION -> {
+                val dir = render.buildDirectionAt(sx, sy)
+                when (dir) {
+                    "left", "right", "up", "down" -> human.chooseWarmachineDirection(dir)
+                    "cancel" -> human.backBuildMenuToUnits()
+                    null -> {
+                        // Back button on the page also returns to units.
+                        if (render.buildCancelAt()?.hit(sx, sy) == true) human.backBuildMenuToUnits()
+                    }
+                }
+                return
+            }
+            HumanController.BuildPhase.UNITS -> {
+                // Back (cancel) button closes the whole build page.
+                if (render.buildBackAt()?.hit(sx, sy) == true) {
+                    human.cancelBuild()
+                    return
+                }
+                // A buildable-unit card: select it, then act on it. A factory build completes
+                // immediately; a WM build advances to the direction picker (one click each,
+                // mirroring the SWF BuildMenuUnit.clickHandler → menu.complete).
+                val idx = render.buildUnitIndexAt(sx, sy)
+                if (idx >= 0) {
+                    human.cycleBuildUnit(idx - menu.index)
+                    // Only a card that is both buildable here AND affordable can be clicked
+                    // (the SWF BuildMenuUnit only installs a click handler for available,
+                    // affordable units); unavailable / unaffordable cards just focus.
+                    if (human.canBuildHere(menu.units[idx]) && human.canAffordBuild(menu.units[idx])) {
+                        human.confirmBuild()
+                    }
+                }
+            }
+        }
     }
 
     /** Executes the action of a clicked right-panel button (fires on mouse release). */
@@ -445,6 +600,44 @@ class BattalionGame(
         val g = game ?: return
         val human = human() ?: return
 
+        // A build menu is open: intercept navigation / confirm / cancel keys.
+        val menu = human.buildMenu
+        if (menu != null) {
+            when (keycode) {
+                SDLKeycode.LEFT, SDLKeycode.A -> {
+                    if (menu.phase == HumanController.BuildPhase.WM_DIRECTION) {
+                        if (human.chooseWarmachineDirection("left")) setBuildMenuBuilt()
+                    } else { human.cycleBuildUnit(-1); updateBuildMenuMessage(human) }
+                }
+                SDLKeycode.RIGHT, SDLKeycode.D -> {
+                    if (menu.phase == HumanController.BuildPhase.WM_DIRECTION) {
+                        if (human.chooseWarmachineDirection("right")) setBuildMenuBuilt()
+                    } else { human.cycleBuildUnit(1); updateBuildMenuMessage(human) }
+                }
+                SDLKeycode.UP, SDLKeycode.W -> {
+                    if (menu.phase == HumanController.BuildPhase.WM_DIRECTION) {
+                        if (human.chooseWarmachineDirection("up")) setBuildMenuBuilt()
+                    } else { human.cycleBuildUnit(-1); updateBuildMenuMessage(human) }
+                }
+                SDLKeycode.DOWN, SDLKeycode.S -> {
+                    if (menu.phase == HumanController.BuildPhase.WM_DIRECTION) {
+                        if (human.chooseWarmachineDirection("down")) setBuildMenuBuilt()
+                    } else { human.cycleBuildUnit(1); updateBuildMenuMessage(human) }
+                }
+                SDLKeycode.RETURN -> if (human.confirmBuild()) setBuildMenuBuilt()
+                SDLKeycode.ESCAPE, SDLKeycode.B -> {
+                    // Esc first returns from the direction picker to the unit page, then closes.
+                    if (menu.phase == HumanController.BuildPhase.WM_DIRECTION) {
+                        human.backBuildMenuToUnits()
+                    } else {
+                        human.cancelBuild()
+                    }
+                }
+                else -> Unit
+            }
+            return
+        }
+
         when (keycode) {
             SDLKeycode.ESCAPE -> {
                 if (g.gameOver) { inMatch = false; return }
@@ -456,7 +649,13 @@ class BattalionGame(
                 val unit = human.selectedUnit ?: return
                 human.dispatchExtract(unit.x, unit.y)
             }
-            SDLKeycode.B -> tryBuild(human)
+            SDLKeycode.B -> {
+                if (human.openBuildMenu()) {
+                    updateBuildMenuMessage(human)
+                } else {
+                    setBuildMessage("Nothing buildable here")
+                }
+            }
             SDLKeycode.R -> human.dispatchRepair()
             SDLKeycode.U -> human.dispatchUnload()
 
@@ -470,40 +669,15 @@ class BattalionGame(
         }
     }
 
-    /** Builds a unit on the currently selected factory tile, if any. */
-    private fun tryBuild(human: HumanController) {
-        val g = game ?: return
-        val selected = human.selectedUnit
-        // Build target: the selected unit's tile if it is a factory we control.
-        val tile = if (selected != null) g.tileAt(selected.x, selected.y) else null
-        if (tile == null || !tile.hasStructure || tile.controller !== g.activeController) {
-            setBuildMessage("Select a factory first")
-            return
-        }
-        if (!tile.terrain.hasModifier("Construction")) {
-            setBuildMessage("This structure cannot build")
-            return
-        }
+    /** Shows the current build-menu selection in the bottom recon bar. */
+    private fun updateBuildMenuMessage(human: HumanController) {
+        val menu = human.buildMenu ?: return
+        val name = menu.current?.name ?: ""
+        setBuildMessage("Build ${menu.index + 1}/${menu.units.size}: $name (Left/Right pick, Enter build, Esc cancel)")
+    }
 
-        // Pick the first affordable, buildable unit for this controller.
-        val controller = g.activeController!!
-        val candidates = UnitManager.getAll()
-            .filter { !it.hasModifier("Unbuildable") }
-            .filter { controller.canAfford(it.name) }
-        val unit = candidates.firstOrNull { type ->
-            when {
-                type.isAir() -> controller.controlsAir()
-                type.isGround() -> controller.controlsGround()
-                type.isSea() -> controller.controlsSea()
-                else -> false
-            }
-        }
-        if (unit == null) {
-            setBuildMessage("Cannot afford any unit")
-            return
-        }
-
-        human.dispatchBuild(tile.x, tile.y, unit.name)
-        setBuildMessage("Built ${unit.name}")
+    /** Announces a successful build in the bottom recon bar. */
+    private fun setBuildMenuBuilt() {
+        setBuildMessage("Built ${(human()?.buildMenu?.current)?.name ?: "unit"}")
     }
 }

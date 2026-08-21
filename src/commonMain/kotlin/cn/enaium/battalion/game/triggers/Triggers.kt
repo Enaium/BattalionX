@@ -14,11 +14,19 @@ open class PlayerTrigger(name: String, val player: Int) : Trigger(name) {
     }
 }
 
-/** Fired once per frame with how many milliseconds have elapsed. */
-class TimePassedTrigger(val ms: Long) : Trigger("timePassed")
+/** Fired regularly with how many milliseconds have elapsed. */
+class TimePassedTrigger(val ms: Long) : Trigger(NAME) {
+    companion object {
+        const val NAME = "timePassed"
+    }
+}
 
 /** A unit finished moving along [path]. */
-class MoveUnitTrigger(val unit: Unit, val path: List<Tile>) : Trigger("moveUnit")
+class MoveUnitTrigger(val unit: Unit, val path: List<Tile>) : Trigger(NAME) {
+    companion object {
+        const val NAME = "moveUnit"
+    }
+}
 
 /** A unit attacked another unit. */
 class AttackUnitTrigger(
@@ -34,6 +42,19 @@ class AttackUnitTrigger(
     }
 }
 
+/**
+ * A unit began its firing animation (the muzzle-flash moment).
+ *
+ * The weapon sound fires on this trigger, not on the later [AttackUnitTrigger]: the original
+ * queues `fireAttackerSound` as the FIRST sequential tween, i.e. simultaneously with the
+ * muzzle flash, while impact damage/explosion lands after the animation completes.
+ */
+class AttackStartTrigger(val unit: Unit) : Trigger(NAME) {
+    companion object {
+        const val NAME = "attackStart"
+    }
+}
+
 /** A unit was destroyed. */
 class KillUnitTrigger(val unitX: Int, val unitY: Int, val unit: Unit) : Trigger(NAME) {
     companion object {
@@ -42,7 +63,11 @@ class KillUnitTrigger(val unitX: Int, val unitY: Int, val unit: Unit) : Trigger(
 }
 
 /** A unit was built by a constructor. */
-class BuildUnitTrigger(val unit: Unit) : Trigger("buildUnit")
+class BuildUnitTrigger(val unit: Unit) : Trigger(NAME) {
+    companion object {
+        const val NAME = "buildUnit"
+    }
+}
 
 /**
  * A structure capture progressed or completed.
@@ -67,7 +92,11 @@ class UpgradeUnitTrigger(val unit: Unit, val upgradeName: String, val upgrade: B
 class RepairUnitTrigger(val unit: Unit) : Trigger("repairUnit")
 
 /** A controller acquired [resources] from its structures. */
-class ResourcesAcquiredTrigger(val player: Int, val resources: Int) : Trigger("resourcesAcquired")
+class ResourcesAcquiredTrigger(val player: Int, val resources: Int) : Trigger(NAME) {
+    companion object {
+        const val NAME = "resourcesAcquired"
+    }
+}
 
 /** A unit extracted resources from an ore deposit. */
 class ExtractResourcesTrigger(val unit: Unit) : Trigger("extractUnit")

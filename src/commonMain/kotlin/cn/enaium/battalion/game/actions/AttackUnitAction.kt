@@ -5,6 +5,7 @@ import cn.enaium.battalion.data.Unit
 import cn.enaium.battalion.game.Action
 import cn.enaium.battalion.game.GameManager
 import cn.enaium.battalion.game.TriggerManager
+import cn.enaium.battalion.game.triggers.AttackStartTrigger
 import cn.enaium.battalion.game.triggers.AttackUnitTrigger
 import cn.enaium.battalion.game.triggers.KillUnitTrigger
 import cn.enaium.battalion.data.MoraleChangeAmounts
@@ -58,6 +59,10 @@ class AttackUnitAction(
             attacker.facing = facingFor(attacker.x, attacker.y, targetX, targetY)
             attacker.animFacing = attacker.facing
             attacker.startAnim(Unit.UnitAnim.FIRE)
+            // Muzzle-flash moment: the weapon sound plays NOW, simultaneous with the flash
+            // (the original queues fireAttackerSound as its first tween). The impact
+            // AttackUnitTrigger only fires after the animation has played.
+            TriggerManager.add(AttackStartTrigger(attacker))
         }
         animStartMs = GameManager.instance.elapsedMs
         resolved = false
@@ -90,6 +95,8 @@ class AttackUnitAction(
         target.facing = facingFor(target.x, target.y, attackerX, attackerY)
         target.animFacing = target.facing
         target.startAnim(Unit.UnitAnim.FIRE)
+        // Counterattacker's muzzle flash: its weapon sound fires alongside the animation.
+        TriggerManager.add(AttackStartTrigger(target))
         counterFiring = true
         counterStartMs = gameManager.elapsedMs
     }

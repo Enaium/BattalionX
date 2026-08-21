@@ -1,17 +1,145 @@
 package cn.enaium.battalion.game
 
+import cn.enaium.battalion.data.GameMap
 import cn.enaium.battalion.util.XmlNode
 
 /**
- * Parses and executes the map's script XML, which defines triggers, events, and conditions.
- * In the full port this would set up game events (player triggers, time triggers, etc.).
- * For now it's a stub — the game logic works without scripted events.
+ * Parses and executes the map's `<script>` XML: `<gamestate>`/`<resources>`/`<unit>`/
+ * `<structure>` rehydration and, crucially, the `<event>` definitions (a set of
+ * [Condition]s + [Response]s) that drive campaign and tutorial scripting.
+ *
+ * The original `ScriptManager.as` is a singleton initialised once per the whole app; since the
+ * map script is per-game, the port exposes [parseScript] (called from [GameManager]'s init) and
+ * keeps the parsed event set in the [GameEventManager].
  */
 object ScriptManager {
-    fun parseScript(scriptNode: XmlNode) {
-        // TODO: Parse script XML and register triggers
-        // The original ScriptManager.as registers various conditions and actions
-        // For now, we just log that a script was parsed
-        println("ScriptManager: parsed script (stub)")
+
+    /** The script XML of the currently-loaded map, used by [ScriptManager.getScript]. */
+    private var script: XmlNode? = null
+
+    /**
+     * Parses [aXml] (the map `<script>` node): rehydrates game state, then registers every
+     * `<event>` on the [GameEventManager] so its conditions evaluate during [GameManager.update].
+     */
+    fun parseScript(aXml: XmlNode?) {
+        script = aXml ?: return
+        val game = GameManager.instance
+        if (aXml == null) return
+
+        // --- Optional rehydration nodes (resume saves / authored state) --------------------
+        applyGamestate(aXml.children("gamestate"), game)
+        applyResources(aXml.children("resources"), game)
+        applyUnits(aXml.children("unit"), game)
+        applyStructures(aXml.children("structure"), game)
+        applyStructureResources(aXml.children("structureresources"), game)
+        applyDisableAllUnits(aXml.children("disableAllUnits"), game)
+        applyEnableUnits(aXml.children("enableUnit"), game)
+
+        // --- Event definitions: <event><condition .../><response .../>...</event> ----------
+        for (eventNode in aXml.children("event")) {
+            val event = eventFromXml(eventNode)
+            if (event != null) {
+                game.gameEventManager.add(event)
+            }
+        }
+    }
+
+    /** Returns the currently-parsed script XML (the map's <script> node). */
+    fun getScript(): XmlNode? = script
+
+    private fun eventFromXml(node: XmlNode): GameEvent? {
+        val repeatsString = node.attr("repeats")
+        val repeats = when {
+            repeatsString.isEmpty() -> GameEvent.REPEAT_ONCE
+            repeatsString.lowercase().startsWith("i") -> GameEvent.REPEAT_FOREVER
+            else -> repeatsString.toIntOrNull() ?: GameEvent.REPEAT_ONCE
+        }
+        val event = GameEvent(repeats)
+        for (conditionNode in node.children("condition")) {
+            val c = ConditionFactory.get(conditionNode)
+            event.addCondition(c)
+        }
+        for (responseNode in node.children("response")) {
+            event.addResponse(ResponseFactory.get(responseNode))
+        }
+        return event
+    }
+
+    // ---- Rehydration helpers -------------------------------------------------------------
+
+    private fun applyGamestate(rows: List<XmlNode>, game: GameManager) {
+        for (gs in rows) {
+            gs.attr("turn").toIntOrNull()?.let { game.turn = it }
+            gs.attr("round").toIntOrNull()?.let { game.round = it }
+            gs.attr("controller").toIntOrNull()?.let { game.currentController = it }
+        }
+    }
+
+    private fun applyResources(rows: List<XmlNode>, game: GameManager) {
+        for (r in rows) {
+            val controller = r.attr("controller").toIntOrNull()?.let { game.getController(it) } ?: continue
+            controller.addResources(r.attr("value").toIntOrNull() ?: 0)
+        }
+    }
+
+    private fun applyUnits(rows: List<XmlNode>, game: GameManager) {
+        for (unitNode in rows) {
+            val controller = unitNode.attr("controller").toIntOrNull()?.let { game.getController(it) } ?: continue
+            val name = unitNode.attr("name")
+            val data = cn.enaium.battalion.data.UnitManager.get(name) ?: continue
+            val x = unitNode.attr("x").toIntOrNull() ?: 0
+            val y = unitNode.attr("y").toIntOrNull() ?: 0
+            val unit = cn.enaium.battalion.data.Unit(data, x, y, controller)
+            unit.deployed = true
+            val status = unitNode.child("status")
+            unit.moved = status?.attr("moved")?.startsWith("t") == true
+            unit.fired = status?.attr("fired")?.startsWith("t") == true
+            unit.cloaked = status?.attr("cloaked")?.startsWith("t") == true
+            unit.repairing = status?.attr("repairing")?.startsWith("t") == true
+            unitNode.child("health")?.attr("value")?.toDoubleOrNull()?.let { unit.setHealth(it) }
+            // Constructor resource pool rehydration.
+            unitNode.child("resourcePool")?.attr("value")?.toIntOrNull()?.let {
+                unit.resourcePool = if (unit.unitData.hasModifier("Constructor")) it + 2000 else it
+            }
+            game.addUnit(controller, unit)
+            game.tileMap[y][x].unit = unit
+        }
+    }
+
+    private fun applyStructures(rows: List<XmlNode>, game: GameManager) {
+        for (structNode in rows) {
+            val controller = structNode.attr("controller").toIntOrNull()?.let { game.getController(it) }
+            val x = structNode.attr("x").toIntOrNull() ?: 0
+            val y = structNode.attr("y").toIntOrNull() ?: 0
+            val tile = game.tileAt(x, y) ?: continue
+            val terrain = cn.enaium.battalion.data.TileManager.get(structNode.attr("name")) ?: continue
+            if (!tile.hasStructure) {
+                tile.upgrade(terrain, controller)
+            } else {
+                tile.terrain = terrain
+                tile.controller = controller
+            }
+            structNode.attr("chunks").toIntOrNull()?.let { tile.chunks = it }
+            game.addStructure(controller, tile)
+        }
+    }
+
+    private fun applyStructureResources(rows: List<XmlNode>, game: GameManager) {
+        for (sr in rows) {
+            val tile = game.tileAt(sr.attr("x").toIntOrNull() ?: -1, sr.attr("y").toIntOrNull() ?: -1) ?: continue
+            tile.resources = sr.attr("value").toIntOrNull() ?: 0
+        }
+    }
+
+    private fun applyDisableAllUnits(rows: List<XmlNode>, game: GameManager) {
+        for (d in rows) {
+            game.getController(d.attr("controller").toIntOrNull() ?: 0)?.disableAllUnits()
+        }
+    }
+
+    private fun applyEnableUnits(rows: List<XmlNode>, game: GameManager) {
+        for (e in rows) {
+            game.getController(e.attr("controller").toIntOrNull() ?: 0)?.enableUnit(e.attr("unit"))
+        }
     }
 }

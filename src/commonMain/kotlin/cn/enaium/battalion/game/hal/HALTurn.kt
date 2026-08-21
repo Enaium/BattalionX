@@ -276,8 +276,8 @@ class HALTurn(private val hal: HAL) {
                 if (target.controller === unit.controller || unit.controller?.isAllied(target.controller) == true) continue
                 if (target.isCloaked()) continue
                 if (!game.canWeaponsFireAtTarget(unit, target, true, tile.x, tile.y)) continue
-                val dist = Math.abs(tile.x - target.x) + Math.abs(tile.y - target.y)
-                if (dist < bestDist) {
+                val dist = kotlin.math.abs(tile.x - target.x) + kotlin.math.abs(tile.y - target.y)
+                if (dist.toDouble() < bestDist) {
                     bestDist = dist.toDouble()
                     bestTile = tile
                 }

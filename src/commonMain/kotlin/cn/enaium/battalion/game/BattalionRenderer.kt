@@ -284,6 +284,9 @@ class BattalionRenderer(
     private fun updateHoverPath() {
         hoverPath = emptyList()
         val human = game.activeController as? HumanController ?: return
+        // The move/attack hover preview is part of the "mode" that is dismissed while the
+        // floating action menu is open — don't recompute the path under the open bar.
+        if (human.unitOptionsOpen) return
         val unit = human.selectedUnit ?: return
         if (!unit.isAvailable() || !unit.canMove() || unit.isMoving) return
         if (!unit.isDeployed()) return
@@ -378,19 +381,37 @@ class BattalionRenderer(
     /**
      * Blinking "AI thinking" badge (175_ai_thinking_ai_thinking.png, 60×43) at the top-left
      * of the map while the current turn belongs to an AI controller.
+     *
+     * The blink is a four-phase cycle (visible → transparent → gone → reappear) instead of a
+     * hard on/off cut: the badge holds at full opacity, fades out to invisible over 600ms,
+     * stays gone, then fades back in — the "有 → 透明 → 消失" fade the user asked for.
      */
     private fun drawAIThinking() {
         if (game.activeController !is HALController) return
-        // Blink slowly (~0.6Hz: on for 800ms, off for 800ms).
-        val phase = (game.elapsedMs / 800L) % 2L
-        if (phase == 0L) return
         val tex = textures.texture("ai_thinking") ?: return
+        // Cycle: 0-800ms hold at full, 800-1400ms fade 1→0, 1400-2000ms gone, 2000-2400ms
+        // fade 0→1 (so the loop re-enters the hold phase smoothly).
+        val cycleMs = 2400L
+        val t = game.elapsedMs % cycleMs
+        val alpha = when {
+            t < 800L -> 1f
+            t < 1400L -> 1f - (t - 800L).toFloat() / 600f
+            t < 2000L -> 0f
+            else -> (t - 2000L).toFloat() / 400f
+        }
+        if (alpha <= 0f) return
         val w = 60
         val h = 43
-        renderer.renderTexture(
-            tex,
-            dst = SDLFRect((MAP_X + 4).toFloat(), (MAP_Y + 4).toFloat(), w.toFloat(), h.toFloat()),
-        )
+        val prevAlpha = tex.alphaMod
+        try {
+            tex.alphaMod = (255 * alpha.coerceIn(0f, 1f)).toInt()
+            renderer.renderTexture(
+                tex,
+                dst = SDLFRect((MAP_X + 4).toFloat(), (MAP_Y + 4).toFloat(), w.toFloat(), h.toFloat()),
+            )
+        } finally {
+            tex.alphaMod = prevAlpha  // shared cached texture — restore for other draws
+        }
     }
 
     /** Compass direction (0=N,1=E,2=S,3=W) of the step [from]→[to]. */
@@ -572,6 +593,13 @@ class BattalionRenderer(
         clampCamera()
     }
 
+    /** Centres the camera viewport on tile ([tileX], [tileY]) and clamps it to the map. */
+    fun centerCameraOn(tileX: Int, tileY: Int) {
+        cameraX = tileX - VIEW_COLS / 2
+        cameraY = tileY - VIEW_ROWS / 2
+        clampCamera()
+    }
+
     /** Screen x for a map column, accounting for the camera offset. */
     private fun screenX(col: Int): Int = MAP_X + (col - cameraX) * TileManager.TILE_WIDTH
 
@@ -655,17 +683,30 @@ class BattalionRenderer(
     private fun unitColor(unit: Unit): SDLColor = teamColor(unit.controller?.team)
 
     /** Maps a unit type name to its sprite-index key (the exported sprite's embedded name). */
-    private fun spriteKeyForUnit(unit: Unit): String {
+    /** Debug hook (used by the shot diagnostic): resolves a unit's sprite key by name. */
+    fun debugSpriteKeyFor(name: String, sprite: String): String = spriteKeyForUnitData(name, sprite)
+
+    private fun spriteKeyForUnit(unit: Unit): String =
+        spriteKeyForUnitData(unit.unitData.name, unit.unitData.sprite)
+
+    /**
+     * Maps a unit type name (+ its XML sprite name) to the exported sprite-index key, with the
+     * explicit fallback table (source: _assets/3316.bin tilesheet definitions). Used by both
+     * the on-map unit rendering and the build-page thumbnails (the SWF `BuildMenuUnit` resolves
+     * its graphic by unit *name* via `TileSheetManager.getPalettized`, so names whose XML sprite
+     * is not directly indexed need this table to render a thumbnail).
+     */
+    private fun spriteKeyForUnitData(name: String, sprite: String): String {
         // Prefer the unit's own registered sprite name from its XML (`<sprite value="Warmachine"/>`).
         // The TextureManager indexes images by the repeated lowercase name in their filename
         // (e.g. "Warmachine" -> "warmachine"), so we lowercase + strip spaces for the lookup.
-        val key = unit.unitData.sprite
+        val key = sprite
             .lowercase()
             .replace(" ", "")
             .replace("-", "")
         if (textures.pathFor(key) != null || textures.textureSize(key) != null) return key
         // Fall back to the explicit complete table (source: _assets/3316.bin tilesheet definitions).
-        return when (unit.unitData.name) {
+        return when (name) {
             "Warmachine" -> "warmachine"
             "Jammer Truck" -> "jammer"
             "Lancer Tank" -> "lancer"
@@ -864,6 +905,10 @@ class BattalionRenderer(
         updateDialogueAnimation(dialogue)
         drawMap()
 
+        // Floating unit action menu: the "more options" button above the selected unit and,
+        // when opened, the build / extract / repair / unload / cancel action bar.
+        drawUnitOptions()
+
         // AI-turn indicator: blinking "AI thinking" badge at the top-left of the map.
         drawAIThinking()
 
@@ -883,6 +928,10 @@ class BattalionRenderer(
         if (dia != null && (dia.isActive() || diaSlidingIn || diaSlidingOut)) drawDialogue(dia)
 
         if (game.gameOver) drawGameOverOverlay()
+
+        // Build page is modal and covers the whole window, so it draws above everything
+        // (map, side panel, recon strip) while open.
+        if ((game.activeController as? HumanController)?.buildMenu != null) drawBuildPage()
 
         renderer.present()
     }
@@ -971,8 +1020,12 @@ class BattalionRenderer(
         //
         // The range markers use the game's own sprite assets (select/selectRed/attackTargets)
         // exactly like the original human controller draws them, instead of vector rectangles.
-        val selected = (game.activeController as? HumanController)?.selectedUnit
-        if (selected != null && selected.controller === game.activeController && selected.isAvailable()) {
+        val humanCtrl = game.activeController as? HumanController
+        // While the floating action menu is open the move/attack "mode" overlays are dismissed:
+        // the range highlight, hover-path preview and cursor mode marker all hide behind the bar.
+        val activeMode = humanCtrl != null && !humanCtrl.unitOptionsOpen
+        val selected = humanCtrl?.selectedUnit
+        if (selected != null && selected.controller === game.activeController && selected.isAvailable() && activeMode) {
             // Green "select" markers on every tile the unit can walk to this turn.
             for (tile in game.tilesInMoveRange(selected)) {
                 if (tile.x < cameraX || tile.x >= cameraX + VIEW_COLS) continue
@@ -986,7 +1039,7 @@ class BattalionRenderer(
         }
 
         // Move-path preview for the hovered tile (the path a click would walk).
-        if (hoverPath.isNotEmpty()) drawHoverPath()
+        if (activeMode && hoverPath.isNotEmpty()) drawHoverPath()
 
         // Structures.
         for (row in fromRow until toRow) {
@@ -1004,7 +1057,7 @@ class BattalionRenderer(
 
         // Attackable-target markers are drawn ABOVE the unit sprites so the target frame is
         // not hidden behind the vehicle's art.
-        if (selected != null && selected.controller === game.activeController && selected.isAvailable()) {
+        if (selected != null && selected.controller === game.activeController && selected.isAvailable() && activeMode) {
             for (target in game.unitsAttackableThisTurn(selected)) {
                 if (target.x < cameraX || target.x >= cameraX + VIEW_COLS) continue
                 if (target.y < cameraY || target.y >= cameraY + VIEW_ROWS) continue
@@ -1030,9 +1083,18 @@ class BattalionRenderer(
         // firing sprite sits above the target vehicle's art (like the original TOP layer).
         drawFiringOverlays()
 
+        // Health bars are the VERY top unit overlay: drawn after the firing sprites so an
+        // attack animation (a 144px sheet covering the attacker + target tiles) can never hide
+        // a unit's health.
+        for (unit in game.units) {
+            if (!unit.isDeployed()) continue
+            if (unit.x in fromCol until toCol && unit.y in fromRow until toRow) drawUnitHealthBar(unit)
+        }
+
         // Cursor mode marker (move / attack) beside the cursor — drawn above units and the
-        // attackable-target frames so it is never hidden behind the sprites.
-        drawCursorMarker()
+        // attackable-target frames so it is never hidden behind the sprites. Supressed while
+        // the floating action menu is open so the move/attack mode is dismissed.
+        if (activeMode) drawCursorMarker()
 
         // Explosion effects float above the units.
         drawExplosions()
@@ -1054,6 +1116,654 @@ class BattalionRenderer(
 
     /** Cache of the small range-marker textures (select / selectRed / attackTargets / marker2). */
     private val markers = mutableMapOf<String, SDLTexture?>()
+
+    /**
+     * Draws the floating action menu for the selected human unit: a small `unitOptionsButton`
+     * (the "more options" marker) above the unit, and — when opened — the action bar of
+     * per-unit buttons derived from [HumanController.raceUnitOptions]. Hit rects are recorded
+     * so [BattalionGame] can route clicks.
+     */
+    private fun drawUnitOptions() {
+        unitMenuHits = emptyList()
+        unitOptionsButtonHit = null
+        val human = game.activeController as? HumanController ?: return
+        // The build page is open (modal): the floating unit action bar hides behind it.
+        if (human.buildMenu != null) return
+        val unit = human.selectedUnit ?: return
+        if (unit.controller !== game.activeController) return
+        if (!unit.isDeployed()) return
+
+        // Only a unit that can still act this turn shows the marker / menu. Once it has moved,
+        // fired or become otherwise unavailable the exclamation and any open menu disappear.
+        if (!unit.isAvailable()) {
+            human.closeUnitOptions()
+            return
+        }
+
+        // While the unit is walking the floating markers disappear (the player may still be
+        // issuing the move, and the overlay would cover the path).
+        if (unit.isMoving) return
+
+        // Skip if off the visible viewport (no on-screen marker).
+        if (unit.x < cameraX || unit.x >= cameraX + VIEW_COLS) return
+        if (unit.y < cameraY || unit.y >= cameraY + VIEW_ROWS) return
+
+        val px = screenX(unit.x)
+        val py = screenY(unit.y)
+        val unitCX = px + TileManager.TILE_WIDTH / 2
+
+        // Threat indicators ("dangerIndicator") on enemy units that can attack the selected
+        // unit from its current position — frame 0 = bad threat, 1 = ok, 2 = good escape.
+        if (unit.isAvailable()) drawDangerIndicators(unit)
+
+        val mouse = SDL.mouseState
+        val mx = mouse.x.toInt()
+        val my = mouse.y.toInt()
+
+        if (!human.unitOptionsOpen) {
+            // The small "more options" marker above the unit. unitOptionsButton is a 96×24
+            // frame strip of four 24×24 states (0 disabled, 1 up, 2 over, 3 pressed) — draw
+            // only the resting "up" frame so a single icon appears instead of the whole strip.
+            val tex = textures.texture("unitOptionsButton") ?: return
+            val sheetW = textures.textureSize("unitOptionsButton")?.first ?: 96
+            val h = textures.textureSize("unitOptionsButton")?.second ?: 24
+            // One cell is the sheet height (24); the four states are stacked horizontally.
+            val frame = h
+            val x = (unitCX - frame / 2).coerceIn(0, maxOf(0, WINDOW_W - frame))
+            val y = (py - h - 5)
+            unitOptionsButtonHit = SDLRect(x, y, frame, h)
+            renderer.renderTexture(
+                tex,
+                src = SDLFRect(frame.toFloat(), 0f, frame.toFloat(), h.toFloat()),
+                dst = SDLFRect(x.toFloat(), y.toFloat(), frame.toFloat(), h.toFloat()),
+            )
+            return
+        }
+
+        // Menu open: build the action bar from the live unit options.
+        val options = human.raceUnitOptions(unit)
+        if (options.isEmpty()) { human.closeUnitOptions(); return }
+
+        // Per-sprite geometry (frame strips are 4 frames of equal width unless noted).
+        // Frame order (original TileSheetButton): 0 disabled, 1 up, 2 over, 3 pressed.
+        var cursor = 0
+        val geo = options.map { opt ->
+            val frameW = if (opt.sprite == "unitCancel") 18 else 36
+            val thisX = cursor
+            val thisW = frameW
+            cursor += frameW
+            Triple(opt, thisX, thisW)
+        }
+        // Centre the whole bar horizontally on the unit and place it just above the unit.
+        val barY = py - 29 - 5
+        val barX = (unitCX - cursor / 2).coerceIn(0, maxOf(0, WINDOW_W - cursor))
+
+        val hits = mutableListOf<UnitMenuHit>()
+        var hoverOption: cn.enaium.battalion.game.controllers.HumanController.UnitOption? = null
+        for ((opt, relX, frameW) in geo) {
+            val action = when (opt.sprite) {
+                "unitAlbatross" -> UnitMenuAction.ALBATROSS
+                "unitLeviathan" -> UnitMenuAction.LEVIATHAN
+                "unitUnload" -> UnitMenuAction.UNLOAD
+                "unitBuild" -> UnitMenuAction.BUILD
+                "unitExtract" -> UnitMenuAction.EXTRACT
+                "unitRepair" -> UnitMenuAction.REPAIR
+                else -> UnitMenuAction.CANCEL
+            }
+            val tex = textures.texture(opt.sprite)
+            val h = if (opt.sprite == "unitCancel") 15 else 29
+            val drawX = barX + relX
+            val hovered = opt.enabled && mx >= drawX && mx < drawX + frameW && my >= barY && my < barY + h
+            if (tex != null) {
+                val frameIdx = if (!opt.enabled) 0 else if (hovered) 2 else 1
+                val texH = (textures.textureSize(opt.sprite)?.second ?: h)
+                renderer.renderTexture(
+                    tex,
+                    src = SDLFRect((frameIdx * frameW).toFloat(), 0f, frameW.toFloat(), texH.toFloat()),
+                    dst = SDLFRect(drawX.toFloat(), barY.toFloat(), frameW.toFloat(), h.toFloat()),
+                )
+            }
+            hits.add(UnitMenuHit(action, opt.enabled, drawX, barY, frameW, h))
+            if (hovered) hoverOption = opt
+        }
+        unitMenuHits = hits
+
+        // Tooltip for the hovered action.
+        if (hoverOption != null) {
+            val tipW = maxOf(220, hoverOption.title.length * 7 + hoverOption.tooltip.length * 6 + 20)
+            val tipX = (unitCX - tipW / 2).coerceIn(0, maxOf(0, WINDOW_W - tipW))
+            val tipY = (barY - 40).coerceAtLeast(0)
+            renderer.drawColor = SDLColor(0, 0, 0, 200)
+            renderer.fillRect(SDLRect(tipX, tipY, tipW, 40))
+            text.draw(hoverOption.title, tipX + 8, tipY + 4, 13, SDLColor(255, 220, 120))
+            text.draw(hoverOption.tooltip, tipX + 8, tipY + 20, 11, SDLColor(230, 230, 235))
+        }
+    }
+
+    /**
+     * Draws the "danger indicator" over every enemy unit that can attack [unit] from its
+     * current position. Frame 0 = high threat, 1 = moderate, 2 = low (the selected unit can
+     * counter well). Mirrors the original `addCanAttackMyUnitIndicator`.
+     */
+    // ---------------------------------------------------------------------
+    // Build page (full-screen modal)
+    //
+    // Reproduces the original SWF `BuildMenu` / `WMBuildMenu`: a 700×600 overlay listing every
+    // unit the controller can build, split into Ground / Air / Sea columns, each card showing
+    // the unit's sprite, its burnable frame state (available / unaffordable / unavailable) and
+    // its cost. A resources readout sits at the top and a Back button at the top-right.
+    //
+    // Hovering (or keyboard-focusing) a card shows an InfoMenu-style right panel with the
+    // unit's name, description and stats. For a Warmachine constructor, choosing a unit
+    // advances to a second phase with cardinal direction arrows around the constructor to pick
+    // the adjacent tile to build onto — exactly like `WMBuildMenu`'s `drawPickDirectionUI`.
+    // ---------------------------------------------------------------------
+
+    /** Build-page hit test data (rebuilt every frame by [drawBuildPage]). */
+    class BuildHit(
+        val kind: BuildHitKind,
+        val index: Int,
+        val x: Int,
+        val y: Int,
+        val w: Int,
+        val h: Int,
+    ) {
+        fun hit(sx: Int, sy: Int): Boolean = sx >= x && sx < x + w && sy >= y && sy < y + h
+    }
+
+    /** Build-page button kinds. */
+    enum class BuildHitKind { UNIT, BACK, WM_LEFT, WM_RIGHT, WM_UP, WM_DOWN, WM_CANCEL }
+
+    /** Hit rects of the currently drawn build page (empty when closed). */
+    var buildHits: MutableList<BuildHit> = mutableListOf()
+
+    /**
+     * The [BuildHitKind.UNIT] card index (into the flat [BuildMenuState.units] list) under
+     * screen point (sx, sy), or -1 if none.
+     */
+    fun buildUnitIndexAt(sx: Int, sy: Int): Int =
+        buildHits.firstOrNull { it.hit(sx, sy) && it.kind == BuildHitKind.UNIT }?.index ?: -1
+
+    /** The build-page back button hit rect, or null if not drawn. */
+    fun buildBackAt(): BuildHit? = buildHits.firstOrNull { it.kind == BuildHitKind.BACK }
+
+    /** The WM direction arrow hit under (sx, sy), or null. */
+    fun buildDirectionAt(sx: Int, sy: Int): String? = buildHits.firstOrNull { it.hit(sx, sy) }?.let {
+        when (it.kind) {
+            BuildHitKind.WM_LEFT -> "left"
+            BuildHitKind.WM_RIGHT -> "right"
+            BuildHitKind.WM_UP -> "up"
+            BuildHitKind.WM_DOWN -> "down"
+            BuildHitKind.WM_CANCEL -> "cancel"
+            else -> null
+        }
+    }
+
+    /** The build-page cancel (WM back) hit, or null when not in the direction phase. */
+    fun buildCancelAt(): BuildHit? = buildHits.firstOrNull { it.kind == BuildHitKind.WM_CANCEL }
+
+    /**
+     * Draws the build page overlay and records its hit rects. No-op when the build menu is
+     * closed. Both phases (unit grid and WM direction picker) are drawn here.
+     */
+    private fun drawBuildPage() {
+        buildHits = mutableListOf()
+        val human = game.activeController as? HumanController ?: return
+        val menu = human.buildMenu ?: return
+
+        when (menu.phase) {
+            HumanController.BuildPhase.UNITS -> {
+                // Dim the window so the unit grid reads as a modal overlay. (The renderer
+                // ignores drawColor alpha, so this must stay an explicit opaque-ish fill —
+                // the build_background texture then covers it.)
+                renderer.drawColor = SDLColor(0, 0, 0, 200)
+                renderer.fillRect(SDLRect(0, 0, WINDOW_W, WINDOW_H))
+                drawBuildPageUnits(human, menu)
+            }
+            // The WM direction picker floats OVER the live map (SWF `drawPickDirectionUI`
+            // adds it to the scroller ABOVE_ALL) — no dark backdrop, the map stays visible.
+            HumanController.BuildPhase.WM_DIRECTION -> drawBuildPageDirection(human, menu)
+        }
+    }
+
+    /** The build page's backing background texture (700×600), scaled to fit the window. */
+    private fun buildPageBackground() {
+        val tex = textures.texture("build_background") ?: return
+        renderer.renderTexture(tex, dst = SDLFRect(0f, 0f, WINDOW_W.toFloat(), WINDOW_H.toFloat()))
+    }
+
+    /** Build-page layout constants (mirroring the SWF BuildMenu geometry). */
+    private val buildFrameW = 92
+    private val buildFrameH = 97
+    private val buildCardH = 125
+
+    /**
+     * The image name of the SWF build-card frame for the given purchase state:
+     *  - available       -> build_unitFrame_overlay        (white frame, clickable)
+     *  - unaffordable    -> build_unitFrame_unaffordable   (red "can't afford" frame)
+     *  - unavailable     -> build_unitFrame_unavailable    (dark, cannot build here)
+     */
+    private fun buildFrameSprite(canBuildHere: Boolean, canAfford: Boolean): String = when {
+        !canBuildHere -> "build_unitFrame_unavailable"
+        !canAfford -> "build_unitFrame_unaffordable"
+        else -> "build_unitFrame_overlay"
+    }
+
+    /**
+     * Draws the unit-selection page: the backdrop, column headers, a card per buildable unit
+     * in each of the Ground / Air / Sea columns, the resources readout, and the Back button.
+     */
+    private fun drawBuildPageUnits(
+        human: HumanController,
+        menu: HumanController.BuildMenuState,
+    ) {
+        buildPageBackground()
+
+        // Mouse position for hover state.
+        val mouse = SDL.mouseState
+        val mx = mouse.x.toInt()
+        val my = mouse.y.toInt()
+
+        // Column geometry (SWF BuildMenu): ground 3 cols @ x=10,98,186; air 1 col @ x=350;
+        // sea 2 cols @ x=500,598. Vertical start 196, row height 125.
+        val groundCols = 3
+        val horizSpacing = 98
+        val groundHOffset = 10
+        val airHOffset = 350
+        val seaHOffset = 500
+        val vertOffset = 196
+        val airUnitCols = 1
+        val seaUnitCols = 2
+
+        // A "header" label for each column drawn above the cards.
+        fun colHeader(x: Int, label: String) {
+            text.drawCentered(label, x + buildFrameW / 2 * 3 - 44, vertOffset - 24, 16, SDLColor(40, 40, 40))
+        }
+        colHeader(groundHOffset * 3 / 2, "Ground")
+        colHeader(airHOffset + 46, "Air")
+        colHeader(seaHOffset + 46, "Sea")
+
+        fun drawCard(
+            unit: cn.enaium.battalion.data.UnitData,
+            index: Int,
+            x: Int,
+            y: Int,
+            canBuildHere: Boolean,
+        ) {
+            val canAfford = human.canAffordBuild(unit)
+            val selected = menu.index == index
+            val hovered = canBuildHere && mx >= x && mx < x + buildFrameW && my >= y && my < y + buildCardH
+
+            val frame = buildFrameSprite(canBuildHere, canAfford)
+            textures.texture(frame)?.let {
+                renderer.renderTexture(it, dst = SDLFRect(x.toFloat(), y.toFloat(), buildFrameW.toFloat(), buildFrameH.toFloat()))
+            } ?: run {
+                // Fallback: draw a coloured card so the grid stays readable without assets.
+                renderer.drawColor = when {
+                    !canBuildHere -> SDLColor(70, 70, 80)
+                    !canAfford -> SDLColor(120, 60, 40)
+                    else -> SDLColor(90, 110, 90)
+                }
+                renderer.fillRect(SDLRect(x, y, buildFrameW, buildFrameH))
+            }
+
+            // The unit's sprite, drawn inside the card (team-coloured). Fills the frame top.
+            // Resolved by unit name (with the 3316.bin fallback table) so every buildable unit
+            // shows a thumbnail — SWF BuildMenuUnit uses `TileSheetManager.getPalettized(name)`.
+            val key = spriteKeyForUnitData(unit.name, unit.sprite)
+            val rawTeam = rawTeamColor(human.team)
+            val tex = if (key.isNotEmpty()) textures.textureForTeam(key, rawTeam) else null
+            if (canBuildHere && tex != null) {
+                // One cell of the unit's sheet: every 336-wide sheet is 6 cells wide; the cell
+                // height is texH/4 (56 for regular sheets, 112 for tall "UnitTall" sheets).
+                // The thumbnail shows the whole cell SLICED from the sheet — drawing only the
+                // top 56px of a 112px cell would show just the turret roof (SWF BuildMenuUnit
+                // draws the palettized TileSheet's full frame at natural size).
+                val tw = tex.size.x.toInt()
+                val th = tex.size.y.toInt()
+                val cellH = if (tw == 336) th / 4 else th
+                // Anchor: the SWF places the unit graphic with its BOTTOM at y=75 of the
+                // 97px-high frame (`unitGraphic.y = 75 - height`), so tall units overflow
+                // upward inside the card. Scale down only when the cell exceeds the frame.
+                val scale = minOf(
+                    (buildFrameW - 14).toFloat() / 56f,
+                    (buildFrameH - 20).toFloat() / cellH.toFloat(),
+                    1f,
+                )
+                val dw = (56 * scale).toInt()
+                val dh = (cellH * scale).toInt()
+                val drawX = x + (buildFrameW - dw) / 2
+                // SWF BuildMenuUnit: unitGraphic.y = 75 - height (bottom at frame y=75),
+                // air units shifted 8px lower. The old bottom-at-y+91 anchor sat 16px too
+                // low and overlapped the cost text below the sprite.
+                val bottomY = if (unit.isAir()) 83 else 75
+                val drawY = y + bottomY - dh
+                // Unaffordable units are darkened.
+                val dim = !canAfford
+                if (dim) {
+                    // Repaint a darker tint via colorMod on the cached team texture.
+                    val t = textures.textureForTeam(key, rawTeam) ?: return@drawCard
+                    t.colorMod = SDLColor(130, 130, 135)
+                    renderer.renderTexture(
+                        t, src = SDLFRect(0f, 0f, 56f, cellH.toFloat()),
+                        dst = SDLFRect(drawX.toFloat(), drawY.toFloat(), dw.toFloat(), dh.toFloat()))
+                    t.colorMod = SDLColor(255, 255, 255)
+                } else {
+                    renderer.renderTexture(
+                        tex, src = SDLFRect(0f, 0f, 56f, cellH.toFloat()),
+                        dst = SDLFRect(drawX.toFloat(), drawY.toFloat(), dw.toFloat(), dh.toFloat()))
+                }
+            }
+
+            // Cost text under the sprite (SWF: "$<cost>" centre-bottom of the card).
+            val cost = unit.getCost(human)
+            text.drawCentered("$$cost", x + buildFrameW / 2, y + buildFrameH - 20, 14,
+                if (canAfford) SDLColor(40, 40, 40) else SDLColor(200, 60, 40))
+
+            // Record the hit rect for every card (enabled only when buildable here + affordable).
+            val clickable = canBuildHere && canAfford
+            buildHits.add(BuildHit(BuildHitKind.UNIT, index, x, y, buildFrameW, buildFrameH))
+
+            // Highlight the focused card (selected via keyboard or hover).
+            if (selected || hovered) {
+                renderer.drawColor = if (selected) SDLColor(120, 200, 255, 220) else SDLColor(255, 255, 255, 180)
+                renderer.drawRect(SDLRect(x - 2, y - 2, buildFrameW + 4, buildFrameH + 4))
+            }
+        }
+
+        var index = 0
+        // Ground column (3 per row).
+        menu.ground.forEachIndexed { i, u ->
+            val x = groundHOffset + (i % groundCols) * horizSpacing
+            val y = vertOffset + (i / groundCols) * buildCardH
+            drawCard(u, index++, x, y, human.canBuildHere(u))
+        }
+        // Air column (1 per row).
+        menu.air.forEachIndexed { i, u ->
+            val x = airHOffset
+            val y = vertOffset + i * buildCardH
+            drawCard(u, index++, x, y, human.canBuildHere(u))
+        }
+        // Sea column (2 per row).
+        menu.sea.forEachIndexed { i, u ->
+            val x = seaHOffset + (i % seaUnitCols) * 98
+            val y = vertOffset + (i / seaUnitCols) * buildCardH
+            drawCard(u, index++, x, y, human.canBuildHere(u))
+        }
+
+        // Resources readout at the top (SWF: "$<resources>" centred ~y107).
+        val resources = if (menu.source == HumanController.BuildSource.WARMACHINE) {
+            human.selectedUnit?.resourcePool ?: 0
+        } else {
+            human.getResources()
+        }
+        val resLabel = if (menu.source == HumanController.BuildSource.WARMACHINE) "Ore:" else "Resources:"
+        text.drawCentered("$resLabel $$resources", WINDOW_W - 80, 100, 18, SDLColor(30, 30, 30))
+
+        // Back (cancel) button top-right. build_button_cancel is a 504×71 strip of four
+        // 126×71 frames; draw one frame at its NATURAL aspect so the button isn't flattened.
+        textures.texture("build_button_cancel")?.let { tex ->
+            val tw = tex.size.x.toInt()
+            val th = tex.size.y.toInt()
+            val frameW = tw / 4
+            val backW = frameW
+            val backH = th
+            val backX = WINDOW_W - backW - 8
+            val backY = 6
+            buildHits.add(BuildHit(BuildHitKind.BACK, -1, backX, backY, backW, backH))
+            val frame = if (mx >= backX && mx < backX + backW && my >= backY && my < backY + backH) 2 else 1
+            renderer.renderTexture(
+                tex, src = SDLFRect((frame * frameW).toFloat(), 0f, frameW.toFloat(), th.toFloat()),
+                dst = SDLFRect(backX.toFloat(), backY.toFloat(), backW.toFloat(), backH.toFloat()))
+        }
+
+        // Info panel for the focused unit (hovered or keyboard-selected).
+        val focused = menu.current ?: return
+        drawBuildInfoPanel(human, focused)
+    }
+
+    /**
+     * Draws the InfoMenu-style panel for the focused build unit: the unit sprite, name,
+     * description and the armour/weapon/movement stat rows. Matches the SWF `InfoMenu`.
+     */
+    private fun drawBuildInfoPanel(human: HumanController, unit: cn.enaium.battalion.data.UnitData) {
+        val px = 4
+        val py = 13
+        val pw = 200
+        val ph = 150
+
+        // Backdrop panel.
+        renderer.drawColor = SDLColor(30, 32, 38, 230)
+        renderer.fillRect(SDLRect(px, py, pw, ph))
+
+        // Unit name.
+        text.draw(unit.name, px + 10, py + 8, 14, SDLColor(255, 220, 120))
+
+        // Unit sprite (left cell).
+        val rawTeam = rawTeamColor(human.team)
+        val key = spriteKeyForUnitData(unit.name, unit.sprite)
+        val tex = if (key.isNotEmpty()) textures.textureForTeam(key, rawTeam) else null
+        if (tex != null) {
+            val tw = tex.size.x.toInt(); val th = tex.size.y.toInt()
+            val cellW = 56
+            val cellH = if (tw == 336) th / 4 else th
+            val bodyH = minOf(cellH, 56)
+            val scale = minOf(56f / 56f, 56f / bodyH)
+            val dw = (56 * scale).toInt(); val dh = (bodyH * scale).toInt()
+            renderer.renderTexture(
+                tex, src = SDLFRect(0f, 0f, 56f, bodyH.toFloat()),
+                dst = SDLFRect((px + 8).toFloat(), (py + 32).toFloat(), dw.toFloat(), dh.toFloat()))
+        }
+
+        // Description (wrapped) to the right of the sprite.
+        var dy = py + 30
+        for (wrapped in wrapRecon(unit.description, 170, 11)) {
+            if (dy > py + ph - 40) break
+            text.draw(wrapped, px + 72, dy, 11, SDLColor(225, 225, 230))
+            dy += 14
+        }
+
+        // Stat rows underneath: Armour / Weapon / Move with their info icons.
+        val statY = py + ph - 60
+        text.draw("HP ${unit.health}", px + 10, statY, 12, SDLColor(210, 210, 215))
+        val weaponText = if (unit.damage > 0) {
+            val rng = if (unit.weaponRangeMin == 1 && unit.weaponRangeMax == 1) ""
+                     else " ${unit.weaponRangeMin}-${unit.weaponRangeMax}"
+            "Dmg ${unit.damage}$rng"
+        } else "Dmg N/A"
+        text.draw(weaponText, px + 10, statY + 16, 12, SDLColor(210, 210, 215))
+        text.draw("Move ${unit.range}", px + 10, statY + 32, 12, SDLColor(210, 210, 215))
+        text.draw("Cost $$${unit.getCost(human)}", px + 10, statY + 48, 13, SDLColor(255, 200, 120))
+    }
+
+    /**
+     * Draws the Warmachine direction picker phase: the selected constructor's tile stays put,
+     * and cardinal direction arrows appear around it (only for valid adjacent tiles). Mirrors
+     * `WMBuildMenu.drawPickDirectionUI`.
+     */
+    private fun drawBuildPageDirection(
+        human: HumanController,
+        menu: HumanController.BuildMenuState,
+    ) {
+        val mouse = SDL.mouseState
+        val mx = mouse.x.toInt()
+        val my = mouse.y.toInt()
+
+        // The constructor's on-screen tile position.
+        val tile = game.tileAt(menu.sourceX, menu.sourceY) ?: return
+        val cx = screenX(tile.x) + TileManager.TILE_WIDTH / 2
+        val cy = screenY(tile.y) + TileManager.TILE_HEIGHT / 2
+
+        val arrowSpread = (0.42 * TileManager.TILE_WIDTH).toInt()
+        val arrowW = 48
+        val arrowH = 48
+
+        // The ghost preview (semi-transparent build unit + threat indicators) shown while the
+        // mouse hovers a valid direction arrow — the SWF `onDirectionMouseOver` → `showIndicators`
+        // + ghost tile-sheet. Cleared when the arrow is not hovered.
+        var hoveredDir: String? = null
+
+        fun arrow(dir: String, x: Int, y: Int, sprite: String, flipH: Boolean) {
+            val available = human.warmachineDirectionAvailable(dir)
+            val tex = textures.texture(sprite) ?: return
+            val tw = tex.size.x.toInt(); val th = tex.size.y.toInt()
+            val frameW = tw / 4
+            val hovered = mx >= x && mx < x + arrowW && my >= y && my < y + arrowH
+            val frame = when {
+                !available -> 0
+                hovered -> 2
+                else -> 1
+            }
+            if (hovered && available) hoveredDir = dir
+            renderer.renderTexture(
+                tex,
+                src = SDLFRect((frame * frameW).toFloat(), 0f, frameW.toFloat(), th.toFloat()),
+                dst = SDLFRect(x.toFloat(), y.toFloat(), arrowW.toFloat(), arrowH.toFloat()),
+            )
+        }
+
+        // Left / right use wm_build_side (flipped for right); up / down use wm_build_up/down.
+        if (human.warmachineDirectionAvailable("left")) {
+            val x = (cx - arrowSpread - arrowW).toInt()
+            val y = (cy - arrowH / 2).toInt()
+            buildHits.add(BuildHit(BuildHitKind.WM_LEFT, -1, x, y, arrowW, arrowH))
+            arrow("left", x, y, "wm_build_side", false)
+        }
+        if (human.warmachineDirectionAvailable("right")) {
+            val x = (cx + arrowSpread).toInt()
+            val y = (cy - arrowH / 2).toInt()
+            buildHits.add(BuildHit(BuildHitKind.WM_RIGHT, -1, x, y, arrowW, arrowH))
+            arrow("right", x, y, "wm_build_side", true)
+        }
+        if (human.warmachineDirectionAvailable("up")) {
+            val x = (cx - arrowW / 2).toInt()
+            val y = cy - arrowSpread - arrowH.toInt()
+            buildHits.add(BuildHit(BuildHitKind.WM_UP, -1, x, y, arrowW, arrowH))
+            arrow("up", x, y, "wm_build_up", false)
+        }
+        if (human.warmachineDirectionAvailable("down")) {
+            val x = (cx - arrowW / 2).toInt()
+            val y = (cy + arrowSpread).toInt()
+            buildHits.add(BuildHit(BuildHitKind.WM_DOWN, -1, x, y, arrowW, arrowH))
+            arrow("down", x, y, "wm_build_down", false)
+        }
+
+        // Ghost placement preview while a direction arrow is hovered.
+        if (hoveredDir != null) {
+            val gx = menu.sourceX + if (hoveredDir == "left") -1 else if (hoveredDir == "right") 1 else 0
+            val gy = menu.sourceY + if (hoveredDir == "up") -1 else if (hoveredDir == "down") 1 else 0
+            drawWmGhost(human, menu.current, gx, gy)
+        }
+
+        // Cancel button (back to the unit page) at the constructor's tile origin, exactly like
+        // the SWF `wm_build_cancel` TileSheetButton added to the directional container (whose
+        // (0,0) sits on the builder's tile). wm_build_cancel is a 224×56 strip (four 56×56
+        // cells: disabled / up / over / pressed).
+        val canSize = 56
+        val canX = screenX(tile.x)
+        val canY = screenY(tile.y)
+        buildHits.add(BuildHit(BuildHitKind.WM_CANCEL, -1, canX, canY, canSize, canSize))
+        textures.texture("wm_build_cancel")?.let { tex ->
+            val tw = tex.size.x.toInt(); val th = tex.size.y.toInt()
+            val frameW = tw / 4
+            val hovered = mx >= canX && mx < canX + canSize && my >= canY && my < canY + canSize
+            val frame = if (hovered) 2 else 1
+            renderer.renderTexture(
+                tex, src = SDLFRect((frame * frameW).toFloat(), 0f, frameW.toFloat(), th.toFloat()),
+                dst = SDLFRect(canX.toFloat(), canY.toFloat(), canSize.toFloat(), canSize.toFloat()))
+        }
+    }
+
+    /**
+     * Draws the semi-transparent "ghost" of the unit being built on a Warmachine's destination
+     * tile [gx]/[gy], plus threat indicators on enemies that could attack it there. Mirrors the
+     * SWF `WMBuildMenu.onDirectionMouseOver` → `showIndicators` (ghost tile-sheet at 0.5 alpha
+     * + per-enemy `addAllCanAttackMyUnitIndicators`).
+     */
+    private fun drawWmGhost(
+        human: HumanController,
+        unit: cn.enaium.battalion.data.UnitData?,
+        gx: Int,
+        gy: Int,
+    ) {
+        if (unit == null) return
+        val rawTeam = rawTeamColor(human.team)
+        val key = spriteKeyForUnitData(unit.name, unit.sprite)
+        val candidate = if (key.isNotEmpty()) textures.textureForTeam(key, rawTeam) else null
+        val tex = candidate ?: return
+        val tw = tex.size.x.toInt(); val th = tex.size.y.toInt()
+        val cellW = 56
+        val cellH = if (tw == 336) th / 4 else th
+        val bodyH = minOf(cellH, 56)
+        val scale = minOf(56f / 56f, 56f / bodyH)
+        val dw = (56 * scale).toInt(); val dh = (bodyH * scale).toInt()
+        val px = screenX(gx)
+        val py = screenY(gy)
+        val prevAlpha = tex.alphaMod
+        tex.alphaMod = (255 * 0.5f).toInt()
+        renderer.renderTexture(
+            tex,
+            src = SDLFRect(0f, 0f, 56f, bodyH.toFloat()),
+            dst = SDLFRect(px.toFloat(), py.toFloat() + TileManager.TILE_HEIGHT - dh, dw.toFloat(), dh.toFloat()),
+        )
+        tex.alphaMod = prevAlpha
+
+        // Threat indicators: enemies that can attack the placed unit from its destination.
+        val fake = cn.enaium.battalion.data.Unit(unit, gx, gy, human)
+        for (enemy in game.units) {
+            if (enemy.cloaked) continue
+            if (enemy.controller?.isAllied(human) == true) continue
+            if (!enemy.isDeployed()) continue
+            if (enemy.x < cameraX || enemy.x >= cameraX + VIEW_COLS) continue
+            if (enemy.y < cameraY || enemy.y >= cameraY + VIEW_ROWS) continue
+            if (!game.canWeaponsFireAtTarget(enemy, fake, strict = true,
+                    enemy.x, enemy.y, gx, gy)) continue
+            val resources = game.resolveAttackCycleInResources(enemy, fake)
+            val frame = when {
+                resources < HumanController.BAD_TARGET -> 0
+                resources < HumanController.OK_TARGET -> 1
+                else -> 2
+            }
+            val t = textures.texture("dangerIndicator") ?: continue
+            renderer.renderTexture(
+                t,
+                src = SDLFRect((frame * 56).toFloat(), 0f, 56f, 56f),
+                dst = SDLFRect(screenX(enemy.x).toFloat(), screenY(enemy.y).toFloat(),
+                    TileManager.TILE_WIDTH.toFloat(), TileManager.TILE_HEIGHT.toFloat()),
+            )
+        }
+    }
+
+    private fun drawDangerIndicators(unit: cn.enaium.battalion.data.Unit) {
+        for (enemy in game.units) {
+            if (enemy === unit) continue
+            if (enemy.cloaked) continue
+            if (enemy.controller?.isAllied(unit.controller) == true) continue
+            if (!enemy.isDeployed()) continue
+            if (enemy.x < cameraX || enemy.x >= cameraX + VIEW_COLS) continue
+            if (enemy.y < cameraY || enemy.y >= cameraY + VIEW_ROWS) continue
+            if (!game.canWeaponsFireAtTarget(enemy, unit, strict = true,
+                    enemy.x, enemy.y, unit.x, unit.y)) continue
+
+            val resources = game.resolveAttackCycleInResources(enemy, unit)
+            val frame = when {
+                resources < HumanController.BAD_TARGET -> 0
+                resources < HumanController.OK_TARGET -> 1
+                else -> 2
+            }
+            val tex = textures.texture("dangerIndicator")
+            if (tex != null) {
+                val px = screenX(enemy.x)
+                val py = screenY(enemy.y)
+                renderer.renderTexture(
+                    tex,
+                    src = SDLFRect((frame * 56).toFloat(), 0f, 56f, 56f),
+                    dst = SDLFRect(px.toFloat(), py.toFloat(),
+                        TileManager.TILE_WIDTH.toFloat(), TileManager.TILE_HEIGHT.toFloat()),
+                )
+            }
+        }
+    }
 
     /**
      * Draws a structure on its tile. Uses the structure's terrain sprite (factory, capital,
@@ -1244,29 +1954,49 @@ class BattalionRenderer(
             renderer.drawRect(SDLRect(cx - s / 2, cy - s / 2, s, s))
             text.drawCentered(unit.unitData.name.firstOrNull()?.toString() ?: "?", cx, cy - 8, 18, SDLColor(255, 255, 255))
         }
+    }
 
-        // Health bar — self-drawn: four tall (vertical) slot rectangles, each a mini progress bar
-        // (not four discrete pips). All four full = green, three remaining = yellow, two or
-        // fewer = orange. Damage depletes from the top of each slot downward, and slots
-        // empty leftmost-first. A fixed black backdrop covers the full 4-slot area and never
-        // changes with the health. Scaled ~0.8 of the original attempt.
+    /**
+     * Draws a unit's health bar — a topmost overlay drawn AFTER the firing-sheet pass so the
+     * attack animation can't hide a unit's health.
+     *
+     * Self-drawn: four tall (vertical) slot rectangles, each a mini progress bar (not four
+     * discrete pips). All four full = green, three remaining = yellow, two or fewer = orange.
+     * Damage depletes from the top of each slot downward, and slots empty leftmost-first. A
+     * black backdrop slightly LARGER than the column group frames the bar: the four slots are
+     * centred inside it so a black border shows on every side. Anchored to the unit tile's
+     * BOTTOM-RIGHT corner, inset 2px. The walked position matches [drawUnit] so the bar rides
+     * along while the unit moves.
+     */
+    private fun drawUnitHealthBar(unit: Unit) {
+        val walk = unitRenderTileH(unit)
+        val px = (MAP_X + (walk.visX - cameraX) * TileManager.TILE_WIDTH).toInt()
+        val py = (MAP_Y + (walk.visY - cameraY) * TileManager.TILE_HEIGHT).toInt()
+
         val health = unit.getHealth()
         val maxHealth = unit.baseUnitData.health
         val ratio = (health.toDouble() / maxHealth).coerceIn(0.0, 1.0)
         val slots = 4
-        val slotW = (8 * 0.8).toInt()          // 6
-        val slotH = (16 * 0.8).toInt()         // 12
-        val gap = (2 * 0.8).toInt()            // 1
-        val totalW = slots * slotW + (slots - 1) * gap
-        val barX = px + (TileManager.TILE_WIDTH - totalW) / 2
-        val barY = py + TileManager.TILE_HEIGHT - slotH - 2
+        val slotW = (8 * 0.5).toInt()          // 4
+        val slotH = (16 * 0.5).toInt()         // 8
+        val gap = (2 * 0.5).toInt().coerceAtLeast(1) // 1
+        val borderPx = 2                        // black frame width around the column group
+        val colsW = slots * slotW + (slots - 1) * gap
+        val backdropW = colsW + borderPx * 2
+        val backdropH = slotH + borderPx * 2
+        val barX = px + TileManager.TILE_WIDTH - backdropW - 2
+        val barY = py + TileManager.TILE_HEIGHT - backdropH - 2
 
         // An undamaged unit shows no health bar at all (neither the backdrop nor the fill).
         if (ratio >= 0.999) return
 
-        // Fixed black backdrop sized for all four slots.
+        // Fixed black backdrop, larger than the slots so the border shows all around.
         renderer.drawColor = SDLColor(8, 8, 10)
-        renderer.fillRect(SDLRect(barX, barY, totalW, slotH))
+        renderer.fillRect(SDLRect(barX, barY, backdropW, backdropH))
+
+        // The column group is centred inside the backdrop (borderPx from every edge).
+        val colX = barX + borderPx
+        val colY = barY + borderPx
 
         // Remaining "full slots" decide the colour band.
         val remaining = ratio * slots
@@ -1285,8 +2015,8 @@ class BattalionRenderer(
             if (fillFrac > 0.01) {
                 renderer.drawColor = fill
                 renderer.fillRect(SDLRect(
-                    barX + i * (slotW + gap),
-                    barY + slotH - (slotH * fillFrac).toInt(),
+                    colX + i * (slotW + gap),
+                    colY + slotH - (slotH * fillFrac).toInt(),
                     slotW,
                     (slotH * fillFrac).toInt(),
                 ))
@@ -1477,6 +2207,46 @@ class BattalionRenderer(
 
     /** Rectangles of the clickable buttons, rebuilt every frame in [drawSidePanel]. */
     private val btnRects = mutableListOf<BtnHit>()
+
+    // ---------------------------------------------------------------------
+    // Floating unit action menu (the "more options" button above a selected unit and the
+    // action bar it reveals). Mirrors the original HumanController: selecting a friendly unit
+    // drops a small `unitOptionsButton` above it; clicking it opens `showUnitMenu`, a bar of
+    // per-unit actions (transport pickup / unload / build / extract / repair / cancel).
+    // ---------------------------------------------------------------------
+
+    /** One action in the floating unit menu. */
+    enum class UnitMenuAction { ALBATROSS, LEVIATHAN, UNLOAD, BUILD, EXTRACT, REPAIR, CANCEL }
+
+    /** A rendered unit-menu button's hit rect (rebuilt each frame in [drawUnitOptions]). */
+    class UnitMenuHit(
+        val action: UnitMenuAction,
+        val enabled: Boolean,
+        val x: Int,
+        val y: Int,
+        val w: Int,
+        val h: Int,
+    ) {
+        fun hit(sx: Int, sy: Int): Boolean = sx >= x && sx < x + w && sy >= y && sy < y + h
+    }
+
+    /** Hit rects of the currently-drawn floating unit menu buttons (empty when closed). */
+    var unitMenuHits: List<UnitMenuHit> = emptyList()
+        private set
+
+    /** Hit rect of the currently-drawn `unitOptionsButton` above the selected unit, if any. */
+    var unitOptionsButtonHit: SDLRect? = null
+        private set
+
+    /** The unit menu action under screen point (sx, sy), or null if none / not enabled. */
+    fun unitMenuActionAt(sx: Int, sy: Int): UnitMenuAction? =
+        unitMenuHits.firstOrNull { it.hit(sx, sy) && it.enabled }?.action
+
+    /** True when the floating `unitOptionsButton` is under screen point (sx, sy). */
+    fun unitOptionsButtonAt(sx: Int, sy: Int): Boolean {
+        val r = unitOptionsButtonHit ?: return false
+        return sx >= r.x && sx < r.x + r.width && sy >= r.y && sy < r.y + r.height
+    }
 
     /** Panel layout constants (SIDE_W = 240). */
     private object Panel {
@@ -2230,11 +3000,19 @@ class BattalionRenderer(
         // Continue button (continued across consecutive lines — a graphical button, not text).
         val cont = textures.texture("continueButton")
         if (cont != null) {
-            // 4-frame strip, 152×41 frames. Show the "up/normal" frame.
+            // 4-frame strip, 608×41 = four 152×41 cells: 0 disabled, 1 up, 2 over, 3 pressed.
+            val frameW = 152f
+            val frameH = 41f
+            val cbX = (boxX + boxW - 160)
+            val cbY = (boxY + boxH - 45)
+            // Touch/click highlight: show the "over" frame while the cursor is over the button.
+            val mouse = SDL.mouseState
+            val hovering = mouse.x >= cbX && mouse.x < cbX + frameW &&
+                mouse.y >= cbY && mouse.y < cbY + frameH
             renderer.renderTexture(
                 cont,
-                src = SDLFRect(0f, 0f, 152f, 41f),
-                dst = SDLFRect((boxX + boxW - 160).toFloat(), (boxY + boxH - 45).toFloat(), 152f, 41f),
+                src = SDLFRect((if (hovering) 2 else 1) * frameW, 0f, frameW, frameH),
+                dst = SDLFRect(cbX.toFloat(), cbY.toFloat(), frameW, frameH),
             )
         }
     }

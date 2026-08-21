@@ -45,6 +45,12 @@ object TriggerManager {
         listeners.removeAll { it.name == name && it.callback == callback }
     }
 
+    /** Drops every queued trigger and every listener. Used when a new game is created. */
+    fun clearAll() {
+        triggers.clear()
+        listeners.clear()
+    }
+
     /** Dispatches every queued trigger to the matching listeners. */
     fun update() {
         while (triggers.isNotEmpty()) {
