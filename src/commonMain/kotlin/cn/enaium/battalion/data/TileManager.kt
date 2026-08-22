@@ -22,6 +22,9 @@ object TileManager {
         return found.clone()
     }
 
+    /** Every registered terrain template (used by diagnostics / mod tooling). */
+    fun all(): List<Terrain> = terrain.values.toList()
+
     fun remove(terra: Terrain) {
         terrain.remove(terra.name)
     }

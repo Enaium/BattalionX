@@ -291,11 +291,17 @@ class StartScreen(
         draw()
     }
 
+    /** Diagnostic: opens the "Clear data?" confirmation over the Options screen for captures. */
+    fun setConfirmingClearForCapture(value: Boolean) {
+        confirmingClear = value
+    }
+
     /** Sets the initial screen (e.g. straight to a mission list) for diagnostics. */
     fun setScreenForCapture(s: String) {
         screen = when (s) {
             "bootcamp" -> Screen.BOOTCAMP
             "campaign" -> Screen.CAMPAIGN
+            "options" -> Screen.OPTIONS
             else -> Screen.MAIN
         }
         campaignMissions = GameLoader.findCampaign(assetsDir).orEmpty()
@@ -535,12 +541,8 @@ class StartScreen(
 
     /** The main-menu bonus map button: plays the Kongregate bonus map as a skirmish. */
     private fun loadBonusMap() {
-        val files = Fio.listDir("$assetsDir/binaryData").orEmpty()
-        val bonus = files.firstOrNull {
-            it.contains("Kongregate_Bonus_Map", ignoreCase = true) && it.endsWith(".bin")
-        }
-        if (bonus != null) {
-            chosenSkirmish = bonus
+        if (Fio.readText("$assetsDir/data/maps/Kongregate_Bonus_Map.json") != null) {
+            chosenSkirmish = "Kongregate_Bonus_Map.json"
             running = false
         }
     }

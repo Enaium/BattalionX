@@ -13,5 +13,8 @@ fun main(args: Array<String>) {
     val skirmishArg = args.indexOf("--skirmish")
     val skirmish = if (skirmishArg >= 0 && skirmishArg + 1 < args.size) args[skirmishArg + 1] else null
 
-    BattalionGame(dir, mission, skirmish).run()
+    // Show the start menu by default; only a real --mission/--skirmish flag pins a specific
+    // mission (passing a non-null default would skip the menu and jump into mission 0).
+    val playMission = if (missionArg >= 0) mission else null
+    BattalionGame(dir, playMission, skirmish).run()
 }

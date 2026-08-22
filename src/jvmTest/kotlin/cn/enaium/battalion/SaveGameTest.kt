@@ -21,8 +21,8 @@ import java.io.File
  */
 class SaveGameTest {
 
-    private val assetsDir = "/Users/enaium/swf/BattalionVengeance"
-    private fun haveAssets(): Boolean = File("$assetsDir/binaryData").isDirectory
+    private val assetsDir = "assets"
+    private fun haveAssets(): Boolean = File("$assetsDir/data").isDirectory
 
     @Test
     fun `saved game round-trips state and resumes at the saved controller`() {

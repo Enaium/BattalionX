@@ -4,7 +4,7 @@ import cn.enaium.battalion.game.Controller
 import cn.enaium.battalion.util.XmlNode
 
 /**
- * A parsed map document (`.bin` file containing `<map>` XML).
+ * A parsed map document (a JSON file under `assets/data/maps/` holding an XML-shaped `<map>` tree).
  *
  * The map XML encodes the terrain grid, structures and starting units through a *palette*:
  * each `<entry reference="N">` maps a reference number to a [TileSwatch] (a terrain or unit

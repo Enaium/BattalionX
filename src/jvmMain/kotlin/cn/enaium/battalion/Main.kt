@@ -13,13 +13,19 @@ import io.github.vinceglb.filekit.FileKit
  * JVM entry point.
  *
  * Usage:
- *   ./gradlew jvmRun --args="<assetsDir> [--mission N] [--skirmish map.bin] [--selftest]"
+ *   ./gradlew jvmRun --args="<assetsDir> [--mission N] [--skirmish map] [--selftest]"
  *
- *   <assetsDir>       path to the unpacked SWF assets (contains the *.bin XML data).
+ *   <assetsDir>       the project's asset directory (default `assets`): JSON data under
+ *                     `data/` (terrain/units/modifiers/ballistics/campaigns/maps), sprites
+ *                     under `images/`, sounds under `sounds/`. Mods drop files into these
+ *                     folders; see GameLoader for the data formats.
  *   --mission N       play campaign mission N (0-based, default 0).
- *   --skirmish file   play a free-for-all skirmish on the given map *.bin file.
+ *   --skirmish file   play a free-for-all skirmish on the map `maps/<file>.json` (name only,
+ *                     e.g. `Mission_1`).
  *   --selftest        load the mission, print diagnostics and tick the game loop without
  *                     opening a window (used to verify data loading / startup).
+ *   --assetreport     drive every mission/menu and report which requested sprites have no
+ *                     backing file under `assets/images/` (verifies the asset set is complete).
  */
 fun main(args: Array<String>) {
     FileKit.init(appId = "BattalionX")
@@ -53,6 +59,10 @@ fun main(args: Array<String>) {
     }
     if (args.contains("--imgcheck")) {
         imgcheck(dir)
+        return
+    }
+    if (args.contains("--assetreport")) {
+        assetreport(dir)
         return
     }
     if (args.contains("--shot")) {
@@ -345,6 +355,181 @@ private fun imgcheck(dir: String) {
         }
     }
     tm.close(); r.close(); win.close(); SDL.quit()
+}
+
+/**
+ * Diagnostic: records every sprite name the game requests across ALL content — all ten
+ * campaign missions, all eight bootcamp missions, the Kongregate bonus-map skirmish, the five
+ * StartScreen surfaces (main / campaign / bootcamp / options / clear-data confirm), and per
+ * game: dialogue, unit selection + range markers, the floating unit-options bar, the factory
+ * build page, the in-game options menu with Quick Help, the recon strip over unit/terrain/no
+ * tile, and a ticked AI turn (ai_thinking + explosions). Then reports:
+ *
+ *  - every requested name with no backing file under `assets/images/` (MISSING), and
+ *  - every file under `assets/images/` that was never requested (UNUSED).
+ *
+ * This verifies the asset set is complete with nothing extra — the mod author's checklist:
+ * a mod map/unit that needs a sprite adds `<key>.png`; any UNUSED line is a candidate for
+ * removal.
+ */
+private fun assetreport(dir: String) {
+    SDL.setMainReady()
+    SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)
+    val win = SDL.createWindow("assetreport", 800, 600)
+    val r = SDL.createRenderer(win)
+    val text = cn.enaium.battalion.game.ui.TextRenderer(r); text.load()
+    val tm = cn.enaium.battalion.game.ui.TextureManager(dir, r); tm.load()
+    tm.recording = true
+    val green = cn.enaium.sdl.SDLColor(143, 222, 101) // matcha green
+
+    fun snap(screen: String, confirm: Boolean = false) {
+        val start = cn.enaium.battalion.game.ui.StartScreen(dir, r, text, tm)
+        start.setScreenForCapture(screen)
+        if (confirm) start.setConfirmingClearForCapture(true)
+        for (i in 1..4) { start.renderFrameForCapture(); SDL.delay(10) }
+    }
+    snap("main"); snap("campaign"); snap("bootcamp")
+    snap("options"); snap("options", confirm = true)
+
+    fun exercise(load: () -> cn.enaium.battalion.game.GameManager) {
+        val game = load()
+        // Mission brief dialogue (startGame event) -> dialogue panel + avatars + continue.
+        val script = game.map.getScript()
+        if (script != null && script.children("event").any { it.child("condition")?.attr("type") == "startGame" }) {
+            val dlg = cn.enaium.battalion.game.ui.Dialogue(script)
+            if (dlg.play("startGame")) {
+                val brief = BattalionRenderer(game, text, r, tm)
+                brief.dialogue = dlg
+                brief.render()
+            }
+        }
+
+        val render = BattalionRenderer(game, text, r, tm)
+        render.setupTextures()
+        // Every registered unit sprite incl. firing sheet (build page / deps can show all).
+        for (u in cn.enaium.battalion.data.UnitManager.getAll()) {
+            val key = render.debugSpriteKeyFor(u.name, u.sprite)
+            if (key.isEmpty()) continue
+            tm.texture(key)
+            tm.texture("${key}_firing")
+            tm.textureForTeam(key, green)
+        }
+        // Structure sprites (drawStructure pulls them from the structure's terrain sprite).
+        for (t in cn.enaium.battalion.data.TileManager.all()) {
+            if (t.sprite.isNotEmpty()) tm.textureOrFallback(t.sprite)
+        }
+
+        val human = game.activeController as? cn.enaium.battalion.game.controllers.HumanController
+        var unitTile: cn.enaium.battalion.data.Tile? = null
+        if (human != null) {
+            // Selection + range markers, then the floating unit-options bar.
+            val unit = game.units.firstOrNull { it.controller === human && it.isDeployed() }
+            if (unit != null) {
+                human.selectUnit(unit)
+                render.render()
+                human.toggleUnitOptions()
+                render.render()
+                human.toggleUnitOptions()
+                unitTile = game.tileAt(unit.x, unit.y)
+            }
+            // Factory build page (all buildable-units grid + frames + back/cancel buttons).
+            val structure = game.structures.firstOrNull { it.controller === human }
+            if (structure != null) {
+                human.setBuildFocus(structure.x, structure.y)
+                if (human.openBuildMenu()) {
+                    render.render()
+                    human.buildMenu = null
+                }
+            }
+            // In-game options menu + Quick Help overlay (Vista buttons, toggles, icons).
+            render.setInGameMenuOpen(true)
+            render.showQuickHelp = true
+            render.render()
+            render.setInGameMenuOpen(false)
+            render.showQuickHelp = false
+            // Recon strip over a unit tile, a plain terrain tile, and nothing.
+            val tiles = game.map.generateTileMap()
+            val plain = tiles.firstOrNull { row -> row.any { it.unit == null && it.terrain.name.isNotEmpty() } }
+                ?.firstOrNull { it.unit == null && it.terrain.name.isNotEmpty() }
+            render.setFocusTile(unitTile)
+            render.render()
+            render.setFocusTile(plain)
+            render.render()
+            render.setFocusTile(null)
+        }
+        // Warmachine build page: fabricate a Constructor on a clear tile, open the menu, render
+        // the unit grid, advance to the direction picker, render the arrows, close.
+        val wmType = cn.enaium.battalion.data.UnitManager.getAll().firstOrNull { it.hasModifier("Constructor") }
+        if (wmType != null && human != null) {
+            outer@ for (y in 0 until game.map.height - 1) {
+                for (x in 0 until game.map.width - 2) {
+                    val t = game.tileAt(x, y)
+                    val dest = game.tileAt(x + 1, y)
+                    if (t != null && dest != null && t.unit == null && dest.unit == null &&
+                        !t.isStructure() && !dest.isStructure() &&
+                        t.getMovementCost(cn.enaium.battalion.data.Unit(wmType)) != Double.POSITIVE_INFINITY
+                    ) {
+                        val wm = cn.enaium.battalion.data.Unit(wmType, x, y, human)
+                        wm.deployed = true
+                        wm.resourcePool = 4000
+                        game.tileAt(x, y)!!.unit = wm
+                        game.addUnit(human, wm)
+                        human.selectUnit(wm)
+                        if (human.openBuildMenu()) {
+                            render.render()
+                            if (human.confirmBuild() && human.buildMenu != null) render.render()
+                            human.cancelBuild()
+                        }
+                        break@outer
+                    }
+                }
+            }
+        }
+
+        render.render()
+
+        // Let the AI play a turn: auto-end the human's turn when control returns to it, and
+        // render during the AI's turn so ai_thinking (and any attack explosions) draw.
+        var guard = 0
+        var lastTurn = -1
+        var aiRenders = 0
+        while (guard++ < 4000 && aiRenders < 3) {
+            game.update(16)
+            if (game.activeController is cn.enaium.battalion.game.controllers.HALController) {
+                render.render()
+                aiRenders++
+            } else if (game.currentController == 0 && human != null &&
+                game.activeController is cn.enaium.battalion.game.controllers.HumanController &&
+                cn.enaium.battalion.game.ActionManager.isEmpty() &&
+                game.turn != lastTurn
+            ) {
+                lastTurn = game.turn
+                human.dispatchEndTurn()
+            }
+        }
+        render.render()
+    }
+
+    for (m in 0 until (GameLoader.findCampaign(dir)?.size ?: 0)) {
+        exercise { GameLoader.loadCampaignMission(dir, m) }
+    }
+    for (m in 0 until (GameLoader.findBootcamp(dir)?.size ?: 0)) {
+        exercise { GameLoader.loadBootcampMission(dir, m) }
+    }
+    exercise { GameLoader.loadSkirmish(dir, "Kongregate_Bonus_Map") }
+
+    val files = cn.enaium.battalion.util.Fio.listDir("$dir/images").orEmpty()
+        .filter { it.endsWith(".png") || it.endsWith(".jpg") || it.endsWith(".jpeg") }
+        .sorted()
+    val unused = files.filter { it.substringBeforeLast('.') !in tm.requested }
+    val missing = tm.requested.filter { tm.pathFor(it) == null }.sorted()
+
+    tm.close(); text.close(); r.close(); win.close(); SDL.quit()
+
+    println("ASSETREPORT requested=${tm.requested.size} images=${files.size} unused=${unused.size} missing=${missing.size}")
+    for (name in unused) println("  UNUSED: $name")
+    for (name in missing) println("  MISSING: $name")
+    println("ASSETREPORT DONE")
 }
 
 /**

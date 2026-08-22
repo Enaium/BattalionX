@@ -2,16 +2,20 @@ package cn.enaium.battalion.data
 
 import cn.enaium.battalion.game.GameManager
 import cn.enaium.battalion.util.Fio
-import cn.enaium.battalion.util.XmlParser
+import cn.enaium.battalion.util.JsonXml
 import cn.enaium.battalion.util.XmlNode
+import cn.enaium.battalion.util.XmlParser
 
 /**
- * Loads the game's static XML data (terrain, units, modifiers, ballistics) and builds a
+ * Loads the game's static data (terrain, units, modifiers, ballistics) and builds a
  * ready-to-run [GameManager] for a chosen mission or skirmish map.
  *
- * The original Flash game embedded every XML document as a `.bin` byte array asset. The
- * unpacked assets keep that layout, so this loader scans the asset directory for `.bin` files,
- * sniffs each file's root element and routes it to the right registry.
+ * The original Flash game embedded every XML document as a `.bin` byte array asset. Here the
+ * same documents live as JSON under the project's `assets/data/` directory (one file per doc,
+ * each `{"name", "attrs", "children", "text"}` — the [JsonXml] layout), so mods ship by editing
+ * or adding those JSON files. [loadAssets] imports the fixed set of registry documents;
+ * campaigns and maps are resolved by name from `data/` (`campaign.json`, `bootcamp.json`,
+ * `maps/<Mission>.json`, `maps/bootcamp/<...>.json`).
  *
  * The two high-level entry points are:
  *  - [loadCampaignMission] — a single-player mission from the Ep3 campaign (Human vs AI).
@@ -30,27 +34,38 @@ object GameLoader {
     )
 
     /**
-     * Scans the asset directory for `.bin` files and imports every XML document into the global
+     * Imports the fixed set of registry documents (JSON under `assets/data/`) into the global
      * registries ([TileManager], [UnitManager], [ModifierManager], [BallisticsTable]).
-     *
-     * The unpacked SWF keeps the embedded XML documents under a `binaryData/` subdirectory, so
-     * that is where we look.
+     * The doc names are the modding contract: `unitmodifiers.json` + `terrainmodifiers.json`
+     * are imported FIRST because terrain/unit entries only reference modifiers by name
+     * (`<modifier type="Water"/>`), so the definitions must exist before the registries that
+     * resolve them — importing them afterwards would silently register every terrain and unit
+     * without its modifier effects (e.g. no `movementCost` block -> fully walkable maps).
+     * The arena `units_arena.json` (full arena unit set) replaces base entries by name and
+     * therefore comes last; `ballistics.json` is independent.
      */
     fun loadAssets(assetsDir: String) {
-        val files = Fio.listDir(binDir(assetsDir)).orEmpty()
-        for (file in files) {
-            if (!file.endsWith(".bin")) continue
-            val text = Fio.readText("${binDir(assetsDir)}/$file") ?: continue
-            val root = XmlParser.parseOrNull(text) ?: continue
+        for (file in registryDocs) {
+            val root = readDoc(assetsDir, file) ?: continue
             when (root.name) {
+                "unitmodifiers", "terrainmodifiers" -> ModifierManager.importXML(root)
                 "terrain" -> TileManager.importXML(root)
                 "units" -> UnitManager.importXML(root)
-                "unitmodifiers", "terrainmodifiers" -> ModifierManager.importXML(root)
                 "ballisticsTable" -> BallisticsTable.load(root)
                 else -> Unit // campaign / map handled separately
             }
         }
     }
+
+    /** The registry documents imported by [loadAssets], in import order. */
+    private val registryDocs = listOf(
+        "unitmodifiers.json",
+        "terrainmodifiers.json",
+        "terrain.json",
+        "units.json",
+        "units_arena.json",
+        "ballistics.json",
+    )
 
     /** Parses a `<campaign>` XML document into its ordered list of missions. */
     fun parseCampaign(root: XmlNode): List<MissionInfo> {
@@ -83,44 +98,22 @@ object GameLoader {
         findCampaignNamed(assetsDir, isBootcamp = true)
 
     /**
-     * Finds a `<campaign>` XML document in the assets, preferring the Ep3 single-player campaign.
-     *
-     * [isBootcamp] selects the Ep3 bootcamp campaign vs the main campaign (a bootcamp filename
-     * contains "bootcamp"; the main campaign is "ep3" + "campaign" but not "bootcamp").
+     * Finds the campaign document (JSON): `bootcamp.json` for the tutorial campaign, otherwise
+     * `campaign.json` (the Ep3 single-player campaign). Returns null when the doc is absent.
      */
     fun findCampaignNamed(assetsDir: String, isBootcamp: Boolean): List<MissionInfo>? {
-        val files = Fio.listDir(binDir(assetsDir)).orEmpty()
-        var fallback: List<MissionInfo>? = null
-        for (file in files) {
-            if (!file.endsWith(".bin")) continue
-            val text = Fio.readText("${binDir(assetsDir)}/$file") ?: continue
-            val root = XmlParser.parseOrNull(text) ?: continue
-            if (root.name != "campaign") continue
-            val missions = parseCampaign(root)
-            val lower = file.lowercase()
-            // Require the actual "ep3" embed specifically. (Every file path contains
-            // "com.gamedozer.battalion", so a generic "battalion" test would match them all and
-            // the Arena campaign — which sorts first — would wrongly win over the Ep3 campaign.)
-            val isEp3 = lower.contains("ep3")
-            if (isBootcamp) {
-                if (lower.contains("bootcamp")) return missions
-            } else {
-                // Prefer the main Ep3 campaign (not bootcamp/side-campaigns).
-                if (isEp3 && lower.contains("campaign") && !lower.contains("bootcamp")) return missions
-            }
-            if (fallback == null) fallback = missions
-        }
-        return fallback
+        val root = readDoc(assetsDir, if (isBootcamp) "bootcamp.json" else "campaign.json") ?: return null
+        return parseCampaign(root)
     }
 
     /**
-     * Loads a single-player mission. [assetsDir] is the unpacked SWF asset directory,
-     * [missionIndex] selects which campaign mission to play (0-based).
+     * Loads a single-player mission. [assetsDir] is the project's asset directory (JSON data
+     * under `assets/data/`), [missionIndex] selects which campaign mission to play (0-based).
      */
     fun loadCampaignMission(assetsDir: String, missionIndex: Int, difficultyOverride: Int? = null): GameManager {
         loadAssets(assetsDir)
         val missions = findCampaign(assetsDir)
-            ?: error("GameLoader: no campaign XML found in $assetsDir")
+            ?: error("GameLoader: no campaign document found in $assetsDir")
         if (missionIndex !in missions.indices) {
             error("GameLoader: mission $missionIndex out of range (0..${missions.lastIndex})")
         }
@@ -138,7 +131,7 @@ object GameLoader {
     fun loadBootcampMission(assetsDir: String, missionIndex: Int, difficultyOverride: Int? = null): GameManager {
         loadAssets(assetsDir)
         val missions = findBootcamp(assetsDir)
-            ?: error("GameLoader: no bootcamp XML found in $assetsDir")
+            ?: error("GameLoader: no bootcamp document found in $assetsDir")
         if (missionIndex !in missions.indices) {
             error("GameLoader: bootcamp mission $missionIndex out of range (0..${missions.lastIndex})")
         }
@@ -179,14 +172,15 @@ object GameLoader {
     fun findMapXmlPublic(assetsDir: String, url: String): XmlNode? = findMapXml(assetsDir, url)
 
     /**
-     * Loads a skirmish / multiplayer map. [mapFile] is the name of the map `.bin` file in the
-     * assets directory. Player 1 is Human, every other team is AI.
+     * Loads a skirmish / multiplayer map. [mapFile] is a map base name (e.g. `Mission_1`),
+     * resolved to `data/maps/<mapFile>.json`. Player 1 is Human, every other team is AI.
      */
     fun loadSkirmish(assetsDir: String, mapFile: String): GameManager {
         loadAssets(assetsDir)
-        val text = Fio.readText("${binDir(assetsDir)}/$mapFile")
+        val base = mapFile.substringBeforeLast('.')
+        val rel = if (mapFile.contains("/")) mapFile else "maps/$base.json"
+        val mapNode = readDoc(assetsDir, rel)
             ?: error("GameLoader: cannot read map file $mapFile")
-        val mapNode = XmlParser.parseOrNull(text) ?: error("GameLoader: invalid XML in $mapFile")
 
         // Build a default mapsettings with one Human + AI per team found in the map palette.
         val map = GameMap(mapNode, mapFile, mapFile)
@@ -222,24 +216,25 @@ object GameLoader {
     }
 
     /**
-     * Locates the `.bin` file for a map referenced by a campaign URL such as
-     * `maps/ep3/Mission_1.yimf`. The unpacked files are named after the embeds, e.g.
-     * `Ep3XMLs_Mission_1_yimf.bin`, so the URL's base name (before the extension) is matched as
-     * a substring of the file name.
+     * Resolves a campaign URL such as `maps/ep3/Mission_1.yimf` or
+     * `maps/ep3/bootcamp/batut_stealth.yimf` to its JSON document:
+     * `data/maps/<base>.json` (or `data/maps/bootcamp/<base>.json` when the URL is under a
+     * `bootcamp/` path segment). Returns the parsed map node, or null when unknown.
      */
     private fun findMapXml(assetsDir: String, url: String): XmlNode? {
         val base = url.substringAfterLast('/').substringBeforeLast('.')
-        val files = Fio.listDir(binDir(assetsDir)).orEmpty()
-        for (file in files) {
-            if (!file.endsWith(".bin")) continue
-            if (!file.contains(base, ignoreCase = true)) continue
-            val text = Fio.readText("${binDir(assetsDir)}/$file") ?: continue
-            val root = XmlParser.parseOrNull(text) ?: continue
-            if (root.name == "map") return root
-        }
-        return null
+        val boot = "/bootcamp/".let { url.contains(it) }
+        val rel = if (boot) "maps/bootcamp/$base.json" else "maps/$base.json"
+        val root = readDoc(assetsDir, rel) ?: return null
+        return if (root.name == "map") root else null
     }
 
-    /** The directory that holds the unpacked `.bin` XML documents. */
-    private fun binDir(assetsDir: String): String = "$assetsDir/binaryData"
+    /** The directory that holds the JSON documents. */
+    private fun dataDir(assetsDir: String): String = "$assetsDir/data"
+
+    /** Reads and parses one JSON document (relative to `dataDir`), or null when absent/broken. */
+    private fun readDoc(assetsDir: String, rel: String): XmlNode? {
+        val text = Fio.readText("${dataDir(assetsDir)}/$rel") ?: return null
+        return JsonXml.parseNodeOrNull(text)
+    }
 }

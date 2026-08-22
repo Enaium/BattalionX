@@ -23,8 +23,8 @@ import java.io.File
  */
 class UnitMenuTest {
 
-    private val assetsDir = "/Users/enaium/swf/BattalionVengeance"
-    private fun haveAssets(): Boolean = File("$assetsDir/binaryData").isDirectory
+    private val assetsDir = "assets"
+    private fun haveAssets(): Boolean = File("$assetsDir/data").isDirectory
 
     private fun newGame(): GameManager {
         val game = GameLoader.loadCampaignMission(assetsDir, 1)

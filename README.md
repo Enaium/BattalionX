@@ -8,27 +8,42 @@ All game logic (rules engine, AI, turn system, data model) lives in `commonMain`
 
 ## Assets
 
-The project ships no assets. Unpack them from the original SWF:
+All game resources live under `assets/` in the project root (versioned, no runtime unpacking):
 
 ```
-<assetsDir>/
-├── images/        # extracted texture PNGs
-├── binaryData/    # mission / unit XML data (.bin)
-├── sounds/        # sound effects and BGM (.mp3)
-└── scripts/       # dialogue scripts
+assets/
+├── data/                # game data as JSON (one document per file)
+│   ├── terrainmodifiers.json / unitmodifiers.json   #   modifier rules (imported first:
+│   │                                                 #   terrain/units reference them by name)
+│   ├── terrain.json     #   terrain + structure definitions
+│   ├── units.json       #   unit definitions
+│   ├── units_arena.json #   arena unit set (replaces base entries by name)
+│   ├── ballistics.json
+│   ├── campaign.json    #   Ep3 single-player campaign (mission list, briefs, medals)
+│   ├── bootcamp.json    #   tutorial campaign
+│   └── maps/            #   mission documents: Mission_1..10, bootcamp/, Kongregate_Bonus_Map
+├── images/              # sprite/texture files, named by sprite key (scorpion.png, sea_0_nw.png)
+└── sounds/              # sound effects + BGM, named by event name (ExplosionSound.mp3)
 ```
+
+The data documents use an XML-shaped JSON layout — every element is
+`{"name", "attrs", "children", "text"}` (see `JsonXml.kt`) — so mods ship by editing or
+adding files here: swap a sprite under `images/`, add a map under `data/maps/`, tweak a unit
+under `data/units.json`. `./gradlew jvmRun --args="assets --assetreport"` lists every sprite
+name the game requests (a mod checklist: any requested sprite with no backing file is reported).
 
 ## Running
 
 ```bash
-# Run directly (JVM desktop target)
-./gradlew jvmRun --args="/path/to/assets --mission 0"
+# Run directly (JVM desktop target) — assets/ is the default asset directory
+./gradlew jvmRun --args="assets --mission 0"
 
 # Arguments
-#   <assetsDir>     path to the unpacked assets
+#   <assetsDir>     the asset directory (default: assets)
 #   --mission N     campaign mission N (0-based, default 0)
-#   --skirmish x    free-for-all skirmish on map file x.bin
+#   --skirmish x    free-for-all skirmish on assets/data/maps/x.json (name only, e.g. Mission_1)
 #   --selftest      load the mission and tick the game loop without a window (startup self-check)
+#   --assetreport   drive every mission/menu and report requested sprites missing a file
 ```
 
 Other targets:

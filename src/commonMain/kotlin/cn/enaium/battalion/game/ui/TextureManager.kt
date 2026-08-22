@@ -11,13 +11,13 @@ import cn.enaium.sdl.SDLTextureAccess
 import cn.enaium.sdl.image.SDLImage
 
 /**
- * Loads and caches the game's image textures from the unpacked SWF `images/` directory.
+ * Loads and caches the game's image textures from the project's `assets/images/` directory.
  *
- * Every sprite in the original Flash game was exported as a PNG (or JPG) named
- * `<id>_<name>_<name>.<ext>` — e.g. `434_scorpion_scorpion.png`, `157_road_12_v1_road_12_v1.png`.
- * The meaningful sprite name is the repeated `<name>` (see [spriteKeyFromFile] for how it is
- * recovered). This manager scans the directory once, indexes each file by that name, and loads
- * textures on demand through [SDLImage.loadTexture]. Loaded textures are cached and released on [close].
+ * Each file is stored under its sprite key — `scorpion.png`, `sea_0_nw.png`,
+ * `unitOptionsButton.png` — so the key is simply the file base name. This manager scans the
+ * directory once, indexes every file by base name, and loads textures on demand through
+ * [SDLImage.loadTexture]. Loaded textures are cached and released on [close]. Mods add a
+ * sprite by dropping `<sprite-key>.png` into the directory.
  */
 class TextureManager(
     private val assetsDir: String,
@@ -31,37 +31,28 @@ class TextureManager(
     private val teamCache = mutableMapOf<Pair<String, Int>, SDLTexture>() // (sprite, teamARGB) -> tinted
     private var loaded = false
 
+    /**
+     * Mod-diagnostic hook: while [recording] is true, every sprite name the game asks for is
+     * collected into [requested] (the `--assetreport` CLI diagnostic uses this to verify the
+     * pruned `assets/images/` set covers all reachable content, and it tells a mod author which
+     * sprites a custom map/unit needs).
+     */
+    var recording: Boolean = false
+    val requested = mutableSetOf<String>()
+
     /** Scans the images directory and builds the sprite-name -> file index. */
     fun load() {
         if (loaded) return
         for (file in Fio.listDir(imagesDir).orEmpty()) {
             if (!file.endsWith(".png") && !file.endsWith(".jpg") && !file.endsWith(".jpeg")) continue
-            val name = spriteKeyFromFile(file)
+            // Assets are stored under their sprite key already (e.g. `scorpion.png`,
+            // `sea_0_nw.png`), so the key is simply the file base name.
+            val name = file.substringBeforeLast('.')
             if (name.isNotEmpty() && !index.containsKey(name)) {
                 index[name] = "$imagesDir/$file"
             }
         }
         loaded = true
-    }
-
-    /**
-     * Extracts the sprite key from an exported image filename.
-     *
-     * SWF exports are named `<id>_<name>_<name>.<ext>` where the name itself may contain
-     * underscores (e.g. `84_road_2_v1_road_2_v1.png`). The meaningful key is the repeated name
-     * (`road_2_v1`), so we strip the extension and the leading numeric id, then, if what remains
-     * is doubled (`name` + `name`), take the first half. Otherwise we fall back to the last
-     * underscore-segment.
-     */
-    private fun spriteKeyFromFile(file: String): String {
-        val base = file.substringBeforeLast('.')
-        val rest = base.substringAfter('_') // drop the leading `<id>_`
-        val half = rest.length / 2
-        val secondHalfStart = (rest.length + 1) / 2
-        if (rest.length >= 2 && rest.substring(0, half) == rest.substring(secondHalfStart)) {
-            return rest.substring(0, half)
-        }
-        return rest.substringAfterLast('_')
     }
 
     /** The file path for a sprite name, or null (used for diagnostics / fallbacks). */
@@ -75,6 +66,7 @@ class TextureManager(
      * unknown or fails to load.
      */
     fun texture(name: String): SDLTexture? {
+        if (recording) requested.add(name)
         val path = index[name] ?: return null
         return textureFromPath(name, path)
     }
@@ -85,6 +77,7 @@ class TextureManager(
      * that directional / numbered variants resolve to the plain base texture.
      */
     fun textureOrFallback(name: String): SDLTexture? {
+        if (recording) requested.add(name)
         texture(name)?.let { return it }
         // Try dropping a leading `<variant>_` segment: sea_0_v1 → sea_v1.
         val rest = name.substringAfter('_')
@@ -164,6 +157,7 @@ class TextureManager(
      * hand-built ramp from the team colour.
      */
     fun textureForTeam(name: String, teamColor: SDLColor): SDLTexture? {
+        if (recording) requested.add(name)
         val p = index[name] ?: return null
         val key = name to ((teamColor.r shl 16) or (teamColor.g shl 8) or teamColor.b)
         teamCache[key]?.let { return it }

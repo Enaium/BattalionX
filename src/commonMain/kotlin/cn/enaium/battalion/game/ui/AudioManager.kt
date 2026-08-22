@@ -18,10 +18,10 @@ import cn.enaium.sdl.mixer.SDLMixer
 /**
  * Plays the game's sound effects through SDL_mixer.
  *
- * The unpacked SWF keeps every sound as an MP3 under the `sounds/` directory, named like
- * `217_ExplosionSound_ExplosionSound.mp3` (a numeric id, then the event name). We scan that
- * directory, index the files by their event name, and play the right one whenever the matching
- * [Trigger] fires.
+ * Every sound is an MP3 under the project's `assets/sounds/` directory, named by its event
+ * name (`ExplosionSound.mp3`, `PlayerLoopWAV_3.mp3`). We scan that directory, index the files
+ * by base name, and play the right one whenever the matching [Trigger] fires. Mods add a
+ * sound by dropping `<event-name>.mp3` into the directory.
  *
  * Sound playback is fire-and-forget: a fresh [cn.enaium.sdl.mixer.SDLTrack] is created per
  * play so overlapping effects (several units firing in one turn) mix naturally. Because loading
@@ -92,20 +92,9 @@ class AudioManager(private val assetsDir: String) {
         val dir = "$assetsDir/sounds"
         for (file in Fio.listDir(dir).orEmpty()) {
             if (!file.endsWith(".mp3")) continue
-            // The exported filename is `<id>_<name>_<name>.mp3` where the meaningful event
-            // name is the repeated segment. Splitting on '_' and taking the tail is wrong
-            // when the name itself contains underscores: "419_PlayerLoopWAV_3_...mp3" would
-            // resolve to "3" instead of "PlayerLoopWAV_3". Strip the leading `<id>_` and the
-            // doubled name, like TextureManager does: name = the first half of the remainder.
-            val rest = file.substringAfter('_').removeSuffix(".mp3") // "PlayerLoopWAV_3_PlayerLoopWAV_3"
-            val half = rest.length / 2
-            val secondHalfStart = (rest.length + 1) / 2
-            val name = if (rest.length >= 2 && rest.substring(0, half) == rest.substring(secondHalfStart)) {
-                rest.substring(0, half)
-            } else {
-                // Fallback: last underscore segment (single-word names like "UIWAV").
-                rest.substringAfterLast('_')
-            }
+            // Assets are stored under their event name (e.g. `ExplosionSound.mp3`,
+            // `PlayerLoopWAV_3.mp3`), so the key is simply the file base name.
+            val name = file.substringBeforeLast('.')
             if (name.isNotEmpty()) soundFiles[name] = "$dir/$file"
         }
     }

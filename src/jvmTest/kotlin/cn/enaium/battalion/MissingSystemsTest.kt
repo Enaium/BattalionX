@@ -28,8 +28,8 @@ import java.io.File
  */
 class MissingSystemsTest {
 
-    private val assetsDir = "/Users/enaium/swf/BattalionVengeance"
-    private fun haveAssets(): Boolean = File("$assetsDir/binaryData").isDirectory
+    private val assetsDir = "assets"
+    private fun haveAssets(): Boolean = File("$assetsDir/data").isDirectory
 
     private fun warmachineType(): UnitData? =
         UnitManager.getAll().firstOrNull { it.hasModifier("Constructor") }

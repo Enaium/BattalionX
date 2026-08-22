@@ -27,8 +27,8 @@ import java.io.File
  */
 class AttackResolveFixTest {
 
-    private val assetsDir = "/Users/enaium/swf/BattalionVengeance"
-    private fun haveAssets(): Boolean = File("$assetsDir/binaryData").isDirectory
+    private val assetsDir = "assets"
+    private fun haveAssets(): Boolean = File("$assetsDir/data").isDirectory
 
     /** Picks a unit type that is melee (weapon range exactly 1) and ground/sea (can attack adjacent). */
     private fun meleeTypes(): List<UnitData> =

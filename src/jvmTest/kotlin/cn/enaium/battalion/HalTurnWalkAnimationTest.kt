@@ -22,10 +22,10 @@ import java.io.File
 class HalTurnWalkAnimationTest {
 
     /** The mission used by the manual run instructions in build/description.md. */
-    private val assetsDir = "/Users/enaium/swf/BattalionVengeance"
+    private val assetsDir = "assets"
 
     /** True when the unpacked squad assets are present (skips the test otherwise). */
-    private fun haveAssets(): Boolean = File("$assetsDir/binaryData").isDirectory
+    private fun haveAssets(): Boolean = File("$assetsDir/data").isDirectory
 
     @Test
     fun aiMovesWalkLikePlayerUnits() {
