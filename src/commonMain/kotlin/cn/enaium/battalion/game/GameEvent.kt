@@ -20,6 +20,12 @@ class GameEvent(repeats: Int = REPEAT_ONCE) {
     private var conditions = LogicalAndCondition()
     private val responses = mutableListOf<Response>()
 
+    /**
+     * The `<event>` XML node this event was parsed from (set by [cn.enaium.battalion.game.ScriptManager]).
+     * Kept so a saved game can re-emit the event definition verbatim.
+     */
+    var sourceXml: cn.enaium.battalion.util.XmlNode? = null
+
     /** Whether the event has finished all of its repetitions. */
     fun isCompleted(): Boolean = repeats == 0
 

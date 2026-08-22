@@ -28,6 +28,19 @@ class MoveUnitTrigger(val unit: Unit, val path: List<Tile>) : Trigger(NAME) {
     }
 }
 
+/**
+ * A unit began its walking animation (the first tile step).
+ *
+ * The movement sound fires on this trigger, not on the later [MoveUnitTrigger]: the original
+ * queues the move sound as the action starts (simultaneously with the first step), while the
+ * completion trigger only fires after the walk has fully drained.
+ */
+class MoveStartTrigger(val unit: Unit) : Trigger(NAME) {
+    companion object {
+        const val NAME = "moveStart"
+    }
+}
+
 /** A unit attacked another unit. */
 class AttackUnitTrigger(
     val unitX: Int,

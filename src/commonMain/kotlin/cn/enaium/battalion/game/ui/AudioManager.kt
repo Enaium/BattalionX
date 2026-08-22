@@ -8,7 +8,7 @@ import cn.enaium.battalion.game.triggers.BuildUnitTrigger
 import cn.enaium.battalion.game.triggers.CaptureTerrainTrigger
 import cn.enaium.battalion.game.triggers.ExtractResourcesTrigger
 import cn.enaium.battalion.game.triggers.KillUnitTrigger
-import cn.enaium.battalion.game.triggers.MoveUnitTrigger
+import cn.enaium.battalion.game.triggers.MoveStartTrigger
 import cn.enaium.battalion.game.triggers.PlayerTrigger
 import cn.enaium.battalion.game.triggers.UpgradeUnitTrigger
 import cn.enaium.battalion.util.Fio
@@ -46,6 +46,14 @@ class AudioManager(private val assetsDir: String) {
 
     /** The name of the soundtrack currently looping (to avoid restarts that don't change it). */
     private var currentMusic: String? = null
+
+    /**
+     * Master effect/music toggles (the SWF's `sound` / `music` options). When [effectsEnabled]
+     * is false all one-shot play calls are suppressed; when [musicEnabled] is false the looping
+     * soundtracks are stopped and not restarted.
+     */
+    var effectsEnabled: Boolean = true
+    var musicEnabled: Boolean = true
 
     /** Looping background soundtracks: the menu, the player-side ("good") and enemy-side ("evil") loops. */
     private companion object {
@@ -126,8 +134,10 @@ class AudioManager(private val assetsDir: String) {
         TriggerManager.addListener("upgradeUnit") { t ->
             if (t is UpgradeUnitTrigger) play("ConstructUnit")
         }
-        TriggerManager.addListener("moveUnit") { t ->
-            if (t is MoveUnitTrigger) playMoveSound(t.unit.unitData.name)
+        // Movement sound fires when the walk STARTS (MoveStartTrigger), so the effect is
+        // simultaneous with the first step instead of trailing the completed animation.
+        TriggerManager.addListener(MoveStartTrigger.NAME) { t ->
+            if (t is MoveStartTrigger) playMoveSound(t.unit.unitData.name)
         }
         // Weapon sound fires at the muzzle flash (attackStart), simultaneous with the firing
         // animation — the impact AttackUnitTrigger only drives the explosion visual.
@@ -149,11 +159,19 @@ class AudioManager(private val assetsDir: String) {
 
     /** Picks a movement sound for the given unit type name. */
     private fun playMoveSound(unitName: String) {
+        // Naval units must be matched before the generic Fighter/Tank rules: "Corvette
+        // Fighter" and "Leviathan Barge" would otherwise fall through to aircraft/tank
+        // sounds. The original SWF dispatches by unit category: barges -> BoatMove,
+        // submarines -> SubmarineMove, warships -> ShipMove (the exported U-Boat is
+        // hyphenated, so a plain "Uboat" test misses it).
         val key = when {
             unitName.contains("Tank") -> "TankMove1"
             unitName.contains("Blimp") -> "BlimpMove"
-            unitName.contains("Boat") || unitName.contains("Ship") ||
-                unitName.contains("Submarine") || unitName.contains("Uboat") -> "ShipMove"
+            unitName.contains("Albatross") -> "AlbatrossMove"
+            unitName.contains("Barge") || unitName.contains("Boat") -> "BoatMove"
+            unitName.contains("Submarine") || unitName.contains("U-Boat") -> "SubmarineMove"
+            unitName.contains("Ship") || unitName.contains("Battlecruiser") ||
+                unitName.contains("Intrepid") || unitName.contains("Corvette") -> "ShipMove"
             unitName.contains("Aircraft") || unitName.contains("Fighter") ||
                 unitName.contains("Bomber") -> "AircraftMove"
             unitName.contains("Commando") -> "CommandoMove1"
@@ -191,7 +209,7 @@ class AudioManager(private val assetsDir: String) {
      * is unavailable.
      */
     fun play(name: String) {
-        if (!available) return
+        if (!available || !effectsEnabled) return
         val path = soundFiles[name] ?: return
         val audio = cache.getOrPut(name) {
             try {
@@ -212,6 +230,23 @@ class AudioManager(private val assetsDir: String) {
     /** Starts the main-menu BGM loop. No-op once it is already playing. */
     fun startMenuMusic() = startMusic(MENU_LOOP)
 
+    /** Restarts the loop for whose turn it is (used when the music option is re-enabled). */
+    fun startTurnMusic() {
+        val active = GameManager.instance.activeController
+        val allied = active != null && GameManager.instance.isAlliedToThePlayer(active)
+        startMusic(if (allied) PLAYER_LOOP else ENEMY_LOOP)
+    }
+
+    /** Stops any looping background music (used when the music option is turned off). */
+    fun stopMusic() {
+        if (!available) return
+        musicTrack?.let { old ->
+            old.stop()
+            musicTrack = null
+            currentMusic = null
+        }
+    }
+
     /**
      * Starts (or switches to) a looping background-music track. Only one soundtrack plays at a
      * time; starting a different one stops the previous. No-op if the requested track is already
@@ -219,6 +254,16 @@ class AudioManager(private val assetsDir: String) {
      */
     fun startMusic(name: String) {
         if (!available) return
+        // Music toggled off: stop any loop and don't start another (the SWF's master loop
+        // volume, but implemented as a hard stop so nothing plays in the background).
+        if (!musicEnabled) {
+            if (musicTrack != null) {
+                musicTrack?.stop()
+                musicTrack = null
+                currentMusic = null
+            }
+            return
+        }
         // Same track already playing — don't restart (avoids a click every turn).
         if (currentMusic == name) return
         val path = soundFiles[name] ?: return

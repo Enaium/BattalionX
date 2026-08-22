@@ -117,7 +117,7 @@ object GameLoader {
      * Loads a single-player mission. [assetsDir] is the unpacked SWF asset directory,
      * [missionIndex] selects which campaign mission to play (0-based).
      */
-    fun loadCampaignMission(assetsDir: String, missionIndex: Int): GameManager {
+    fun loadCampaignMission(assetsDir: String, missionIndex: Int, difficultyOverride: Int? = null): GameManager {
         loadAssets(assetsDir)
         val missions = findCampaign(assetsDir)
             ?: error("GameLoader: no campaign XML found in $assetsDir")
@@ -127,14 +127,15 @@ object GameLoader {
         val mission = missions[missionIndex]
         val mapNode = findMapXml(assetsDir, mission.mapUrl)
             ?: error("GameLoader: could not find map for '${mission.mapUrl}'")
-        return buildGame(mapNode, mission.mapSettingsXml)
+        return buildGame(mapNode, mission.mapSettingsXml, difficultyOverride = difficultyOverride, mapUrl = mission.mapUrl, mapName = mission.mapUrl.substringAfterLast("/"))
+            .also { it.setCampaignContext(missionIndex, bootcamp = false, mission.mapUrl) }
     }
 
     /**
      * Loads a single-player bootcamp mission (the "Boot Camp" tutorial campaign).
      * [missionIndex] selects which bootcamp mission to play (0-based).
      */
-    fun loadBootcampMission(assetsDir: String, missionIndex: Int): GameManager {
+    fun loadBootcampMission(assetsDir: String, missionIndex: Int, difficultyOverride: Int? = null): GameManager {
         loadAssets(assetsDir)
         val missions = findBootcamp(assetsDir)
             ?: error("GameLoader: no bootcamp XML found in $assetsDir")
@@ -144,12 +145,35 @@ object GameLoader {
         val mission = missions[missionIndex]
         val mapNode = findMapXml(assetsDir, mission.mapUrl)
             ?: error("GameLoader: could not find map for '${mission.mapUrl}'")
-        return buildGame(mapNode, mission.mapSettingsXml)
+        return buildGame(mapNode, mission.mapSettingsXml, difficultyOverride = difficultyOverride, mapUrl = mission.mapUrl, mapName = mission.mapUrl.substringAfterLast("/"))
+            .also { it.setCampaignContext(missionIndex, bootcamp = true, mission.mapUrl) }
     }
 
     /** True when a campaign [MissionInfo]'s map file is actually present and loadable. */
     fun isMissionLoadable(assetsDir: String, mission: MissionInfo): Boolean =
         findMapXml(assetsDir, mission.mapUrl) != null
+
+    /**
+     * Reconstructs a [GameManager] from a serialized saved game (the XML produced by
+     * [cn.enaium.battalion.game.GameManager.toXML]).
+     *
+     * Mirrors the original's restore: the map is re-loaded from the save's `mapurl`, the
+     * `mapsettings` (rounds/teams/difficulty) come from the save, and the `<script>` snapshot
+     * rehydrates the exact turn/round/controller/resources/units/structures before the new
+     * [GameManager] is returned — it is NOT started; the caller resumes with
+     * [cn.enaium.battalion.game.GameManager.resumeFromSave].
+     */
+    fun loadSavedGame(assetsDir: String, saveXml: String): GameManager {
+        loadAssets(assetsDir)
+        val root = XmlParser.parseOrNull(saveXml) ?: error("GameLoader: invalid save XML")
+        val mapUrl = root.attr("mapurl")
+        val mapNode = findMapXml(assetsDir, mapUrl)
+            ?: error("GameLoader: save references unknown map '$mapUrl'")
+        val settingsNode = root.child("mapsettings") ?: error("GameLoader: save missing <mapsettings>")
+        val scriptNode = root.child("script")
+        return buildGame(mapNode, settingsNode, scriptNode,
+            mapUrl = mapUrl, mapName = root.attr("mapname").ifEmpty { mapUrl.substringAfterLast('/') })
+    }
 
     /** Public access to the parsed `<map>` XML for a mission, or null (used by the menu minimap). */
     fun findMapXmlPublic(assetsDir: String, url: String): XmlNode? = findMapXml(assetsDir, url)
@@ -177,15 +201,24 @@ object GameLoader {
         }
         sb.append("</teams></mapsettings>")
         val settingsNode = XmlParser.parseOrNull(sb.toString())!!
-        return buildGame(mapNode, settingsNode)
+        return buildGame(mapNode, settingsNode, mapUrl = mapFile, mapName = mapFile.substringBeforeLast('.'))
     }
 
-    /** Builds a [GameManager] from a map XML node and its `<mapsettings>` node. */
-    private fun buildGame(mapNode: XmlNode, settingsNode: XmlNode): GameManager {
-        val mapSettings = MapSettings.getFromXML(settingsNode)
-        val map = GameMap(mapNode, mapSettings.getTeam(0).name, mapNode.child("name")?.text ?: "Map")
+    /** Builds a [GameManager] from a map XML node, its `<mapsettings>` node, and an optional save `<script>` snapshot. */
+    private fun buildGame(
+        mapNode: XmlNode,
+        settingsNode: XmlNode,
+        scriptNode: XmlNode? = null,
+        difficultyOverride: Int? = null,
+        mapUrl: String? = null,
+        mapName: String? = null,
+    ): GameManager {
+        val mapSettings = MapSettings.getFromXML(settingsNode, difficultyOverride)
+        val url = mapUrl ?: mapNode.child("name")?.text ?: "Map"
+        val name = mapName ?: mapNode.child("name")?.text ?: "Map"
+        val map = GameMap(mapNode, url, name)
         mapSettings.map = map
-        return GameManager(mapSettings)
+        return GameManager(mapSettings, scriptNode)
     }
 
     /**

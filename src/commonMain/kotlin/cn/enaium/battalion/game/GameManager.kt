@@ -18,6 +18,7 @@ import cn.enaium.battalion.game.controllers.HALController
 import cn.enaium.battalion.game.controllers.HumanController
 import cn.enaium.battalion.game.triggers.PlayerTrigger
 import cn.enaium.battalion.game.triggers.TimePassedTrigger
+import cn.enaium.battalion.game.ui.SaveManager
 
 /**
  * Central game-state manager. A singleton that owns the tile map, controllers, unit list,
@@ -41,6 +42,25 @@ class GameManager(
             private set
     }
 
+    /** This mission's 0-based index within its campaign, or -1 for skirmish/bonus maps. */
+    var missionIndex: Int = -1
+        private set
+
+    /** True when [missionIndex] refers to the Bootcamp campaign (vs the main campaign). */
+    var isBootcamp: Boolean = false
+        private set
+
+    /** The mission's map URL (used as the medal / loadable key, mirrors SWF `<mapURL>_medal`). */
+    var mapUrl: String = ""
+        private set
+
+    /** Records which campaign mission this game is, so [endGame] can unlock the next level. */
+    fun setCampaignContext(index: Int, bootcamp: Boolean, url: String) {
+        missionIndex = index
+        isBootcamp = bootcamp
+        mapUrl = url
+    }
+
     val map: GameMap = mapSettings.map!!
     var tileMap: Array<Array<Tile>> = map.generateTileMap()
         private set
@@ -48,6 +68,10 @@ class GameManager(
     var turn: Int = 0
     var round: Int = 0
     var currentController: Int = 0
+
+    /** True when this game was reconstructed from a saved-game `<script>` snapshot. */
+    var wasLoadedFromSavedGame: Boolean = false
+        private set
 
     /** Total game time elapsed in ms, accumulated in [update]. Used to drive animations. */
     var elapsedMs: Long = 0
@@ -101,23 +125,32 @@ class GameManager(
         }
         if (numHumans > 1) isSoloGame = false
 
-        // Generate structures and units from the map.
-        val structureTiles = map.generateStructures(tileMap, controllers.filterNotNull())
-        for (tile in structureTiles) {
-            addStructure(tile.controller, tile)
-        }
-        val unitList = map.generateUnits(controllers.filterNotNull())
-        for (u in unitList) {
-            u.deployed = true
-            if (u.unitData.hasModifier("Cloaking")) {
-                u.setCloaked(true, false, false)
+        // A saved game supplies its own snapshot: the constructor's `script` carries the
+        // <gamestate>/<resources>/<unit>/<structure> rehydration nodes, so fresh map generation
+        // is skipped (exactly like the original's loaded-from-save branch). Otherwise generate
+        // the mission's structures and units from the map as usual.
+        wasLoadedFromSavedGame = script != null
+        if (!wasLoadedFromSavedGame) {
+            val structureTiles = map.generateStructures(tileMap, controllers.filterNotNull())
+            for (tile in structureTiles) {
+                addStructure(tile.controller, tile)
             }
-            addUnit(u.controller!!, u)
-            tileMap[u.y][u.x].unit = u
+            val unitList = map.generateUnits(controllers.filterNotNull())
+            for (u in unitList) {
+                u.deployed = true
+                if (u.unitData.hasModifier("Cloaking")) {
+                    u.setCloaked(true, false, false)
+                }
+                addUnit(u.controller!!, u)
+                tileMap[u.y][u.x].unit = u
+            }
         }
 
-        // Parse the map script (triggers, events, etc.).
-        map.getScript()?.let { ScriptManager.parseScript(it) }
+        // Parse the map script (triggers, events, etc.). A save's <script> node rehydrates the
+        // saved state AND re-registers its events ("startGame"-conditioned events stay dormant
+        // on resume because START_GAME is not re-fired); the fresh map script only runs when
+        // starting from scratch.
+        (script ?: map.getScript())?.let { ScriptManager.parseScript(it) }
 
         // Register default surrender conditions (command center captured or no units left).
         // The original GameManager registers a NoUnitsCondition + CaptureTerrainCondition
@@ -697,6 +730,43 @@ class GameManager(
         // The port signals game-over via a flag; the renderer reads this and shows the score.
         playerWon = isPlayerWinner()
         gameOver = true
+        if (playerWon && missionIndex >= 0) {
+            // Mirror GameOverMenu.pushed: a win advances {campaign,bootcamp}_complete to the
+            // highest UNLOCKED level index (beat level N -> complete = N+1) and sets the current
+            // level key. The mission-select page unlocks level i while i <= complete.
+            if (isBootcamp) {
+                if (missionIndex + 1 > SaveManager.bootcampComplete) {
+                    SaveManager.bootcampComplete = missionIndex + 1
+                }
+                SaveManager.bootcampLevel = missionIndex + 1
+            } else {
+                if (missionIndex + 1 > SaveManager.campaignComplete) {
+                    SaveManager.campaignComplete = missionIndex + 1
+                }
+                SaveManager.campaignLevel = missionIndex + 1
+            }
+            // Medal thresholds come from the mission's <mapsettings>; only medal when the
+            // mission defines both (mirrors GameOverMenu.pushed hasMedals).
+            val silver = mapSettings.silverMedalThreshold
+            val gold = mapSettings.goldMedalThreshold
+            if (silver > 0 && gold > 0 && gold > silver) {
+                for (controller in controllers.filterNotNull()) {
+                    controller.team.calculateFinalScore()
+                }
+                val playerTeam = controllers.filterNotNull()
+                    .firstOrNull { it.team.controllerType.contains("Human", ignoreCase = true) }
+                    ?.team
+                if (playerTeam != null && mapUrl.isNotEmpty()) {
+                    val score = playerTeam.getStatistic(cn.enaium.battalion.data.Team.FINAL_SCORE)
+                    val medal = when {
+                        score > gold -> "gold"
+                        score > silver -> "silver"
+                        else -> "bronze"
+                    }
+                    SaveManager.setMedal(mapUrl, medal)
+                }
+            }
+        }
     }
     var gameOver: Boolean = false
         private set
@@ -707,6 +777,85 @@ class GameManager(
      */
     var playerWon: Boolean = false
         private set
+
+    /**
+     * Serializes the whole game state for a saved game (mirrors `GameManager.toXML`).
+     *
+     * The format matches what [cn.enaium.battalion.game.ScriptManager.parseScript] rehydrates:
+     * a `<game mapurl mapname>` wrapper holding `<mapsettings>` (rounds, teams, difficulty),
+     * then a `<script>` with the current turn/round/controller, per-controller resources
+     * and unit-enable state, every unit (status/health/upgrade/resourcePool/temp modifiers)
+     * and every structure (chunks/capturer/resources), plus the map-script `<event>`s.
+     */
+    fun toXML(): String {
+        val events = gameEventManager.toXML()
+        val sb = StringBuilder()
+        sb.append("<game mapurl=\"").append(escape(map.mapURL))
+            .append("\" mapname=\"").append(escape(map.mapName)).append("\">")
+        sb.append(mapSettings.toXML(includeStats = true))
+        sb.append("<script>")
+        sb.append("<gamestate turn=\"$turn\" round=\"$round\" controller=\"$currentController\"/>")
+        for ((i, c) in controllers.withIndex()) {
+            if (c == null) continue
+            sb.append("<resources controller=\"$i\" value=\"${c.getResources()}\"/>")
+            // Only a controller whose unit list is actually restricted writes disableAllUnits
+            // (the SWF wrote it unconditionally, which would lock every unit on restore).
+            if (!c.getAreAllUnitsDisabled()) {
+                sb.append("<disableAllUnits controller=\"$i\"/>")
+            }
+            for (name in c.getEnabledUnitNames()) {
+                sb.append("<enableUnit controller=\"$i\" unit=\"").append(escape(name)).append("\"/>")
+            }
+        }
+        for (u in units) {
+            val controllerIdx = u.controller?.let { getPlayer(it) } ?: -1
+            sb.append("<unit name=\"").append(escape(u.baseUnitData.name))
+                .append("\" x=\"").append(u.x).append("\" y=\"").append(u.y)
+                .append("\" controller=\"").append(controllerIdx).append("\">")
+            sb.append("<status deployed=\"").append(u.deployed).append("\" moved=\"").append(u.moved)
+                .append("\" fired=\"").append(u.fired).append("\" cloaked=\"").append(u.cloaked)
+                .append("\" repairing=\"").append(u.repairing).append("\"/>")
+            if (u.isUpgraded()) {
+                sb.append("<upgrade name=\"").append(escape(u.unitData.name)).append("\"/>")
+            }
+            if (u.getHealth() != u.baseUnitData.health) {
+                sb.append("<health value=\"").append(u.healthValue).append("\"/>")
+            }
+            if (u.resourcePool > 0 && u.unitData.hasModifier("Constructor")) {
+                sb.append("<resourcePool value=\"").append(u.resourcePool).append("\"/>")
+            }
+            for (mod in u.unitData.temporaryModifiers) {
+                sb.append("<modifier value=\"").append(escape(mod.name)).append("\"/>")
+            }
+            sb.append("</unit>")
+        }
+        for (tile in structures) {
+            val controllerIdx = tile.controller?.let { getPlayer(it) } ?: -1
+            val capturerX = tile.capturer?.x ?: -1
+            val capturerY = tile.capturer?.y ?: -1
+            sb.append("<structure name=\"").append(escape(tile.terrain.name))
+                .append("\" x=\"").append(tile.tileX).append("\" y=\"").append(tile.tileY)
+                .append("\" controller=\"").append(controllerIdx)
+                .append("\" chunks=\"").append(tile.chunks)
+                .append("\" capturerx=\"").append(capturerX)
+                .append("\" capturery=\"").append(capturerY).append("\"/>")
+            if (tile.resources > 0) {
+                sb.append("<structureresources x=\"").append(tile.tileX).append("\" y=\"")
+                    .append(tile.tileY).append("\" value=\"").append(tile.resources).append("\"/>")
+            }
+        }
+        sb.append(events)
+        sb.append("</script></game>")
+        return sb.toString()
+    }
+
+    /** Resumes a game that was loaded from a save (mirrors the original's saved-game resume). */
+    fun resumeFromSave() {
+        TriggerManager.add(PlayerTrigger(PlayerTrigger.START_TURN, currentController))
+    }
+
+    private fun escape(s: String): String =
+        s.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;")
 
     /**
      * Whether the human player (or a surviving ally of the human) is still alive at the end of

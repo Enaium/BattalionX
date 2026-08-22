@@ -10,6 +10,7 @@ import cn.enaium.battalion.game.controllers.HumanController
 import cn.enaium.battalion.game.triggers.AttackUnitTrigger
 import cn.enaium.battalion.game.triggers.KillUnitTrigger
 import cn.enaium.battalion.game.ui.Dialogue
+import cn.enaium.battalion.game.ui.SaveManager
 import cn.enaium.battalion.game.ui.TextRenderer
 import cn.enaium.battalion.game.ui.TextureManager
 import cn.enaium.sdl.SDL
@@ -545,7 +546,10 @@ class BattalionRenderer(
         // map starts at the window's top edge (no leftover dark band).
         const val WINDOW_H = 602
         const val TOP_BAR_H = 0
-        const val SIDE_W = 134
+        // Panel column: the mainframe (154×600 → scaled to 144 wide) overlaps the map's right
+        // edge and sits 4px inside the window's right edge (SIDE_X + SIDE_W = 690 < WINDOW_W),
+        // like the original (frame.x = WIDTH - frame.width) — the panel never spills off-screen.
+        const val SIDE_W = 144
 
         /** Max muzzle-recoil displacement (px) of a unit's sprite while it is firing. */
         const val FIRE_RECOIL_PX = 6f
@@ -557,7 +561,10 @@ class BattalionRenderer(
         val MAP_Y = TOP_BAR_H
         val MAP_W = TileManager.TILE_WIDTH * 10
         val MAP_H = TileManager.TILE_HEIGHT * 10
-        val SIDE_X = MAP_W
+        // The panel is shifted 4px left of the window's right edge (SIDE_X + SIDE_W + 4 ==
+        // WINDOW_W); the 14px overlap onto the map (MAP_W = 560) echoes the original's
+        // frame.x = WIDTH - frame.width placing the frame over the map's right edge.
+        val SIDE_X = WINDOW_W - SIDE_W
         val SIDE_Y = TOP_BAR_H
 
         /** Number of map tiles visible in the viewport (the map area is 10×10 tiles). */
@@ -927,13 +934,323 @@ class BattalionRenderer(
         // Dialog draws while active AND during its slide-in/out transition.
         if (dia != null && (dia.isActive() || diaSlidingIn || diaSlidingOut)) drawDialogue(dia)
 
-        if (game.gameOver) drawGameOverOverlay()
+        if (game.gameOver) drawGameOverMenu()
 
         // Build page is modal and covers the whole window, so it draws above everything
         // (map, side panel, recon strip) while open.
         if ((game.activeController as? HumanController)?.buildMenu != null) drawBuildPage()
 
+        // In-game options menu: the topmost modal (drawn over the game, build page and
+        // dialogue) when opened from the side-panel Options button.
+        if (inGameMenuOpen) drawInGameMenu()
+
         renderer.present()
+    }
+
+    /** True when the in-game options menu is shown (opened from the Options panel button). */
+    var inGameMenuOpen: Boolean = false
+        private set
+
+    /** The in-game menu action hit rects, rebuilt every frame by [drawInGameMenu]. */
+    private val inGameMenuHits = mutableListOf<Pair<String, SDLRect>>()
+
+    /** The in-game menu action under screen point (sx, sy), or null. */
+    fun inGameMenuActionAt(sx: Int, sy: Int): String? =
+        inGameMenuHits.firstOrNull {
+            sx >= it.second.x && sx < it.second.x + it.second.width && sy >= it.second.y && sy < it.second.y + it.second.height
+        }?.first
+
+    /** Opens (or closes) the in-game options menu. */
+    fun setInGameMenuOpen(open: Boolean) {
+        inGameMenuOpen = open
+    }
+
+    /** True while the in-game menu's Quick Help overlay is shown (inside [drawInGameMenu]). */
+    var showQuickHelp: Boolean = false
+
+    /**
+     * Draws the in-game options menu (the port's `IngameOptionsMenu`): a dimmed modal with
+     * sound/music/dialog toggles and the Resume / Save & Quit / Quit / Restart actions.
+     * Click targets are recorded in [inGameMenuHits] for [BattalionGame] to route.
+     */
+    private fun drawInGameMenu() {
+        inGameMenuHits.clear()
+
+        // See-through: NO full-screen dim (the user's request) — the live game stays visible
+        // around the panel. Only the BattalionPanel itself (wood texture + frame1 border)
+        // covers the centre, like the original IngameOptionsMenu overlay (430×236 for SP).
+        val panelW = 460
+        val panelH = 250
+        val px = (WINDOW_W - panelW) / 2
+        val py = (WINDOW_H - panelH) / 2
+
+        val wood = textures.texture("wood_texture") ?: textures.texture("panel")
+        if (wood != null) {
+            val prevAlpha = wood.alphaMod
+            wood.alphaMod = (255 * DIALOGUE_PANEL_ALPHA).toInt()
+            drawTiled(wood, SDLRect(px, py, panelW, panelH))
+            wood.alphaMod = prevAlpha
+        } else {
+            renderer.drawColor = SDLColor(30, 34, 44)
+            renderer.fillRect(SDLRect(px, py, panelW, panelH))
+        }
+        drawFrameBorder(px, py, panelW, panelH)
+
+        val mouse = SDL.mouseState
+        val mx = mouse.x.toInt()
+        val my = mouse.y.toInt()
+
+        // Row 1 (SWF layout): sound / music / dialog toggle icons, then the Back button
+        // (closeButton tile) right after the dialog toggle, vertically centred on the row.
+        data class ToggleDef(val id: String, val offKey: String, val onKey: String)
+        // SWF ToggleableTileSheetButton: the ACTIVE (on) state shows the base sheet
+        // (e.g. soundButton), the inactive (off) state shows the "Toggled" sheet.
+        val toggles = listOf(
+            ToggleDef("sound", "soundButtonToggled", "soundButton"),
+            ToggleDef("music", "musicButtonToggled", "musicButton"),
+            ToggleDef("dialog", "dialogButtonToggled", "dialogButton"),
+        )
+        val toggleW = 76
+        val toggleH = 89
+        val rowY = py + 14
+        var tx = px + 16
+        for (t in toggles) {
+            val on = when (t.id) {
+                "sound" -> SaveManager.sound
+                "music" -> SaveManager.music
+                else -> SaveManager.dialog
+            }
+            val hover = mx >= tx && mx < tx + toggleW && my >= rowY && my < rowY + toggleH
+            val tex = textures.texture(if (on) t.onKey else t.offKey)
+            if (tex != null) {
+                // TileSheetButton frames: 0=disabled, 1=up, 2=over, 3=down. The enabled toggle
+                // shows the bright UP frame by default and the OVER frame on hover (NOT frame 0,
+                // which is the dark disabled look).
+                renderer.renderTexture(
+                    tex,
+                    src = SDLFRect((if (hover) 2 else 1) * toggleW.toFloat(), 0f, toggleW.toFloat(), toggleH.toFloat()),
+                    dst = SDLFRect(tx.toFloat(), rowY.toFloat(), toggleW.toFloat(), toggleH.toFloat()),
+                )
+            }
+            inGameMenuHits.add(t.id to SDLRect(tx, rowY, toggleW, toggleH))
+            tx += toggleW + 8
+        }
+
+        // Back (closeButton) at the END of the toggle row (SWF: x = dialog.x + w + 20).
+        val backW = 126
+        val backH = 71
+        val backX = tx + 12
+        val backY = rowY + (toggleH - backH) / 2
+        val backHover = mx >= backX && mx < backX + backW && my >= backY && my < backY + backH
+        textures.texture("closeButton")?.let { tex ->
+            renderer.renderTexture(
+                tex,
+                src = SDLFRect((if (backHover) 2 else 1) * backW.toFloat(), 0f, backW.toFloat(), backH.toFloat()),
+                dst = SDLFRect(backX.toFloat(), backY.toFloat(), backW.toFloat(), backH.toFloat()),
+            )
+        }
+        inGameMenuHits.add("resume" to SDLRect(backX, backY, backW, backH))
+
+        // Rows 2–3: VistaButton material + rendered black text — the SWF's Quick Help / Quit /
+        // Quit and Save / Restart. The material is btn_tile9 (24×24 nine-slice, corner rect
+        // (6,8,12,8)) with the btn_overlay gloss drawn at (size − 2), and a dark title.
+        data class ActionDef(val id: String, val label: String, val desc: String = "", val icon: String? = null)
+        val actions = listOf(
+            ActionDef("help", "Quick Help", icon = "ico_quickHelp"),
+            ActionDef("quit", "Quit", "(without saving)", "ico_quitNoSave"),
+            ActionDef("save", "Quit and Save", icon = "ico_quitSave"),
+            ActionDef("restart", "Restart", icon = "ico_restart"),
+        )
+        val btnW = (panelW - 20) / 2   // (WIDTH-20)/2 = 205 at 430 wide
+        val btnH = 52
+        var ay = rowY + toggleH + 8
+        for ((i, a) in actions.withIndex()) {
+            val col = i % 2
+            val row = i / 2
+            val x = px + 8 + col * (btnW + 4)
+            val y = ay + row * (btnH + 10)
+            val hover = mx >= x && mx < x + btnW && my >= y && my < y + btnH
+            drawVistaButton(x, y, btnW, btnH, hover, a.label, a.desc, a.icon)
+            inGameMenuHits.add(a.id to SDLRect(x, y, btnW, btnH))
+        }
+
+        // Quick Help overlay: the SWF's quickHelpInfo bitmap, shown over the panel while the
+        // user has it open. Any click dismisses it (BattalionGame routes clicks here first).
+        if (showQuickHelp) {
+            val help = textures.texture("quickHelpInfo")
+            if (help != null) {
+                renderer.renderTexture(help, dst = SDLFRect(px.toFloat(), py.toFloat(), panelW.toFloat(), panelH.toFloat()))
+            } else {
+                renderer.drawColor = SDLColor(12, 14, 20, 240)
+                renderer.fillRect(SDLRect(px, py, panelW, panelH))
+                text.drawCentered("Right-click: cancel selection", WINDOW_W / 2, py + 120, 15, SDLColor(240, 240, 245))
+                text.drawCentered("Click any unit to select it; click to move / attack.", WINDOW_W / 2, py + 150, 15, SDLColor(240, 240, 245))
+                text.drawCentered("Click to dismiss.", WINDOW_W / 2, py + 200, 13, SDLColor(180, 185, 195))
+            }
+            inGameMenuHits.add("help" to SDLRect(px, py, panelW, panelH))
+        }
+
+        // Quit confirmation (SWF ConfirmMenu modal over the whole window): Yes abandons the
+        // match without saving, No / Close returns to the options menu.
+        if (showQuitConfirm) {
+            quitConfirmHits = emptyList()
+            renderer.drawColor = SDLColor(0, 0, 0, 150)
+            renderer.fillRect(SDLRect(0, 0, WINDOW_W, WINDOW_H))
+            // Same BattalionPanel material as the main-menu clear-data confirm (SWF ConfirmMenu):
+            // a frame2 nine-slice border over a spotted_texture fill.
+            val cw = 410
+            val ch = 200
+            val cx = (WINDOW_W - cw) / 2
+            val cy = (WINDOW_H - ch) / 2
+            val fill = textures.texture("spotted_texture")
+            if (fill != null) {
+                drawTiled(fill, SDLRect(cx, cy, cw, ch))
+            } else {
+                renderer.drawColor = SDLColor(30, 34, 44)
+                renderer.fillRect(SDLRect(cx, cy, cw, ch))
+            }
+            drawFrameBorder(cx, cy, cw, ch)
+            // Yes / No buttons (SWF yesButton / noButton / closeButton in the panel's top-left).
+            // TileSheetButton frames: 0=disabled, 1=up, 2=over, 3=down.
+            val buttonDefs = listOf(
+                Triple("yesButton", "quitYes", SDLRect(cx + 12, cy + 18, 126, 71)),
+                Triple("noButton", "quitNo", SDLRect(cx + 12 + 134, cy + 18, 126, 71)),
+                Triple("closeButton", "quitNo", SDLRect(cx + 12 + 268, cy + 18, 126, 71)),
+            )
+            for ((key, action, r) in buttonDefs) {
+                val btex = textures.texture(key)
+                if (btex != null) {
+                    val hover = mouseWithin(r.x, r.y, r.width, r.height)
+                    renderer.renderTexture(
+                        btex,
+                        src = SDLFRect((if (hover) 2 else 1) * r.width.toFloat(), 0f, r.width.toFloat(), r.height.toFloat()),
+                        dst = SDLFRect(r.x.toFloat(), r.y.toFloat(), r.width.toFloat(), r.height.toFloat()),
+                    )
+                }
+            }
+            quitConfirmHits = buttonDefs.map { Pair(it.second, it.third) }
+            // Text sits BELOW the button row (SWF ConfirmMenu textBox under the buttons);
+            // SWF text colour is 0 (black).
+            text.drawCentered("Are you sure you want to quit", WINDOW_W / 2, cy + 108, 15, SDLColor(20, 20, 20))
+            text.drawCentered("without saving?", WINDOW_W / 2, cy + 132, 15, SDLColor(20, 20, 20))
+            text.drawCentered("You will have to restart this mission when you return.", WINDOW_W / 2, cy + 162, 12, SDLColor(20, 20, 20))
+        }
+    }
+
+    /** Hit rects of the quit-confirmation Yes/No buttons (rebuilt each frame while shown). */
+    var quitConfirmHits: List<Pair<String, SDLRect>> = emptyList()
+        private set
+
+    /** Which quit-confirm action is under screen point (sx, sy), or null. */
+    fun quitConfirmActionAt(sx: Int, sy: Int): String? =
+        quitConfirmHits.firstOrNull {
+            sx >= it.second.x && sx < it.second.x + it.second.width &&
+                sy >= it.second.y && sy < it.second.y + it.second.height
+        }?.first
+
+    /** Whether the in-game options menu's Quit confirmation is open. */
+    var showQuitConfirm: Boolean = false
+        private set
+
+    /** Opens (or closes) the in-game Quit confirmation dialog. */
+    fun setQuitConfirm(open: Boolean) {
+        showQuitConfirm = open
+    }
+
+    /**
+     * Draws a VistaButton (SWF `VistaButton`): the `btn_tile9` nine-slice background (the
+     * 24×24 texture, sliced at Tile9Data rect (x=6, y=8, w=12, h=8) → left=6, top=8,
+     * right=18, bottom=16) plus the `btn_overlay` gloss stretched to (w−2)×(h−2) at (1,1),
+     * an optional icon at the left (scaled to fit the height, title shifted right — the
+     * VistaButtonState layout), a black title (and optional grey caption below). Hover
+     * brightens — the SWF applies a ColorTransform(1.1,1.1,1.1) to the whole image; the
+     * port approximates it with a translucent white overlay.
+     */
+    private fun drawVistaButton(x: Int, y: Int, w: Int, h: Int, hover: Boolean, title: String, desc: String = "", iconKey: String? = null) {
+        val tiles = textures.texture("btn_tile9")
+        if (tiles != null) {
+            // Tile9Data(new Bitmap(btn_tile9), new Rectangle(6,8,12,8)): the rect is
+            // (x=6, y=8, width=12, height=8), so the cut lines are left=6, top=8,
+            // right=18 (24−6), bottom=16 (24−8) and the middle slice is 12×8.
+            val left = 6
+            val top = 8
+            val right = 18
+            val bottom = 16
+            val tw = tiles.size.x.toInt()   // 24
+            val th = tiles.size.y.toInt()   // 24
+            // Middle slices stretch/tile across the full remaining span; corners and edges
+            // keep their source size (Tile9.width/height setters do exactly this).
+            val srcCols = listOf(0, left, right)          // srcX per column
+            val srcRows = listOf(0, top, bottom)          // srcY per row
+            val srcColW = listOf(left, right - left, tw - right)   // 6, 12, 6
+            val srcRowH = listOf(top, bottom - top, th - bottom)   // 8, 8, 8
+            val dstColX = listOf(0, left, w - (tw - right))        // 0, 6, w-6
+            val dstRowY = listOf(0, top, h - (th - bottom))        // 0, 8, h-8
+            for (cx in 0..2) {
+                for (ry in 0..2) {
+                    val dstW = if (cx == 1) w - left - (tw - right) else srcColW[cx]
+                    val dstH = if (ry == 1) h - top - (th - bottom) else srcRowH[ry]
+                    if (dstW <= 0 || dstH <= 0) continue
+                    renderer.renderTexture(
+                        tiles,
+                        src = SDLFRect(srcCols[cx].toFloat(), srcRows[ry].toFloat(),
+                            srcColW[cx].toFloat(), srcRowH[ry].toFloat()),
+                        dst = SDLFRect((x + dstColX[cx]).toFloat(), (y + dstRowY[ry]).toFloat(),
+                            dstW.toFloat(), dstH.toFloat()),
+                    )
+                }
+            }
+        } else {
+            renderer.drawColor = if (hover) SDLColor(150, 150, 170) else SDLColor(80, 84, 100)
+            renderer.fillRect(SDLRect(x, y, w, h))
+        }
+
+        // btn_overlay gloss at (1,1) sized (w-2)×(h-2) — the VistaButtonState overlay layer.
+        textures.texture("btn_overlay")?.let { ov ->
+            renderer.renderTexture(
+                ov,
+                dst = SDLFRect((x + 1).toFloat(), (y + 1).toFloat(), (w - 2).toFloat(), (h - 2).toFloat()),
+            )
+        }
+
+        // Icon at PADDING (6), scaled to (h − 10)/icon.height, vertically centred; the title
+        // slides right to start at icon.width + 2*PADDING (VistaButtonState.updateDimensions).
+        var iconW = 0
+        if (iconKey != null) {
+            textures.texture(iconKey)?.let { icon ->
+                val iw = icon.size.x.toInt()
+                val ih = icon.size.y.toInt()
+                if (ih > 0) {
+                    val scale = (h - 10).toFloat() / ih
+                    iconW = (iw * scale).toInt()
+                    val iconH = (ih * scale).toInt()
+                    renderer.renderTexture(
+                        icon,
+                        dst = SDLFRect(
+                            (x + 6).toFloat(),
+                            (y + (h - iconH) / 2).toFloat(),
+                            iconW.toFloat(),
+                            iconH.toFloat(),
+                        ),
+                    )
+                }
+            }
+        }
+
+        // Title (black, HeadingTextField) centred in the space right of the icon; caption below
+        // in grey (DESC_COLOR).
+        val textLeft = if (iconW > 0) x + iconW + 12 else 0
+        val cx = if (iconW > 0) textLeft + (w - iconW - 12 - 6) / 2 else x + w / 2
+        text.drawCentered(title, cx, y + (if (desc.isEmpty()) (h - 18) / 2 else (h - 34) / 2), 16, SDLColor(20, 20, 20))
+        if (desc.isNotEmpty()) {
+            text.drawCentered(desc, cx, y + h - 22, 12, SDLColor(90, 100, 110))
+        }
+
+        // Hover brighten (SWF ColorTransform 1.1): translucent white wash.
+        if (hover) {
+            renderer.drawColor = SDLColor(255, 255, 255, 28)
+            renderer.fillRect(SDLRect(x, y, w, h))
+        }
     }
 
     /**
@@ -983,18 +1300,151 @@ class BattalionRenderer(
         }
     }
 
-    /** Draws the end-of-game victory / defeat banner over the whole screen. */
-    private fun drawGameOverOverlay() {
+    /**
+     * The rect of the "Finish" button on the results screen, rebuilt each frame by
+     * [drawGameOverMenu]. A click ends the match and returns to the menu.
+     */
+    var gameOverFinishHit: SDLRect? = null
+        private set
+
+    /** Draws the end-of-game results screen, reproducing the SWF `GameOverMenu`. */
+    private fun drawGameOverMenu() {
+        gameOverFinishHit = null
         // Dim the board.
-        renderer.drawColor = SDLColor(0, 0, 0, 170)
+        renderer.drawColor = SDLColor(0, 0, 0, 200)
         renderer.fillRect(SDLRect(0, 0, WINDOW_W, WINDOW_H))
 
-        val title = if (game.playerWon) "VICTORY" else "DEFEAT"
-        val color = if (game.playerWon) SDLColor(120, 220, 120) else SDLColor(220, 90, 80)
-        val titleX = WINDOW_W / 2
-        val titleY = WINDOW_H / 2 - 40
-        text.drawCentered(title, titleX, titleY, 42, color)
-        text.drawCentered("Press ESC to close", titleX, titleY + 44, 18, SDLColor(220, 220, 225))
+        // Header banner (SWF header = banner_victory / banner_defeat, 700×95).
+        val bannerKey = if (game.playerWon) "banner_victory" else "banner_defeat"
+        val banner = textures.texture(bannerKey)
+        if (banner != null) {
+            val bw = banner.size.x.toInt()
+            val bh = banner.size.y.toInt()
+            val scale = minOf(WINDOW_W.toFloat() / bw, 1f)
+            val dw = (bw * scale).toInt()
+            val dh = (bh * scale).toInt()
+            renderer.renderTexture(
+                banner,
+                dst = SDLFRect(((WINDOW_W - dw) / 2).toFloat(), 0f, dw.toFloat(), dh.toFloat()),
+            )
+        }
+
+        // Per-team score rows (SWF GameOverMenuPlayerBox, 100 tall each), like the SWF's
+        // wood BattalionPanel backing below the header.
+        val rowH = 100
+        val rowsTop = 105
+        val teamList = game.controllers.filterNotNull().map { it.team }
+        for ((i, team) in teamList.withIndex()) {
+            val rowY = rowsTop + i * rowH
+            if (rowY + rowH > WINDOW_H - 90) break
+            drawGameOverPlayerBox(rowY, rowH, team)
+        }
+
+        // Finish (button_finish) at the bottom right (SWF: x = WIDTH - w, y = HEIGHT - h).
+        val finishW = 126
+        val finishH = 71
+        val fx = WINDOW_W - finishW - 8
+        val fy = WINDOW_H - finishH - 8
+        val tex = textures.texture("button_finish")
+        if (tex != null) {
+            // TileSheetButton frames: 0=disabled, 1=up, 2=over, 3=down.
+            val hover = mouseWithin(fx, fy, finishW, finishH)
+            renderer.renderTexture(
+                tex,
+                src = SDLFRect((if (hover) 2 else 1) * finishW.toFloat(), 0f, finishW.toFloat(), finishH.toFloat()),
+                dst = SDLFRect(fx.toFloat(), fy.toFloat(), finishW.toFloat(), finishH.toFloat()),
+            )
+        }
+        gameOverFinishHit = SDLRect(fx, fy, finishW, finishH)
+    }
+
+    /** Draws one SWF `GameOverMenuPlayerBox`: team name bar, avatar, score, medal, stats. */
+    private fun drawGameOverPlayerBox(y: Int, rowH: Int, team: cn.enaium.battalion.data.Team) {
+        team.calculateFinalScore()
+        val x = 16
+
+        // frame_classic / frame_blitz background (671×94) scaled to the box width.
+        val isClassic = game.mapSettings.map?.isClassic ?: false
+        val frameKey = if (isClassic) "frame_classic" else "frame_blitz"
+        val frameTex = textures.texture(frameKey) ?: textures.texture(if (isClassic) "frame_blitz" else "frame_classic")
+        if (frameTex != null) {
+            val fw = frameTex.size.x.toInt()
+            val fh = frameTex.size.y.toInt()
+            val scale = rowH.toFloat() / fh
+            renderer.renderTexture(
+                frameTex,
+                dst = SDLFRect(x.toFloat(), y.toFloat(), (fw * scale).toFloat(), rowH.toFloat()),
+            )
+        }
+
+        // Name bar (team colour) + name text.
+        val tc = team.color
+        renderer.drawColor = SDLColor(((tc shr 16) and 0xffu).toInt(), ((tc shr 8) and 0xffu).toInt(), (tc and 0xffu).toInt())
+        renderer.fillRect(SDLRect(x + 4, y + 4, 136, 24))
+        text.draw(team.name, x + 10, y + 6, 14, SDLColor(255, 255, 255))
+
+        // Avatar (65×65) at the left under the name bar.
+        val avatarTex = avatarTexture ?: run { loadAvatarTexture(); avatarTexture }
+        val avatarSrc = avatarFrame(team.avatarString.lowercase()) ?: avatarFrame("tucker")
+        if (avatarTex != null && avatarSrc != null) {
+            renderer.renderTexture(
+                avatarTex,
+                src = avatarSrc,
+                dst = SDLFRect((x + 3).toFloat(), (y + 26).toFloat(), 65f, 65f),
+            )
+        }
+
+        // Score with medal badge (SWF: medal sheet animation to the right of the score).
+        val silver = game.mapSettings.silverMedalThreshold
+        val gold = game.mapSettings.goldMedalThreshold
+        val hasMedals = silver > 0 && gold > 0 && gold > silver
+        val medal = if (hasMedals) {
+            val score = team.getStatistic(cn.enaium.battalion.data.Team.FINAL_SCORE)
+            val isWinner = team.active && game.playerWon
+            when {
+                score > gold -> "gold"
+                score > silver -> "silver"
+                isWinner -> "bronze"
+                else -> "none"
+            }
+        } else "none"
+        // Dark text on the light frame_classic/store panel for legibility.
+        text.drawCentered(team.getStatistic(cn.enaium.battalion.data.Team.FINAL_SCORE).toString(),
+            x + 108, y + 48, 16, SDLColor(20, 20, 20))
+        if (hasMedals) {
+            val medalTex = textures.texture("medal")
+            if (medalTex != null) {
+                val frameIdx = when (medal) {
+                    "gold" -> 3; "silver" -> 2; "bronze" -> 1; else -> 0
+                }
+                renderer.renderTexture(
+                    medalTex,
+                    src = SDLFRect((frameIdx * 30).toFloat(), 0f, 30f, 30f),
+                    dst = SDLFRect((x + 106 - 15).toFloat(), (y + 52 - 15).toFloat(), 30f, 30f),
+                )
+            }
+        }
+
+        // Stat columns (SWF createStatistic x positions).
+        val stats = listOf(
+            "Built" to team.getStatistic(cn.enaium.battalion.data.Team.UNITS_BUILT),
+            "Gnd" to team.getStatistic(cn.enaium.battalion.data.Team.GROUND_UNITS_BUILT),
+            "Sea" to team.getStatistic(cn.enaium.battalion.data.Team.SEA_UNITS_BUILT),
+            "Air" to team.getStatistic(cn.enaium.battalion.data.Team.AIR_UNITS_BUILT),
+            "Spent" to team.getStatistic(cn.enaium.battalion.data.Team.RESOURCES_SPENT),
+            "Capt" to team.getStatistic(cn.enaium.battalion.data.Team.STRUCTURES_CAPTURED),
+            "Lost" to team.getStatistic(cn.enaium.battalion.data.Team.STRUCTURES_LOST),
+        )
+        val statXs = listOf(178, 232, 270, 312, 380, 430, 470)
+        for ((j, s) in stats.withIndex()) {
+            text.drawCentered(s.second.toString(), x + statXs[j], y + 45, 13, SDLColor(20, 20, 20))
+        }
+    }
+
+    /** True when the mouse is inside the given rect (used by hover states). */
+    private fun mouseWithin(x: Int, y: Int, w: Int, h: Int): Boolean {
+        val m = SDL.mouseState
+        return m.x >= x && m.x < x + w && m.y >= y && m.y < y + h
     }
 
     private fun drawMap() {
@@ -2269,16 +2719,15 @@ class BattalionRenderer(
     /**
      * The mapped rectangle (screen coords) of the `mainframe` sprite drawn in the panel.
      * It is scaled to the panel HEIGHT (600 → 560) so the frame is never height-compressed.
-     * Source x 0..9 is transparent padding; it is cropped (src x=10..154 → 144 px × 0.933
-     * ≈ 134) so the frame's metal starts flush against the map's right edge.
+     * Source x 0..9 is transparent padding; it is cropped (src x=10..154 → 144 px). The panel
+     * column is exactly SIDE_W wide and flush with the window's right edge (SIDE_X + SIDE_W ==
+     * WINDOW_W), so the frame fits on-screen and overlaps the map's right edge like the original.
      */
     private fun mainframeRect(): SDLRect {
-        val mfScale = (WINDOW_H - SIDE_Y).toFloat() / 600f
-        val mfW = ((154 - 10) * mfScale).toInt()
         return SDLRect(
             SIDE_X,
             SIDE_Y,
-            mfW,
+            SIDE_W,
             WINDOW_H - SIDE_Y,
         )
     }
@@ -2290,10 +2739,12 @@ class BattalionRenderer(
      * Buttons, player rows and END TURN sit on the frame's opaque areas, so they draw above it.
      */
     private fun drawSidePanel() {
-        renderer.drawColor = SDLColor(26, 27, 30)
-        renderer.fillRect(SDLRect(SIDE_X, SIDE_Y, SIDE_W, WINDOW_H - SIDE_Y))
         btnRects.clear()
 
+        // NO opaque backdrop: the mainframe texture carries its own alpha (the minimap and
+        // portrait windows are transparent holes, and the frame's true transparency must show
+        // the map behind). Filling the panel column first with an opaque colour made those
+        // holes read as black slabs — the "missing transparent channel" look.
         // Content inside the hollow windows, drawn below the frame.
         drawMiniMap()
         drawPortrait()

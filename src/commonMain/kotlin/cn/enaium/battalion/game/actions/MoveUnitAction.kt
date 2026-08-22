@@ -7,6 +7,7 @@ import cn.enaium.battalion.game.Action
 import cn.enaium.battalion.game.ActionManager
 import cn.enaium.battalion.game.GameManager
 import cn.enaium.battalion.game.TriggerManager
+import cn.enaium.battalion.game.triggers.MoveStartTrigger
 import cn.enaium.battalion.game.triggers.MoveUnitTrigger
 
 /**
@@ -141,6 +142,11 @@ class MoveUnitAction(
             unit.moveProgressMs = 0
             unit.isMoving = true
             unit.moveStartMs = GameManager.instance.elapsedMs
+
+            // The movement sound plays the moment the walk begins (the original fires it when
+            // the action starts), NOT after the walk drains — [MoveUnitTrigger] is fired only
+            // on completion, which would otherwise leave the sound trailing the animation.
+            TriggerManager.add(MoveStartTrigger(unit))
 
             val from = nodeList[nodeList.size - 2]
             val to = nodeList[nodeList.size - 1]

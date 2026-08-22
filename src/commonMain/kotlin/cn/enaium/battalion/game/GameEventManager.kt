@@ -13,8 +13,12 @@ class GameEventManager {
         gameEvents.add(gameEvent)
     }
 
-    /** Whether every event has already fired at least once. */
-    fun isEmpty(): Boolean = gameEvents.all { it.isFired() }
+    /**
+     * Whether no event is currently mid-sequence (mirrors the original: isEmpty = no event has
+     * fired yet). Fired events are removed once their responses drain, so a repeat-once script
+     * that will never match (e.g. the other side's defeat speech) does not block the end game.
+     */
+    fun isEmpty(): Boolean = gameEvents.none { it.isFired() }
 
     /** Advances every event; removes completed (finished repeating) events. */
     fun update() {
@@ -33,5 +37,21 @@ class GameEventManager {
     fun clear() {
         for (e in gameEvents) e.dispose()
         gameEvents.clear()
+    }
+
+    /**
+     * Serializes every live [GameEvent] back to its `<event>` XML (mirrors
+     * `GameEventManager.toXML`). Re-emitting the ORIGINAL definitions keeps the event set
+     * intact across a save/load; already-fired one-shot events re-arm on resume (the original
+     * serialized their satisfied flags — the port re-runs `startGame`-gated events only when a
+     * fresh START_GAME fires, which a resume never does).
+     */
+    fun toXML(): String {
+        val sb = StringBuilder()
+        for (e in gameEvents) {
+            val src = e.sourceXml
+            if (src != null) sb.append(src.toXmlString())
+        }
+        return sb.toString()
     }
 }

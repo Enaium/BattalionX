@@ -166,6 +166,9 @@ class Unit(
 
     fun getHealth(): Int = health.toInt()
 
+    /** The exact fractional health (used by save serialization; [getHealth] truncates). */
+    val healthValue: Double get() = health
+
     fun getMaxHealth(): Double = unitData.health.toDouble()
 
     fun getHealthPercentage(): Double = health / unitData.health

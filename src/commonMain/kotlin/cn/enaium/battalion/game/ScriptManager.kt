@@ -55,6 +55,7 @@ object ScriptManager {
             else -> repeatsString.toIntOrNull() ?: GameEvent.REPEAT_ONCE
         }
         val event = GameEvent(repeats)
+        event.sourceXml = node
         for (conditionNode in node.children("condition")) {
             val c = ConditionFactory.get(conditionNode)
             event.addCondition(c)
@@ -90,16 +91,28 @@ object ScriptManager {
             val x = unitNode.attr("x").toIntOrNull() ?: 0
             val y = unitNode.attr("y").toIntOrNull() ?: 0
             val unit = cn.enaium.battalion.data.Unit(data, x, y, controller)
-            unit.deployed = true
             val status = unitNode.child("status")
+            unit.deployed = status?.attr("deployed")?.startsWith("t") != false
             unit.moved = status?.attr("moved")?.startsWith("t") == true
             unit.fired = status?.attr("fired")?.startsWith("t") == true
             unit.cloaked = status?.attr("cloaked")?.startsWith("t") == true
             unit.repairing = status?.attr("repairing")?.startsWith("t") == true
             unitNode.child("health")?.attr("value")?.toDoubleOrNull()?.let { unit.setHealth(it) }
-            // Constructor resource pool rehydration.
+            // Constructor resource pool: restore the exact saved amount (the original draws the
+            // default pool down to 0, then gains the saved value, so the net is the snapshot).
             unitNode.child("resourcePool")?.attr("value")?.toIntOrNull()?.let {
-                unit.resourcePool = if (unit.unitData.hasModifier("Constructor")) it + 2000 else it
+                unit.resourcePool = it
+            }
+            // Upgraded units re-resolve to their upgrade template.
+            unitNode.child("upgrade")?.attr("name")?.let { upgradeName ->
+                cn.enaium.battalion.data.UnitManager.get(upgradeName)?.let { unit.upgrade(it) }
+            }
+            // Re-apply temporary modifiers (e.g. "Cloak Damage") from the snapshot.
+            for (modNode in unitNode.children("modifier")) {
+                val modName = modNode.attr("value")
+                if (modName.isNotEmpty()) {
+                    cn.enaium.battalion.data.ModifierManager.get(modName)?.let { unit.unitData.addTemporaryModifier(it) }
+                }
             }
             game.addUnit(controller, unit)
             game.tileMap[y][x].unit = unit
@@ -120,6 +133,12 @@ object ScriptManager {
                 tile.controller = controller
             }
             structNode.attr("chunks").toIntOrNull()?.let { tile.chunks = it }
+            // Re-attach the in-progress capturer (capturerx/y = -1 when none).
+            val capturerX = structNode.attr("capturerx").toIntOrNull() ?: -1
+            val capturerY = structNode.attr("capturery").toIntOrNull() ?: -1
+            if (capturerX != -1 && capturerY != -1) {
+                tile.capturer = game.unitAt(capturerX, capturerY)
+            }
             game.addStructure(controller, tile)
         }
     }

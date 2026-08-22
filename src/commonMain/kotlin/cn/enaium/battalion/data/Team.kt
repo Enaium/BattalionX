@@ -21,7 +21,7 @@ class Team(
     val rank: Int,
     val color: UInt,
     val controllerType: String,
-    val difficulty: Int,
+    var difficulty: Int,
     var active: Boolean = true,
 ) {
     val allies: MutableList<Int> = mutableListOf()
@@ -154,6 +154,43 @@ class Team(
         score = maxOf(0, score)
         stats[FINAL_SCORE] = score
     }
+
+    /**
+     * Serializes this team for a saved game (mirrors `Team.toXML` in the original).
+     *
+     * ```
+     * <team active="true">
+     *   <name value="Player 1"/>
+     *   <teamname value="Blue"/>
+     *   <color value="ff0000"/>
+     *   <avatar value="..."/>
+     *   <rank value="1"/>
+     *   <controllertype value="Human"/>
+     *   <difficulty value="1"/>
+     *   <stats value="0,0,..."/>
+     *   <allies value="0"/>
+     * </team>
+     * ```
+     */
+    fun toXML(includeStats: Boolean = true): String {
+        val sb = StringBuilder("<team active=\"$active\">")
+        sb.append("<name value=\"${escape(name)}\"/>")
+        sb.append("<teamname value=\"${escape(teamName)}\"/>")
+        sb.append("<color value=\"${color.toString(16)}\"/>")
+        sb.append("<avatar value=\"${escape(avatarString)}\"/>")
+        sb.append("<rank value=\"$rank\"/>")
+        sb.append("<controllertype value=\"$controllerType\"/>")
+        sb.append("<difficulty value=\"$difficulty\"/>")
+        if (includeStats) {
+            sb.append("<stats value=\"${stats.joinToString(",")}\"/>")
+        }
+        sb.append("<allies value=\"${allies.joinToString(",")}\"/>")
+        sb.append("</team>")
+        return sb.toString()
+    }
+
+    private fun escape(s: String): String =
+        s.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;")
 
     /** Creates the controller that drives this team's units. */
     fun createController(): Controller = when (controllerType) {

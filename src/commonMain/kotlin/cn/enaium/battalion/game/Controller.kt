@@ -253,6 +253,9 @@ open class Controller(val team: Team) {
 
     fun getAreAllUnitsDisabled(): Boolean = areAllUnitsEnabled
 
+    /** The names of individually re-enabled units (used by save serialization). */
+    fun getEnabledUnitNames(): Set<String> = enabledUnits.toSet()
+
     fun isUnitEnabled(unitName: String): Boolean =
         areAllUnitsEnabled || enabledUnits.contains(unitName)
 

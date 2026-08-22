@@ -8,6 +8,7 @@ import cn.enaium.battalion.game.controllers.HumanController
 import cn.enaium.battalion.game.triggers.PlayerTrigger
 import cn.enaium.battalion.game.ui.AudioManager
 import cn.enaium.battalion.game.ui.Dialogue
+import cn.enaium.battalion.game.ui.SaveManager
 import cn.enaium.battalion.game.ui.StartScreen
 import cn.enaium.battalion.game.ui.TextRenderer
 import cn.enaium.battalion.game.ui.TextureManager
@@ -56,6 +57,12 @@ class BattalionGame(
 
     /** Last build message shown in the side panel (e.g. "Cannot afford"). */
     private var buildMessage: String = ""
+
+    /** The previous match's spec, kept so "Restart" re-runs it without the menu. */
+    private var lastMission: Int? = null
+    private var lastBootcamp = false
+    private var lastSkirmish: String? = null
+    private var lastResume = false
 
     private fun setBuildMessage(msg: String) {
         buildMessage = msg
@@ -106,17 +113,30 @@ class BattalionGame(
         textures = TextureManager(assetsDir, renderer)
         textures.load()
 
+        // Persist options/saves beside the assets (bind before the menu reads them).
+        SaveManager.bind(assetsDir)
+        applyOptions()
+
         // Pick the mission: an explicit CLI mission/skirmish skips the menu, otherwise show the
         // start screen so the player can choose between Campaign missions, Bootcamp missions,
-        // the bonus map, or quit. After a match ends (game over → ESC) we return to this menu
-        // so the player can pick another mission without restarting the app.
+        // the bonus map, resume a save, or quit. After a match ends (game over → ESC) we return
+        // to this menu so the player can pick another mission without restarting the app.
         var menuExplicit = missionIndex != null || skirmishMap != null
         while (running) {
+            // Hold the current match spec so "Restart" can re-run it without the menu.
             var mission = missionIndex
             var bootcamp = false
             var skirmish = skirmishMap
+            var resumeSave = false
 
-            if (!menuExplicit) {
+            if (restartRequested) {
+                // Restart the previous match (menu skipped, same mission/save spec).
+                restartRequested = false
+                resumeSave = lastResume
+                mission = lastMission
+                bootcamp = lastBootcamp
+                skirmish = lastSkirmish
+            } else if (!menuExplicit) {
                 // The mission-select pages reproduce the original SWF's 700×600 CampaignMenu
                 // stage, so switch the window to that size while the menu is shown and restore
                 // the game size afterwards.
@@ -126,11 +146,13 @@ class BattalionGame(
                 // The in-match START_TURN handler switches to the faction loop when the game
                 // starts; this call switches back when the match ends and we return here.
                 audio.startMenuMusic()
-                val start = StartScreen(assetsDir, renderer, text, textures)
+                val start = StartScreen(assetsDir, renderer, text, textures,
+                    onOptionsChanged = { applyOptions(); if (SaveManager.music) audio.startMenuMusic() })
                 val selection = start.run()
                 window.size = cn.enaium.sdl.SDLPoint(BattalionRenderer.WINDOW_W, BattalionRenderer.WINDOW_H)
                 applyRenderScale()
                 if (selection.quit) break
+                resumeSave = selection.resume
                 mission = selection.missionIndex
                 if (selection.bootcampIndex != null) {
                     mission = selection.bootcampIndex
@@ -139,13 +161,23 @@ class BattalionGame(
                 skirmish = selection.skirmishMap
             }
 
-            // Load the game. Skirmish mode plays any map as a free-for-all; a bootcamp mission
-            // selects from the bootcamp tutorial campaign; otherwise a campaign mission.
+            // Load the game. Resume reads the saved game (map re-loaded from its mapurl);
+            // skirmish plays any map as a free-for-all; a bootcamp mission selects from the
+            // bootcamp tutorial campaign; otherwise a campaign mission at the chosen difficulty.
+            // The AI difficulty selection (Easy/Normal/Hard) overrides the AI teams' difficulty.
             game = when {
+                resumeSave && SaveManager.saveGame != null ->
+                    GameLoader.loadSavedGame(assetsDir, SaveManager.saveGame!!)
                 skirmish != null -> GameLoader.loadSkirmish(assetsDir, skirmish)
                 bootcamp -> GameLoader.loadBootcampMission(assetsDir, mission ?: 0)
-                else -> GameLoader.loadCampaignMission(assetsDir, mission ?: 0)
+                else -> GameLoader.loadCampaignMission(assetsDir, mission ?: 0,
+                    difficultyOverride = SaveManager.aiDifficulty.coerceIn(0, 2))
             }
+            lastMission = mission
+            lastBootcamp = bootcamp
+            lastSkirmish = skirmish
+            lastResume = resumeSave
+
             // The GameManager constructor clears the whole trigger event bus, including the
             // audio listeners load() registered — subscribe per match, only now that the bus
             // is stable, so START_TURN starts the BGM and unit actions play their SFX.
@@ -161,14 +193,26 @@ class BattalionGame(
             }
             render = BattalionRenderer(game!!, text, renderer, textures)
             render!!.setupTextures()
-            game!!.startGame()
+            applyOptions()  // re-apply sound/music toggles onto this match's audio state
+            if (resumeSave) {
+                // A saved game resumes mid-turn: fire START_TURN for the saved controller
+                // instead of the fresh StartGame/StartRound/StartTurn chain.
+                game!!.resumeFromSave()
+            } else {
+                game!!.startGame()
+            }
 
-            // Load the mission briefing and play it over the start of the match. The player-name
-            // intro is revealed as soon as the briefing box appears (not after it ends), so it
-            // plays behind / around the dialogue while the mission brief is on screen.
-            dialogue = Dialogue(game!!.map.getScript())
-            render!!.dialogue = dialogue
-            dialogue!!.play("startGame")
+            // Load the mission briefing and play it over the start of the match (fresh games
+            // only — a resume restores mid-match state and skips the intro dialogue). The
+            // player-name intro is revealed as soon as the briefing box appears (not after it
+            // ends), so it plays behind / around the dialogue while the brief is on screen.
+            // The brief is part of campaign flow and always shows on a fresh game — the
+            // "Dialogs" option only gates mid-game chat responses, not the mission brief.
+            if (!resumeSave) {
+                dialogue = Dialogue(game!!.map.getScript())
+                render!!.dialogue = dialogue
+                dialogue!!.play("startGame")
+            }
 
             // Route mid-game script responses (chat / highlight / scroll) to visible feedback.
             installScriptFeedback()
@@ -340,6 +384,25 @@ class BattalionGame(
 
     private fun onMouseDown(button: Int, sx: Int, sy: Int) {
         val g = game ?: return
+
+        // Results screen is modal after game over: only the Finish button closes it (the SWF's
+        // GameOverMenu mainMenuButton); everything else is ignored.
+        if (g.gameOver) {
+            if (button == 1) {
+                val hit = render?.gameOverFinishHit
+                if (hit != null && sx >= hit.x && sx < hit.x + hit.width && sy >= hit.y && sy < hit.y + hit.height) {
+                    inMatch = false
+                }
+            }
+            return
+        }
+
+        // In-game options menu is modal: it swallows every click while open (toggles and
+        // the save/quit/restart actions route to it; nothing reaches the map below).
+        if (render?.inGameMenuOpen == true) {
+            if (button == 1) handleInGameMenuClick(sx, sy)
+            return
+        }
 
         // Build page is modal: it swallows every click while open (unit card, back, WM arrows).
         if ((g.activeController as? HumanController)?.isBuildMenuFocused() == true) {
@@ -536,9 +599,80 @@ class BattalionGame(
         when (btn) {
             BattalionRenderer.PanelButton.UNDO_MOVE -> human.dispatchUndoMove()
             BattalionRenderer.PanelButton.NEXT_UNIT -> selectNextUnit()
-            BattalionRenderer.PanelButton.OPTIONS ->
-                setBuildMessage("Options menu not available in this build")
+            BattalionRenderer.PanelButton.OPTIONS -> {
+                // Entering the menu exits the move/attack mode (deselect + close unit bar).
+                human.selectUnit(null)
+                human.closeUnitOptions()
+                render?.setInGameMenuOpen(true)
+            }
             BattalionRenderer.PanelButton.END_TURN -> human.dispatchEndTurn()
+        }
+    }
+
+    /** Routes a click in the in-game options menu (toggles / resume / save / quit / restart). */
+    private fun handleInGameMenuClick(sx: Int, sy: Int) {
+        val render = render ?: return
+        // Quit confirmation is modal: only Yes/No/Close buttons are clickable.
+        if (render.showQuitConfirm) {
+            when (render.quitConfirmActionAt(sx, sy)) {
+                "quitYes" -> {
+                    render.setQuitConfirm(false)
+                    render.setInGameMenuOpen(false)
+                    inMatch = false        // abandon match without saving (no defeat screen)
+                }
+                "quitNo" -> render.setQuitConfirm(false)
+            }
+            return
+        }
+        // Quick Help is a full-panel overlay: ANY click inside it dismisses it (SWF behavior).
+        if (showQuickHelp) {
+            render.showQuickHelp = false
+            showQuickHelp = false
+            return
+        }
+        when (render.inGameMenuActionAt(sx, sy)) {
+            "sound" -> { SaveManager.sound = !SaveManager.sound; applyOptions() }
+            "music" -> { SaveManager.music = !SaveManager.music; applyOptions() }
+            "dialog" -> { SaveManager.dialog = !SaveManager.dialog }
+            "help" -> {
+                render.showQuickHelp = true
+                showQuickHelp = true
+            }
+            "resume" -> render.setInGameMenuOpen(false)
+            "save" -> {
+                val g = game ?: return
+                val xml = g.toXML()
+                SaveManager.saveGame = xml
+                render.setInGameMenuOpen(false)
+                inMatch = false        // back to the menu; Continue is now enabled
+            }
+            "quit" -> render.setQuitConfirm(true)
+            "restart" -> {
+                render.setInGameMenuOpen(false)
+                restartRequested = true
+                inMatch = false
+            }
+            else -> Unit
+        }
+    }
+
+    /** True when the player chose Restart in the in-game menu; [startMatch] re-runs the same game. */
+    private var restartRequested = false
+
+    /** True while the in-game menu's "Quick Help" overlay is shown (dismissed by clicking it). */
+    private var showQuickHelp = false
+
+    /** Applies the persisted sound/music toggles to the audio manager. */
+    private fun applyOptions() {
+        audio.effectsEnabled = SaveManager.sound
+        audio.musicEnabled = SaveManager.music
+        if (SaveManager.music) {
+            // Re-enabling music restarts the appropriate loop: the faction's turn music during
+            // a match, the menu loop otherwise (the SWF's startMusic is a fresh createLoop).
+            if (game != null) audio.startTurnMusic()
+            else audio.startMenuMusic()
+        } else {
+            audio.stopMusic()
         }
     }
 

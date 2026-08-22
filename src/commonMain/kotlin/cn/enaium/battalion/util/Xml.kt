@@ -48,6 +48,30 @@ class XmlNode(
     /** Shortcut: reads the `value` attribute (used everywhere in these files). */
     fun value(): String = attributes["value"] ?: ""
 
+    /** Serializes this node (and children) back to XML text, e.g. for a saved game. */
+    fun toXmlString(): String {
+        val sb = StringBuilder()
+        sb.append('<').append(name)
+        for ((k, v) in attributes) {
+            sb.append(' ').append(k).append("=\"").append(escapeAttr(v)).append('"')
+        }
+        if (children.isEmpty() && text.isEmpty()) {
+            sb.append("/>")
+            return sb.toString()
+        }
+        sb.append('>')
+        sb.append(escapeText(text))
+        for (child in children) sb.append(child.toXmlString())
+        sb.append("</").append(name).append('>')
+        return sb.toString()
+    }
+
+    private fun escapeAttr(s: String): String =
+        s.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+
+    private fun escapeText(s: String): String =
+        s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
     override fun toString(): String = "<$name>"
 }
 
