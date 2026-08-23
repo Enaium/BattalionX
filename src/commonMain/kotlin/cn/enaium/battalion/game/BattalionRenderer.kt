@@ -16,6 +16,7 @@ import cn.enaium.battalion.game.ui.SaveManager
 import cn.enaium.battalion.game.ui.TextRenderer
 import cn.enaium.battalion.game.ui.TextureManager
 import cn.enaium.sdl.SDL
+import cn.enaium.sdl.SDLBlendMode
 import cn.enaium.sdl.SDLColor
 import cn.enaium.sdl.SDLFlipMode
 import cn.enaium.sdl.SDLFloatPoint
@@ -714,6 +715,15 @@ class BattalionRenderer(
     }
 
     /**
+     * Stops any running turn-intro animation immediately. Called when the match ends — a
+     * START_TURN intro started just before END_GAME would otherwise keep playing over the
+     * end-of-game dialogue.
+     */
+    fun dismissPlayerIntro() {
+        intro = null
+    }
+
+    /**
      * Draws the running turn-intro animation, recreating the original `StartTurnAnimation`:
      *
      * - A horizontal bar centred on the game area: the two horizontal lines (each 6px thick,
@@ -850,9 +860,19 @@ class BattalionRenderer(
 
         val dia = dialogue
         // Dialog draws while active AND during its slide-in/out transition.
-        if (dia != null && (dia.isActive() || diaSlidingIn || diaSlidingOut)) drawDialogue(dia)
+        val dialogueVisible = dia != null && (dia.isActive() || diaSlidingIn || diaSlidingOut)
+        if (dialogueVisible) drawDialogue(dia)
 
-        if (game.gameOver) drawGameOverMenu()
+        // The end-of-game dialogue plays BEFORE the results screen: while it is on screen
+        // (or still sliding), the GameOverMenu stays hidden behind it. The first frame the
+        // results screen actually draws, notify the game loop (BGM switch) exactly then.
+        if (game.gameOver && !dialogueVisible) {
+            if (!gameOverScreenNotified) {
+                gameOverScreenNotified = true
+                onGameOverScreenShown?.invoke()
+            }
+            drawGameOverMenu()
+        }
 
         // Build page is modal and covers the whole window, so it draws above everything
         // (map, side panel, recon strip) while open.
@@ -863,6 +883,24 @@ class BattalionRenderer(
         if (inGameMenuOpen) drawInGameMenu()
 
         renderer.present()
+    }
+
+    /** True while the dialogue box is on screen (active or mid slide), matching what the
+     *  renderer draws. Used by the game loop to time the results-screen BGM switch. */
+    fun isDialogueVisible(): Boolean =
+        dialogue != null && (dialogue!!.isActive() || diaSlidingIn || diaSlidingOut)
+
+    /**
+     * Invoked exactly once, on the first frame the results screen is actually drawn (the
+     * end-of-game dialogue is fully gone, slide included). BattalionGame uses it to switch
+     * to the results BGM — strictly in sync with the visible GameOverMenu.
+     */
+    var onGameOverScreenShown: (() -> kotlin.Unit)? = null
+    private var gameOverScreenNotified = false
+
+    /** Resets the once-per-results-screen notification (call when a new match starts). */
+    fun resetGameOverNotification() {
+        gameOverScreenNotified = false
     }
 
     /** True when the in-game options menu is shown (opened from the Options panel button). */
@@ -1083,54 +1121,30 @@ class BattalionRenderer(
      * port approximates it with a translucent white overlay.
      */
     private fun drawVistaButton(x: Int, y: Int, w: Int, h: Int, hover: Boolean, title: String, desc: String = "", iconKey: String? = null) {
-        if (x == 125) { // first vista button: dump slice geometry once
-            val t = textures.texture("btn_tile9")
-            println("PROBE tile=${t != null} size=${t?.size} texSize=${textures.textureSize("btn_tile9")}")
-        }
         val tiles = textures.texture("btn_tile9")
         if (tiles != null) {
-            // Tile9Data(new Bitmap(btn_tile9), new Rectangle(6,8,12,8)): the rect is
-            // (x=6, y=8, width=12, height=8), so the cut lines are left=6, top=8,
-            // right=18 (24−6), bottom=16 (24−8) and the middle slice is 12×8.
-            val left = 6
-            val top = 8
-            val right = 18
-            val bottom = 16
-            val tw = tiles.size.x.toInt()   // 24
-            val th = tiles.size.y.toInt()   // 24
-            // Middle slices stretch/tile across the full remaining span; corners and edges
-            // keep their source size (Tile9.width/height setters do exactly this).
-            val srcCols = listOf(0, left, right)          // srcX per column
-            val srcRows = listOf(0, top, bottom)          // srcY per row
-            val srcColW = listOf(left, right - left, tw - right)   // 6, 12, 6
-            val srcRowH = listOf(top, bottom - top, th - bottom)   // 8, 8, 8
-            val dstColX = listOf(0, left, w - (tw - right))        // 0, 6, w-6
-            val dstRowY = listOf(0, top, h - (th - bottom))        // 0, 8, h-8
-            for (cx in 0..2) {
-                for (ry in 0..2) {
-                    val dstW = if (cx == 1) w - left - (tw - right) else srcColW[cx]
-                    val dstH = if (ry == 1) h - top - (th - bottom) else srcRowH[ry]
-                    if (dstW <= 0 || dstH <= 0) continue
-                    renderer.renderTexture(
-                        tiles,
-                        src = SDLFRect(srcCols[cx].toFloat(), srcRows[ry].toFloat(),
-                            srcColW[cx].toFloat(), srcRowH[ry].toFloat()),
-                        dst = SDLFRect((x + dstColX[cx]).toFloat(), (y + dstRowY[ry]).toFloat(),
-                            dstW.toFloat(), dstH.toFloat()),
-                    )
-                }
-            }
+            // Tile9Data(new Bitmap(btn_tile9), new Rectangle(6,8,12,8)): four corners at
+            // native size; every edge and the centre REPEAT their source patch (the original
+            // Tile9 uses beginBitmapFill with repeat=true + a scrollRect clip), exactly like
+            // a Flash 9-slice. drawTiled9Grid reproduces that tiled material.
+            drawTiled9Grid(tiles, x, y, w, h, left = 6, top = 8, right = 18, bottom = 16)
         } else {
             renderer.drawColor = if (hover) SDLColor(150, 150, 170) else SDLColor(80, 84, 100)
             renderer.fillRect(SDLRect(x, y, w, h))
         }
 
-        // VistaButtonState's gloss bitmap, stretched over a 52px-tall button, washes the
-        // whole face white (its highlight band covers half the height). Reproduce the LOOK
-        // cheaply instead: a thin bright line along the top edge (the gloss band), and let
-        // the hover state carry the "brighter" feedback below.
-        renderer.drawColor = SDLColor(255, 255, 255, 40)
-        renderer.fillRect(SDLRect(x + 2, y + 1, w - 4, 2))
+        // VistaButtonState's gloss bitmap stretched to (w−2)×(h−2) at (1,1) — the overlay
+        // is the correct sheen material; draw it at reduced alpha so it reads as a gloss
+        // instead of washing the face out.
+        textures.texture("btn_overlay")?.let { ov ->
+            val prevAlpha = ov.alphaMod
+            ov.alphaMod = 140
+            renderer.renderTexture(
+                ov,
+                dst = SDLFRect((x + 1).toFloat(), (y + 1).toFloat(), (w - 2).toFloat(), (h - 2).toFloat()),
+            )
+            ov.alphaMod = prevAlpha
+        }
 
         // Icon at PADDING (6), scaled to (h − 10)/icon.height, vertically centred; the title
         // slides right to start at icon.width + 2*PADDING (VistaButtonState.updateDimensions).
@@ -1165,11 +1179,16 @@ class BattalionRenderer(
             text.drawCentered(desc, cx, y + h - 22, 12, SDLColor(90, 100, 110))
         }
 
-        // Hover feedback (SWF ColorTransform 1.1): a gentle brightness lift —
-        // visibly brighter, NOT a white-out.
+        // Hover feedback: the SWF applies ColorTransform(1.1,1.1,1.1) to the whole image —
+        // a 10% brightness lift. fillRect ignores drawColor alpha unless the renderer's
+        // draw blend mode is BLEND (default NONE paints opaque), so switch it for the wash
+        // and restore it afterwards.
         if (hover) {
-            renderer.drawColor = SDLColor(255, 255, 255, 20)
+            val prevBlend = renderer.blendMode
+            renderer.blendMode = SDLBlendMode.BLEND
+            renderer.drawColor = SDLColor(255, 255, 255, 45)
             renderer.fillRect(SDLRect(x, y, w, h))
+            renderer.blendMode = prevBlend
         }
     }
 
@@ -1395,10 +1414,13 @@ class BattalionRenderer(
         // While the floating action menu is open the move/attack "mode" overlays are dismissed:
         // the range highlight, hover-path preview and cursor mode marker all hide behind the bar.
         val activeMode = humanCtrl != null && !humanCtrl.unitOptionsOpen
+        // The highlighted unit is either the real selection or a display-only preview (an
+        // enemy unit whose ranges are shown but which cannot be acted on).
         val selected = humanCtrl?.selectedUnit
-        if (selected != null && selected.controller === game.activeController && selected.isAvailable() && activeMode) {
+        val rangeSource = selected ?: humanCtrl?.previewUnit
+        if (rangeSource != null && rangeSource.isAvailable() && activeMode) {
             // Green "select" markers on every tile the unit can walk to this turn.
-            for (tile in game.tilesInMoveRange(selected)) {
+            for (tile in game.tilesInMoveRange(rangeSource)) {
                 if (tile.x < cameraX || tile.x >= cameraX + VIEW_COLS) continue
                 if (tile.y < cameraY || tile.y >= cameraY + VIEW_ROWS) continue
                 val t = textureMarker("select")
@@ -1428,8 +1450,8 @@ class BattalionRenderer(
 
         // Attackable-target markers are drawn ABOVE the unit sprites so the target frame is
         // not hidden behind the vehicle's art.
-        if (selected != null && selected.controller === game.activeController && selected.isAvailable() && activeMode) {
-            for (target in game.unitsAttackableThisTurn(selected)) {
+        if (rangeSource != null && rangeSource.isAvailable() && activeMode) {
+            for (target in game.unitsAttackableThisTurn(rangeSource)) {
                 if (target.x < cameraX || target.x >= cameraX + VIEW_COLS) continue
                 if (target.y < cameraY || target.y >= cameraY + VIEW_ROWS) continue
                 val px = screenX(target.x)
@@ -1470,7 +1492,8 @@ class BattalionRenderer(
         // Explosion effects float above the units.
         drawExplosions()
 
-        // Selection highlight: the white "marker2" frame under the selected unit.
+        // Selection highlight: the white "marker2" frame under the selected unit
+        // (not under a display-only preview).
         if (selected != null) {
             textureMarker("marker2")?.let { t ->
                 renderer.renderTexture(t, dst = SDLFRect(screenX(selected.x).toFloat(),
@@ -3399,6 +3422,54 @@ class BattalionRenderer(
     /** Sine ease-in/out helpers matching the original ChatWindow Tweens. */
     private fun easeOutSin(f: Float): Float = sin(f * (PI.toFloat() / 2f))
     private fun easeInSin(f: Float): Float = 1f - cos(f * (PI.toFloat() / 2f))
+
+    /**
+     * Draws a 9-slice with TILED edges and centre, reproducing the Flash `Tile9` material
+     * (corners at native size, every other patch repeated via beginBitmapFill + scrollRect)
+     * instead of SDL's stretched nine-grid.
+     *
+     * [left]/[right] are the source x cut lines, [top]/[bottom] the y cut lines.
+     */
+    private fun drawTiled9Grid(tex: SDLTexture, x: Int, y: Int, w: Int, h: Int, left: Int, top: Int, right: Int, bottom: Int) {
+        val tw = tex.size.x.toInt()
+        val th = tex.size.y.toInt()
+        val midW = right - left
+        val midH = bottom - top
+        val edgeR = tw - right   // right edge width
+        val edgeB = th - bottom  // bottom edge height
+
+        fun patch(sx: Int, sy: Int, sw: Int, sh: Int, dx: Int, dy: Int, dw: Int, dh: Int) {
+            if (dw <= 0 || dh <= 0 || sw <= 0 || sh <= 0) return
+            var oy = 0
+            while (oy < dh) {
+                var ox = 0
+                while (ox < dw) {
+                    val cw = minOf(sw, dw - ox)
+                    val ch = minOf(sh, dh - oy)
+                    renderer.renderTexture(
+                        tex,
+                        src = SDLFRect(sx.toFloat(), sy.toFloat(), cw.toFloat(), ch.toFloat()),
+                        dst = SDLFRect((dx + ox).toFloat(), (dy + oy).toFloat(), cw.toFloat(), ch.toFloat()),
+                    )
+                    ox += sw
+                }
+                oy += sh
+            }
+        }
+
+        // Corners at native size.
+        patch(0, 0, left, top, x, y, left, top)                                            // TL
+        patch(right, 0, edgeR, top, x + w - edgeR, y, edgeR, top)                          // TR
+        patch(0, bottom, left, edgeB, x, y + h - edgeB, left, edgeB)                       // BL
+        patch(right, bottom, edgeR, edgeB, x + w - edgeR, y + h - edgeB, edgeR, edgeB)      // BR
+        // Edges: repeat their patch along one axis.
+        patch(left, 0, midW, top, x + left, y, w - left - edgeR, top)                      // top
+        patch(left, bottom, midW, edgeB, x + left, y + h - edgeB, w - left - edgeR, edgeB)  // bottom
+        patch(0, top, left, midH, x, y + top, left, h - top - edgeB)                        // left
+        patch(right, top, edgeR, midH, x + w - edgeR, y + top, edgeR, h - top - edgeB)      // right
+        // Centre: repeat the 12×8 patch both ways.
+        patch(left, top, midW, midH, x + left, y + top, w - left - edgeR, h - top - edgeB)
+    }
 
     /** Tiles [tex] across the rectangle [dst], repeating the texture at natural size. */
     private fun drawTiled(tex: SDLTexture, dst: SDLRect) {

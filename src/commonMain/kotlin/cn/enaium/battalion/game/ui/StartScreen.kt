@@ -4,12 +4,14 @@ import cn.enaium.battalion.data.GameLoader
 import cn.enaium.battalion.data.GameLoader.MissionInfo
 import cn.enaium.battalion.util.Fio
 import cn.enaium.sdl.SDL
+import cn.enaium.sdl.SDLBlendMode
 import cn.enaium.sdl.SDLColor
 import cn.enaium.sdl.SDLFRect
 import cn.enaium.sdl.SDLEvent
 import cn.enaium.sdl.SDLKeycode
 import cn.enaium.sdl.SDLRect
 import cn.enaium.sdl.SDLRenderer
+import cn.enaium.sdl.SDLTexture
 
 /**
  * The game's menu system, covering the original SWF's main menu and mission select.
@@ -398,46 +400,22 @@ class StartScreen(
         // 6 right/bottom (right = 12+6, bottom = 8+8) -> srcCols 0/6/18, srcRows 0/8/16.
         val tiles = textures.texture("btn_tile9")
         if (tiles != null) {
-            val tw = tiles.size.x.toInt()
-            val th = tiles.size.y.toInt()
-            val left = 6
-            val top = 8
-            val right = 18
-            val bottom = 16
-            val srcCols = listOf(0, left, right)
-            val srcRows = listOf(0, top, bottom)
-            val srcColW = listOf(left, right - left, tw - right)
-            val srcRowH = listOf(top, bottom - top, th - bottom)
-            val dstColX = listOf(0, left, w - (tw - right))
-            val dstRowY = listOf(0, top, h - (th - bottom))
-            for (cx in 0..2) {
-                for (ry in 0..2) {
-                    val dstW = if (cx == 1) w - left - (tw - right) else srcColW[cx]
-                    val dstH = if (ry == 1) h - top - (th - bottom) else srcRowH[ry]
-                    if (dstW <= 0 || dstH <= 0) continue
-                    renderer.renderTexture(
-                        tiles,
-                        src = SDLFRect(srcCols[cx].toFloat(), srcRows[ry].toFloat(),
-                            srcColW[cx].toFloat(), srcRowH[ry].toFloat()),
-                        dst = SDLFRect((x + dstColX[cx]).toFloat(), (y + dstRowY[ry]).toFloat(),
-                            dstW.toFloat(), dstH.toFloat()),
-                    )
-                }
-            }
+            // Tile9Data(new Bitmap(btn_tile9), new Rectangle(6,8,12,8)): tiled 9-slice like
+            // the original Tile9 (corners native, edges/centre repeat) — not stretched.
+            drawTiled9Grid(tiles, x, y, w, h, left = 6, top = 8, right = 18, bottom = 16)
         } else {
             renderer.drawColor = if (hover) SDLColor(150, 150, 170) else SDLColor(80, 84, 100)
             renderer.fillRect(SDLRect(x, y, w, h))
         }
-        // Thin bright line along the top edge (the VistaButton gloss band) — the full
-        // stretched btn_overlay washes a short button white.
-        renderer.drawColor = SDLColor(255, 255, 255, 40)
-        renderer.fillRect(SDLRect(x + 2, y + 1, w - 4, 2))
         // Black centred title (VistaButtonState HeadingTextField).
         text.drawCentered(title, x + w / 2, y + (h - 18) / 2, 16, SDLColor(20, 20, 20))
-        // Hover brighten (SWF ColorTransform 1.1): gentle lift, not a white-out.
+        // Hover brighten (SWF ColorTransform 1.1): blend-mode alpha wash, not opaque white.
         if (hover) {
-            renderer.drawColor = SDLColor(255, 255, 255, 20)
+            val prevBlend = renderer.blendMode
+            renderer.blendMode = SDLBlendMode.BLEND
+            renderer.drawColor = SDLColor(255, 255, 255, 45)
             renderer.fillRect(SDLRect(x, y, w, h))
+            renderer.blendMode = prevBlend
         }
         buttons.add(Btn("toggle", w, h, x, y, action))
     }
@@ -578,18 +556,17 @@ class StartScreen(
         drawMissionPreviewPanel()
         if (screen == Screen.CAMPAIGN) drawDifficultyPanel()
 
-        // ---- Bottom action buttons (SWF: Main Menu left, Start right, toggle centre). ----
+        // ---- Bottom action buttons (SWF: Main Menu left, Start right, toggle centre). All
+        // three share the VistaButton material (btn_tile9 body + gloss + hover brighten). ----
         val btnW = 200
         val btnH = 60
         val bottomY = 600 - btnH - 8
         // Main Menu (Back).
-        drawButton("bonusMapButton", 126, 71, 8, bottomY + 5, { screen = Screen.MAIN })
-        text.draw("Main Menu", 8 + 20, bottomY + 5 + 22, 14, SDLColor(10, 10, 10))
+        drawVistaToggleButton(8, bottomY, btnW, btnH, "Main Menu", { screen = Screen.MAIN })
         // Start Game (right). Locked / missing-map missions cannot be started.
-        drawButton("bonusMapButton", 126, 71, 700 - 126 - 8, bottomY + 5, { if (isSelectableMission(selected)) running = false }, disabled = !isSelectableMission(selected))
-        text.draw("Start Game", 700 - 126 - 8 + 20, bottomY + 5 + 22, 14, SDLColor(10, 10, 10))
-        // Go to Bootcamp / Campaign toggle (centre), same VistaButton material as the
-        // in-game menu's four action buttons (btn_tile9 body + btn_overlay gloss + dark text).
+        drawVistaToggleButton(700 - btnW - 8, bottomY, btnW, btnH, "Start Game",
+            { if (isSelectableMission(selected)) running = false })
+        // Go to Bootcamp / Campaign toggle (centre).
         val toggleW = 164
         val toggleH = 52
         val toggleX = (700 - toggleW) / 2
@@ -866,6 +843,48 @@ class StartScreen(
         Screen.CAMPAIGN -> campaignMissions
         Screen.BOOTCAMP -> bootcampMissions
         Screen.MAIN, Screen.OPTIONS -> emptyList()
+    }
+
+    /**
+     * Tiled 9-slice (Flash Tile9 material): corners native, edges and centre repeat their
+     * source patch — same helper as BattalionRenderer.drawTiled9Grid.
+     */
+    private fun drawTiled9Grid(tex: SDLTexture, x: Int, y: Int, w: Int, h: Int, left: Int, top: Int, right: Int, bottom: Int) {
+        val tw = tex.size.x.toInt()
+        val th = tex.size.y.toInt()
+        val midW = right - left
+        val midH = bottom - top
+        val edgeR = tw - right
+        val edgeB = th - bottom
+
+        fun patch(sx: Int, sy: Int, sw: Int, sh: Int, dx: Int, dy: Int, dw: Int, dh: Int) {
+            if (dw <= 0 || dh <= 0 || sw <= 0 || sh <= 0) return
+            var oy = 0
+            while (oy < dh) {
+                var ox = 0
+                while (ox < dw) {
+                    val cw = minOf(sw, dw - ox)
+                    val ch = minOf(sh, dh - oy)
+                    renderer.renderTexture(
+                        tex,
+                        src = SDLFRect(sx.toFloat(), sy.toFloat(), cw.toFloat(), ch.toFloat()),
+                        dst = SDLFRect((dx + ox).toFloat(), (dy + oy).toFloat(), cw.toFloat(), ch.toFloat()),
+                    )
+                    ox += sw
+                }
+                oy += sh
+            }
+        }
+
+        patch(0, 0, left, top, x, y, left, top)
+        patch(right, 0, edgeR, top, x + w - edgeR, y, edgeR, top)
+        patch(0, bottom, left, edgeB, x, y + h - edgeB, left, edgeB)
+        patch(right, bottom, edgeR, edgeB, x + w - edgeR, y + h - edgeB, edgeR, edgeB)
+        patch(left, 0, midW, top, x + left, y, w - left - edgeR, top)
+        patch(left, bottom, midW, edgeB, x + left, y + h - edgeB, w - left - edgeR, edgeB)
+        patch(0, top, left, midH, x, y + top, left, h - top - edgeB)
+        patch(right, top, edgeR, midH, x + w - edgeR, y + top, edgeR, h - top - edgeB)
+        patch(left, top, midW, midH, x + left, y + top, w - left - edgeR, h - top - edgeB)
     }
 
     /** Reads the silver/gold medal thresholds from the mission's settings. */

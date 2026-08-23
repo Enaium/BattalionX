@@ -26,7 +26,14 @@ class HumanController(team: Team) : Controller(team) {
 
     /** The unit currently selected by the player, or null. */
     var selectedUnit: Unit? = null
-        private set
+
+    /**
+     * A friendly/enemy unit shown for *display only*: its move/attack ranges are highlighted
+     * exactly like a selected unit, but it is NOT selected — no actions can be issued on it.
+     * Set when the player clicks an enemy unit (the original shows the ranges too).
+     */
+    var previewUnit: Unit? = null
+        internal set
 
     /** The path the player has drawn for the selected unit. */
     var currentPath: MutableList<Int> = mutableListOf()
@@ -501,6 +508,7 @@ class HumanController(team: Team) : Controller(team) {
     /** Called by the renderer when the player selects a unit tile. */
     fun selectUnit(unit: Unit?) {
         selectedUnit = unit
+        previewUnit = null
         currentPath.clear()
         // The floating action menu belongs to a specific selected unit; changing selection
         // dismisses it (mirrors the original clearing the unit menu on a new selection).

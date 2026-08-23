@@ -38,6 +38,16 @@ class StartTurnAction : Action() {
         val gameManager = GameManager.instance
         val controller = gameManager.activeController ?: return
 
+        // Reset the action state of every OTHER unit too: at the start of a turn no unit —
+        // friend or foe — may still appear spent (moved/fired) from the previous turn. The
+        // original only reset the active controller's units, which left enemy units marked
+        // moved/fired during the player's turn (and vice versa).
+        for (unit in gameManager.units) {
+            if (unit.controller !== controller && unit.isDeployed() && unit.isAlive()) {
+                unit.reset()
+            }
+        }
+
         // Process units owned by the current controller
         val units = controller.units.toList()
         for (unit in units) {

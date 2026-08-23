@@ -41,6 +41,14 @@ class AudioManager(private val assetsDir: String) {
     /** Whether audio is available (init failed -> silently no-op). */
     private var available = false
 
+    /**
+     * Latched when END_GAME fires. START_TURN events queued behind it must not switch the
+     * faction music — the end-of-game dialogue plays over the last turn's music, and only
+     * the results screen (GameMenu's playUI) changes it afterwards. gameOver is set later,
+     * when EndGameAction finalises, so it cannot guard this window.
+     */
+    private var matchEnding = false
+
     /** The currently playing looping background-music track (one at a time). */
     private var musicTrack: cn.enaium.sdl.mixer.SDLTrack? = null
 
@@ -108,6 +116,7 @@ class AudioManager(private val assetsDir: String) {
      * each mission load.
      */
     fun subscribe() {
+        matchEnding = false
         TriggerManager.addListener("killUnit") { t ->
             if (t is KillUnitTrigger) play("ExplosionSound")
         }
@@ -133,17 +142,28 @@ class AudioManager(private val assetsDir: String) {
         TriggerManager.addListener(AttackStartTrigger.NAME) { t ->
             if (t is AttackStartTrigger) playAttackSound(t.unit.unitData.name)
         }
+        // END_GAME fires before gameOver is set, so latch it here: no more faction music
+        // switches once the match has ended (the dialogue / results screen owns the music).
+        TriggerManager.addListener(PlayerTrigger.END_GAME) { matchEnding = true }
         TriggerManager.addListener(PlayerTrigger.START_TURN) {
             // Start (or switch) the background music for whose turn it is, then play the
-            // turn-start jingle.
+            // turn-start jingle. A queued START_TURN may fire after the match ends — the
+            // end-of-game dialogue / results screen owns the music by then.
+            if (matchEnding || GameManager.instance.gameOver) return@addListener
             val active = GameManager.instance.activeController
             val allied = active != null && GameManager.instance.isAlliedToThePlayer(active)
             startMusic(if (allied) PLAYER_LOOP else ENEMY_LOOP)
             play("StartTurn")
         }
-        TriggerManager.addListener(PlayerTrigger.END_GAME) { t ->
-            if (t is PlayerTrigger) play("VictoryWAV")
-        }
+    }
+
+    /**
+     * Plays the results-screen fanfare — the original GameOverMenu plays VictoryWAV on a win
+     * (DefeatWAV on a loss). Called exactly when the results screen becomes visible, not when
+     * the match ends (the end-of-game dialogue plays before it).
+     */
+    fun playEndGameMusic(playerWon: Boolean) {
+        play(if (playerWon) "VictoryWAV" else "DefeatWAV")
     }
 
     /** Picks a movement sound for the given unit type name. */

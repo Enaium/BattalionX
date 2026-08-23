@@ -45,6 +45,17 @@ class BattalionGame(
     private var render: BattalionRenderer? = null
     private var dialogue: Dialogue? = null
 
+    /** Whether the end-of-game dialogue has been queued for the current match. */
+    private var endGameDialoguePlayed = false
+
+    /**
+     * True from the moment END_GAME fires until the match tears down. START_TURN events
+     * queued behind END_GAME must not show the turn-intro (or switch music): gameOver is
+     * only set later, when EndGameAction finalises.
+     */
+    private var matchEnding = false
+
+
     private var lastTick: Long = 0
     private var running = true
 
@@ -185,14 +196,25 @@ class BattalionGame(
             // Turn-intro animation: fires on EVERY controller's turn (the player's AND the
             // AI's), with that faction's own colour — the original StartTurnAction creates
             // StartTurnAnimation for the active controller each turn.
+            // END_GAME fires before gameOver is set (EndGameAction finalises later), so a
+            // START_TURN queued behind it would still pass a gameOver check — latch the flag.
+            TriggerManager.addListener(PlayerTrigger.END_GAME) {
+                matchEnding = true
+                render?.dismissPlayerIntro()
+            }
             TriggerManager.addListener(PlayerTrigger.START_TURN) { trigger ->
                 val pt = trigger as? PlayerTrigger ?: return@addListener
                 val g = game ?: return@addListener
+                // The match is over: no more turn-intro (a queued START_TURN may still fire
+                // while the end-of-game dialogue / results screen is showing).
+                if (matchEnding || g.gameOver) return@addListener
                 val team = g.getController(pt.player)?.team ?: return@addListener
                 render?.showPlayerIntro(team.teamName.ifEmpty { team.name })
             }
             render = BattalionRenderer(game!!, text, renderer, textures)
             render!!.setupTextures()
+            render!!.resetGameOverNotification()
+            render!!.onGameOverScreenShown = { audio.playEndGameMusic(game?.playerWon == true) }
             applyOptions()  // re-apply sound/music toggles onto this match's audio state
             if (resumeSave) {
                 // A saved game resumes mid-turn: fire START_TURN for the saved controller
@@ -213,6 +235,8 @@ class BattalionGame(
                 render!!.dialogue = dialogue
                 dialogue!!.play("startGame")
             }
+            endGameDialoguePlayed = false
+            matchEnding = false
 
             // Route mid-game script responses (chat / highlight / scroll) to visible feedback.
             installScriptFeedback()
@@ -301,6 +325,16 @@ class BattalionGame(
 
             pollEvents()
             game?.update(dt.toLong())
+            // The match ended: play the mission's end-of-game dialogue (victory/defeat
+            // voice-lines from the map script's `endGame` events) before the results
+            // screen appears, exactly like the original ChatWindow sequence.
+            val g = game
+            if (g != null && g.gameOver && !endGameDialoguePlayed) {
+                endGameDialoguePlayed = true
+                if (dialogue != null && dialogue!!.play("endGame")) {
+                    render?.dialogue = dialogue
+                }
+            }
             handleEdgeScroll()
             render?.render()
 
@@ -421,14 +455,11 @@ class BattalionGame(
 
         val human = human() ?: return
 
-        // Floating unit action menu: clicking the "more options" marker above the selected unit
-        // toggles the action bar; clicking an action in the open bar dispatches it. These take
-        // priority over map clicks so the bar is not occluded by tile selection.
+        // Floating unit action menu: clicking an action in the open bar dispatches it.
+        // (The "more options" marker above a selected unit no longer opens the menu — the
+        // menu opens by clicking the selected unit again.) These take priority over map
+        // clicks so the bar is not occluded by tile selection.
         if (button == 1) {
-            if (render?.unitOptionsButtonAt(sx, sy) == true) {
-                human.toggleUnitOptions()
-                return
-            }
             val action = render?.unitMenuActionAt(sx, sy)
             if (action != null) {
                 handleUnitMenuAction(human, action)
@@ -496,9 +527,24 @@ class BattalionGame(
 
         // 3. Select a friendly unit on the clicked tile. A unit that has already moved or
         //    fired this turn cannot be re-selected to act again (one-action-per-turn rule).
+        //    Clicking the ALREADY-selected unit opens its floating action menu instead.
         val unit = tile.unit
         if (unit != null && unit.controller === g.activeController && unit.isSelectable()) {
-            human.selectUnit(if (unit.isAvailable()) unit else null)
+            if (unit == selected && unit.isAvailable()) {
+                human.toggleUnitOptions()
+            } else {
+                human.selectUnit(if (unit.isAvailable()) unit else null)
+            }
+            return
+        }
+
+        // 3b. Clicking an ENEMY unit shows its move/attack ranges (display only — the unit is
+        //     not selected and no action can be issued on it). selectUnit(null) first: it
+        //     clears the preview, so the preview must be set AFTER it.
+        if (unit != null && unit.controller !== g.activeController) {
+            human.selectUnit(null)
+            human.previewUnit = unit
+            render?.setFocusTile(tile)
             return
         }
 
