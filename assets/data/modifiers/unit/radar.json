@@ -1,0 +1,12 @@
+{
+  "name": "Radar",
+  "kind": "Unit",
+  "modify": "radar",
+  "effects": [
+    "+1"
+  ],
+  "matches": [],
+  "description": "Detects stealth units at the start of its turn.",
+  "image": "Radar",
+  "visible": true
+}

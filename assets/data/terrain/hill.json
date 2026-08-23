@@ -1,0 +1,16 @@
+{
+  "name": "Hill",
+  "cost": 1.0,
+  "description": "Hills can provide your ranged units with the boost necessary to challenge an entrenched opponent.",
+  "minimapImage": "minimap_plains",
+  "sprite": "",
+  "modifiers": [
+    "Ground",
+    "Farsight",
+    "Camouflage",
+    "Rugged"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

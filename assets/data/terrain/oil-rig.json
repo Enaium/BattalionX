@@ -1,0 +1,17 @@
+{
+  "name": "Oil Rig",
+  "cost": 1.0,
+  "description": "An advanced oil production sea-facility. Capture it with Intrepids to enhance your income stream.",
+  "minimapImage": "minimap_refinery",
+  "sprite": "oilrig",
+  "modifiers": [
+    "Water",
+    "Capturable",
+    "Level 2 Oil Refining",
+    "Cover",
+    "Reduced Efficiency"
+  ],
+  "sprites": {
+    "single": "oilrig"
+  }
+}

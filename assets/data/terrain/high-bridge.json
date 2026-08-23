@@ -1,0 +1,11 @@
+{
+  "name": "High Bridge",
+  "cost": 1.0,
+  "description": "The High Bridge can be crossed by ground units and sailed under by sea units.",
+  "minimapImage": "minimap_reef",
+  "sprite": "",
+  "modifiers": [],
+  "sprites": {
+    "single": ""
+  }
+}

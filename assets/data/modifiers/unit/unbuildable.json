@@ -1,0 +1,10 @@
+{
+  "name": "Unbuildable",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Cannot be built.",
+  "image": "Unbuildable",
+  "visible": false
+}

@@ -1,122 +1,110 @@
 package cn.enaium.battalion.game
 
+import cn.enaium.battalion.data.ResponseConfig
+import cn.enaium.battalion.data.TriggerConfig
 import cn.enaium.battalion.game.responses.*
-import cn.enaium.battalion.util.XmlNode
+import cn.enaium.battalion.data.parseArgb
 
 /**
- * Builds a [Response] from a `<response>` XML node inside a map `<script>`.
+ * Builds a [Response] from a typed [ResponseConfig] inside a map script.
  *
- * Mirrors the original `com.gamedozer.battalion.game.ResponseFactory.get`. Values are read as
- * `value` attributes of the node's children; player indices are 1-indexed (decremented on parse
- * where the original did so).
+ * Mirrors the original `com.gamedozer.battalion.game.ResponseFactory.get`. Values come from
+ * the config's typed fields; player indices are 1-indexed (decremented on parse where the
+ * original did so).
  */
 object ResponseFactory {
-    fun get(node: XmlNode): Response {
-        val type = node.attr("type")
-        return when (type) {
-            "incrementCounterVariable" -> IncrementCounterVariableResponse(node.child("counter")?.value() ?: "")
-            "decrementCounterVariable" -> DecrementCounterVariableResponse(node.child("counter")?.value() ?: "")
+    fun get(cfg: ResponseConfig): Response {
+        return when (cfg.type) {
+            "incrementCounterVariable" -> IncrementCounterVariableResponse(cfg.counter)
+            "decrementCounterVariable" -> DecrementCounterVariableResponse(cfg.counter)
             "setBooleanVariable" -> SetBooleanVariableResponse(
-                node.child("boolean")?.value() ?: "",
-                node.child("value")?.value()?.lowercase()?.startsWith("t") == true,
+                cfg.boolean,
+                cfg.value.lowercase().startsWith("t"),
             )
             "chat" -> ChatResponse(
-                node.child("sender")?.value() ?: "",
-                node.child("message")?.value() ?: "",
-                node.child("avatar")?.value() ?: "",
-                node.child("color")?.value()?.toLong(16)?.toInt() ?: 0xFF00FF00.toInt(),
+                cfg.sender,
+                cfg.message,
+                cfg.avatar,
+                parseArgb(cfg.color),
             )
             "highlight" -> HighlightResponse(
-                node.child("x")?.value()?.toIntOrNull() ?: 0,
-                node.child("y")?.value()?.toIntOrNull() ?: 0,
-                node.child("show")?.value()?.lowercase()?.startsWith("t") == true,
-                node.child("updateCamera")?.value()?.lowercase()?.startsWith("t") ?: true,
+                cfg.x ?: 0,
+                cfg.y ?: 0,
+                cfg.show,
+                cfg.updateCamera,
             )
-            "disableControllers" -> DisableControllersResponse(
-                node.child("disable")?.value()?.lowercase()?.startsWith("f") != true,
-            )
-            "disableMorale" -> DisableMoraleResponse(
-                node.child("disable")?.value()?.lowercase()?.startsWith("f") != true,
-            )
-            "trace" -> TraceResponse(node.child("message")?.value() ?: "")
-            "sendAction" -> SendActionResponse(
-                ActionFactory.get(node.child("SurrenderAction") ?: XmlNode("SurrenderAction", emptyMap(), emptyList(), ""))
-            )
-            "sendTrigger" -> SendTriggerResponse(TriggerFactory.get(node.child("trigger") ?: XmlNode("trigger", emptyMap(), emptyList(), "")))
+            "disableControllers" -> DisableControllersResponse(cfg.disable)
+            "disableMorale" -> DisableMoraleResponse(cfg.disable)
+            "trace" -> TraceResponse(cfg.message)
+            "sendAction" -> SendActionResponse(ActionFactory.get(cfg))
+            "sendTrigger" -> SendTriggerResponse(TriggerFactory.get(cfg.trigger ?: TriggerConfig("")))
             "nameUnit" -> NameUnitResponse(
-                node.child("x")?.value()?.toIntOrNull() ?: 0,
-                node.child("y")?.value()?.toIntOrNull() ?: 0,
-                node.child("name")?.value() ?: "",
+                cfg.x ?: 0,
+                cfg.y ?: 0,
+                cfg.value.ifEmpty { cfg.message }.ifEmpty { cfg.unit },
             )
             "createTransportedUnit" -> CreateTransportedUnitResponse(
-                node.child("x")?.value()?.toIntOrNull() ?: 0,
-                node.child("y")?.value()?.toIntOrNull() ?: 0,
-                node.child("transportType")?.value() ?: "",
-                node.child("transporterType")?.value() ?: "",
-                node.child("player")?.value()?.toIntOrNull() ?: 1,
+                cfg.x ?: 0,
+                cfg.y ?: 0,
+                cfg.transportType,
+                cfg.transporterType,
+                cfg.player ?: 1,
             )
             "createUnit" -> CreateUnitResponse(
-                node.child("x")?.value()?.toIntOrNull() ?: 0,
-                node.child("y")?.value()?.toIntOrNull() ?: 0,
-                node.child("type")?.value() ?: "",
-                node.child("resources") != null,
-                node.child("resources")?.value()?.toIntOrNull() ?: 2000,
-                node.child("player")?.value()?.toIntOrNull() ?: 1,
-                node.child("fadeIn")?.value()?.lowercase() == "true",
-                node.child("parallel")?.value()?.lowercase() == "true",
+                cfg.x ?: 0,
+                cfg.y ?: 0,
+                cfg.type_,
+                cfg.resources != null,
+                cfg.resources ?: 2000,
+                cfg.player ?: 1,
+                cfg.fadeIn,
+                cfg.parallel,
             )
-            "destroyUnit" -> DestroyUnitResponse(
-                node.child("x")?.value()?.toIntOrNull() ?: 0,
-                node.child("y")?.value()?.toIntOrNull() ?: 0,
-            )
+            "destroyUnit" -> DestroyUnitResponse(cfg.x ?: 0, cfg.y ?: 0)
             "removeUnit" -> RemoveUnitResponse(
-                node.child("x")?.value()?.toIntOrNull() ?: 0,
-                node.child("y")?.value()?.toIntOrNull() ?: 0,
-                node.child("fadeOut")?.value()?.lowercase().let { it == "true" } == true,
+                cfg.x ?: 0,
+                cfg.y ?: 0,
+                cfg.fadeOut,
             )
-            "scroll" -> ScrollResponse(
-                node.child("x")?.value()?.toIntOrNull() ?: 0,
-                node.child("y")?.value()?.toIntOrNull() ?: 0,
-            )
+            "scroll" -> ScrollResponse(cfg.x ?: 0, cfg.y ?: 0)
             "damageUnit" -> DamageUnitResponse(
-                node.child("x")?.value()?.toIntOrNull() ?: 0,
-                node.child("y")?.value()?.toIntOrNull() ?: 0,
-                node.child("amount")?.value()?.toDoubleOrNull() ?: 0.0,
+                cfg.x ?: 0,
+                cfg.y ?: 0,
+                cfg.amount ?: 0.0,
             )
             "changeAlliance" -> ChangeAllianceResponse(
-                node.child("playerA")?.value()?.toIntOrNull() ?: 1,
-                node.child("playerB")?.value()?.toIntOrNull() ?: 1,
-                node.child("allied")?.value()?.lowercase()?.startsWith("t") == true ||
-                    node.child("allied")?.value() == "1",
+                cfg.playerA ?: 1,
+                cfg.playerB ?: 1,
+                cfg.allied,
             )
-            "unitDisable" -> UnitDisableResponse(
-                node.child("x")?.value()?.toIntOrNull() ?: 0,
-                node.child("y")?.value()?.toIntOrNull() ?: 0,
-                node.child("disable")?.value()?.lowercase()?.startsWith("t") == true,
+            "unitDisable", "disableUnit" -> UnitDisableResponse(
+                cfg.x ?: 0,
+                cfg.y ?: 0,
+                cfg.disable,
             )
-            "surrenderPlayer" -> SurrenderPlayerResponse(node.child("player")?.value()?.toIntOrNull() ?: 1)
+            "surrenderPlayer" -> SurrenderPlayerResponse(cfg.surrenderPlayer ?: cfg.player ?: 1)
             "structureResources" -> StructureResourcesResponse(
-                node.child("x")?.value()?.toIntOrNull() ?: 0,
-                node.child("y")?.value()?.toIntOrNull() ?: 0,
-                node.child("amount")?.value()?.toIntOrNull() ?: 0,
+                cfg.x ?: 0,
+                cfg.y ?: 0,
+                cfg.amount?.toInt() ?: 0,
             )
             "resources" -> ResourcesResponse(
-                node.child("player")?.value()?.toIntOrNull() ?: 0,
-                node.child("amount")?.value()?.toIntOrNull() ?: 0,
+                cfg.player ?: 0,
+                cfg.amount?.toInt() ?: 0,
             )
             "disableAllUnits" -> DisableAllUnitsResponse(
-                node.child("disable")?.value()?.lowercase()?.startsWith("t") == true,
-                node.child("player")?.value()?.toIntOrNull() ?: 0,
+                cfg.disable,
+                cfg.player ?: 0,
             )
             "enableUnit" -> EnableUnitResponse(
-                node.child("enable")?.value()?.lowercase()?.startsWith("t") == true,
-                node.child("player")?.value()?.toIntOrNull() ?: 0,
-                node.child("unit")?.value() ?: "",
+                cfg.enable,
+                cfg.player ?: 0,
+                cfg.unit,
             )
             "customScore" -> CustomScoreResponse(
-                node.child("player")?.value()?.toIntOrNull() ?: -1,
-                node.child("variable")?.value() ?: "",
-                node.child("points")?.value()?.toIntOrNull() ?: 0,
+                cfg.player ?: -1,
+                cfg.variable,
+                cfg.points ?: 0,
             )
             else -> Response()
         }

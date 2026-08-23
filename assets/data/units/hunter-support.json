@@ -1,0 +1,38 @@
+{
+  "name": "Hunter Support",
+  "unitType": "sea",
+  "movementType": "rudder",
+  "weaponType": "light",
+  "armorType": "medium",
+  "cost": 450,
+  "range": 5,
+  "health": 90,
+  "damage": 17,
+  "weaponRangeMin": 1,
+  "weaponRangeMax": 1,
+  "description": "Hunters excel at keeping the oceans clear of enemy aircraft and U-boats.",
+  "modifiers": [
+    "Skysweeper",
+    "Anti-Sub",
+    "Flak",
+    "Sea Bound",
+    "Tracking"
+  ],
+  "sprite": {
+    "sheet": "hunter",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "hunter_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "ShipMove",
+    "fire": "FireHunterSupport"
+  }
+}

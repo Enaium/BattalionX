@@ -1,0 +1,15 @@
+{
+  "name": "Mountain",
+  "cost": 1.0,
+  "description": "Mountains are the best place to bunker infantry during an assault or strategic defense.",
+  "minimapImage": "minimap_mountain",
+  "sprite": "",
+  "modifiers": [
+    "Ground",
+    "Precipitous",
+    "Bunker"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

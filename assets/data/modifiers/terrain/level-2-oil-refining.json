@@ -1,0 +1,12 @@
+{
+  "name": "Level 2 Oil Refining",
+  "kind": "Terrain",
+  "modify": "resources",
+  "effects": [
+    "+240"
+  ],
+  "matches": [],
+  "description": "Delivers $240 per round to the controlling team, in equal portions per player turn.",
+  "image": "Level2OilRefining",
+  "visible": true
+}

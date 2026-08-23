@@ -1,0 +1,15 @@
+{
+  "name": "Desert",
+  "cost": 1.0,
+  "description": "Infantry units cannot enter the desert.",
+  "minimapImage": "minimap_desert",
+  "sprite": "",
+  "modifiers": [
+    "Ground",
+    "Rugged",
+    "Barbed"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

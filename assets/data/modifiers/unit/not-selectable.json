@@ -1,0 +1,10 @@
+{
+  "name": "Not Selectable",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "This unit isn't selectable. It just sits there.",
+  "image": "NotSelectable",
+  "visible": true
+}

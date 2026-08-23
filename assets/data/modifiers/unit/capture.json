@@ -1,0 +1,10 @@
+{
+  "name": "Capture",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "This unit can capture properties.",
+  "image": "Capture",
+  "visible": true
+}

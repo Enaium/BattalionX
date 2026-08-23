@@ -33,7 +33,11 @@ class SaveManagerTest {
         SaveManager.aiDifficulty = 2
         SaveManager.campaignComplete = 4
         SaveManager.setMedal("maps/ep3/Mission_1.yimf", "gold")
-        SaveManager.saveGame = "<game mapurl=\"x\"/>"
+        SaveManager.savedGame = cn.enaium.battalion.data.SavedGameConfig(
+            mapId = "x",
+            settings = cn.enaium.battalion.data.MissionSettingsConfig(),
+            script = cn.enaium.battalion.data.MapScriptConfig(),
+        )
 
         // Reload from disk (a fresh bind re-reads the file).
         SaveManager.bind(tmpDir)
@@ -43,7 +47,7 @@ class SaveManagerTest {
         assertEquals(2, SaveManager.aiDifficulty)
         assertEquals(4, SaveManager.campaignComplete)
         assertEquals("gold", SaveManager.medalFor("maps/ep3/Mission_1.yimf"))
-        assertEquals("<game mapurl=\"x\"/>", SaveManager.saveGame)
+        assertEquals("x", SaveManager.savedGame?.mapId)
 
         // Clear Data wipes the store (defaults restored).
         SaveManager.clearAll()
@@ -51,7 +55,7 @@ class SaveManagerTest {
         assertTrue(SaveManager.music)
         assertTrue(SaveManager.dialog)
         assertEquals(1, SaveManager.aiDifficulty)
-        assertNull(SaveManager.saveGame)
+        assertNull(SaveManager.savedGame)
     }
 
     @Test

@@ -1,5 +1,6 @@
 package cn.enaium.battalion.game
 
+import cn.enaium.battalion.data.ConditionConfig
 import cn.enaium.battalion.game.conditions.BooleanVariableCondition
 import cn.enaium.battalion.game.conditions.BuildUnitCondition
 import cn.enaium.battalion.game.conditions.CaptureTerrainCondition
@@ -12,98 +13,97 @@ import cn.enaium.battalion.game.conditions.ResourcesAcquiredCondition
 import cn.enaium.battalion.game.conditions.StartGameCondition
 import cn.enaium.battalion.game.conditions.StartTurnCondition
 import cn.enaium.battalion.game.conditions.TimePassedCondition
-import cn.enaium.battalion.util.XmlNode
 
 /**
- * Builds a [Condition] from a `<condition>` XML node inside a map `<script>`.
+ * Builds a [Condition] from a typed [ConditionConfig] inside a map script.
  *
  * Mirrors the original `com.gamedozer.battalion.game.ConditionFactory.get`. Player/coordinate
- * values in the XML are 1-indexed in the original ("player 1" = controller index 0), so they are
- * decremented when parsed. An unknown/empty condition parses to an always-true [LogicalAndCondition].
+ * values in the configs are 1-indexed in the original ("player 1" = controller index 0), so
+ * they are decremented when parsed. An unknown/empty condition parses to an always-true
+ * [LogicalAndCondition].
  */
 object ConditionFactory {
-    fun get(node: XmlNode): Condition {
-        val type = node.attr("type")
-        return when (type) {
-            "not" -> NotCondition(ConditionFactory.get(node.child("condition") ?: XmlNode("condition", emptyMap(), emptyList(), "")))
+    fun get(cfg: ConditionConfig): Condition {
+        return when (cfg.type) {
+            "not" -> NotCondition(ConditionFactory.get(cfg.conditions.firstOrNull() ?: ConditionConfig("startGame")))
             "and" -> {
                 val and = LogicalAndCondition()
-                for (c in node.children("condition")) and.add(get(c))
+                for (c in cfg.conditions) and.add(get(c))
                 and
             }
             "or" -> {
                 val or = LogicalOrCondition()
-                for (c in node.children("condition")) or.add(get(c))
+                for (c in cfg.conditions) or.add(get(c))
                 or
             }
             "xor" -> {
                 val xor = LogicalXorCondition()
-                for (c in node.children("condition")) xor.add(get(c))
+                for (c in cfg.conditions) xor.add(get(c))
                 xor
             }
-            "startGame" -> StartGameCondition(node.child("satisfied")?.attr("value")?.lowercase()?.startsWith("t") == true)
+            "startGame" -> StartGameCondition(cfg.satisfied)
             "startTurn" -> StartTurnCondition(
-                node.child("player")?.value()?.toIntOrNull()?.minus(1) ?: 0,
-                node.child("round")?.value()?.toIntOrNull() ?: -1,
-                node.child("satisfied")?.attr("value")?.lowercase()?.startsWith("t") == true,
+                (cfg.player ?: 1) - 1,
+                cfg.round ?: -1,
+                cfg.satisfied,
             )
             "counterVariable" -> CounterVariableCondition(
-                node.child("name")?.value() ?: node.child("counter")?.value() ?: "",
-                node.child("value")?.value()?.toIntOrNull() ?: 0,
-                node.child("defaultValue")?.value()?.toIntOrNull() ?: 0,
-                node.child("satisfied")?.attr("value")?.lowercase()?.startsWith("t") == true,
+                cfg.name.ifEmpty { cfg.boolean },
+                cfg.value ?: 0,
+                cfg.defaultValue ?: 0,
+                cfg.satisfied,
             )
             "booleanVariable" -> BooleanVariableCondition(
-                node.child("boolean")?.value() ?: "",
-                node.child("value")?.value()?.lowercase()?.startsWith("t") == true,
-                node.child("satisfied")?.attr("value")?.lowercase()?.startsWith("t") == true,
+                cfg.boolean,
+                cfg.value?.let { it != 0 } ?: false,
+                cfg.satisfied,
             )
             "timePassed" -> TimePassedCondition(
-                node.child("time")?.value()?.toIntOrNull() ?: 0,
+                cfg.time ?: 0,
                 0,
-                node.child("satisfied")?.attr("value")?.lowercase()?.startsWith("t") == true,
+                cfg.satisfied,
             )
             "endGame" -> EndGameCondition(
-                node.child("player")?.value()?.toIntOrNull()?.minus(1) ?: 0,
-                node.child("victory")?.value()?.lowercase()?.startsWith("f") != true,
-                node.child("satisfied")?.attr("value")?.lowercase()?.startsWith("t") == true,
+                (cfg.player ?: 1) - 1,
+                cfg.victory,
+                cfg.satisfied,
             )
             "moveUnit" -> MoveUnitCondition(
-                node.child("x")?.value()?.toIntOrNull() ?: -1,
-                node.child("y")?.value()?.toIntOrNull() ?: -1,
-                node.child("unitName")?.value() ?: "",
-                node.child("player")?.value()?.toIntOrNull() ?: -1,
-                node.child("satisfied")?.attr("value")?.lowercase()?.startsWith("t") == true,
+                cfg.x ?: -1,
+                cfg.y ?: -1,
+                cfg.unitName,
+                cfg.player ?: -1,
+                cfg.satisfied,
             )
             "killUnit" -> KillUnitCondition(
-                node.child("unitName")?.value() ?: "",
-                node.child("player")?.value()?.toIntOrNull()?.minus(1) ?: 0,
-                node.child("x")?.value()?.toIntOrNull() ?: -1,
-                node.child("y")?.value()?.toIntOrNull() ?: -1,
-                node.child("satisfied")?.attr("value")?.lowercase()?.startsWith("t") == true,
+                cfg.unitName,
+                (cfg.player ?: 1) - 1,
+                cfg.x ?: -1,
+                cfg.y ?: -1,
+                cfg.satisfied,
             )
             "resourcesAcquired" -> ResourcesAcquiredCondition(
-                node.child("resources")?.value()?.toIntOrNull() ?: -1,
-                node.child("player")?.value()?.toIntOrNull()?.minus(1) ?: 0,
-                node.child("count")?.value()?.toIntOrNull() ?: 0,
-                node.child("satisfied")?.attr("value")?.lowercase()?.startsWith("t") == true,
+                cfg.resources ?: -1,
+                (cfg.player ?: 1) - 1,
+                cfg.count ?: 0,
+                cfg.satisfied,
             )
             "buildUnit" -> BuildUnitCondition(
-                node.child("unitName")?.value() ?: "",
-                node.child("player")?.value()?.toIntOrNull()?.minus(1) ?: 0,
-                node.child("x")?.value()?.toIntOrNull() ?: -1,
-                node.child("y")?.value()?.toIntOrNull() ?: -1,
-                node.child("satisfied")?.attr("value")?.lowercase()?.startsWith("t") == true,
+                cfg.unitName,
+                (cfg.player ?: 1) - 1,
+                cfg.x ?: -1,
+                cfg.y ?: -1,
+                cfg.satisfied,
             )
             "captureTerrain" -> CaptureTerrainCondition(
-                node.child("terrainName")?.value() ?: "",
-                node.child("oldPlayer")?.value()?.toIntOrNull()?.minus(1) ?: 0,
-                node.child("player")?.value()?.toIntOrNull()?.minus(1) ?: 0,
-                node.child("satisfied")?.attr("value")?.lowercase()?.startsWith("t") == true,
+                cfg.terrainName,
+                (cfg.oldPlayer ?: 1) - 1,
+                (cfg.player ?: 1) - 1,
+                cfg.satisfied,
             )
             "noUnits" -> NoUnitsCondition(
-                node.child("player")?.value()?.toIntOrNull()?.minus(1) ?: 0,
-                node.child("satisfied")?.attr("value")?.lowercase()?.startsWith("t") == true,
+                (cfg.player ?: 1) - 1,
+                cfg.satisfied,
             )
             else -> LogicalAndCondition()
         }

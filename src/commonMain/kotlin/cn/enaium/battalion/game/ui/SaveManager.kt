@@ -1,13 +1,15 @@
 package cn.enaium.battalion.game.ui
 
+import cn.enaium.battalion.data.SavedGameConfig
 import cn.enaium.battalion.util.Fio
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.put
 
 /**
@@ -27,8 +29,8 @@ object SaveManager {
     private var filePath: String = ""
 
     /**
-     * Raw store: option booleans, difficulty index, campaign progress, medals, and the
-     * serialized game save (XML string, or null when no saved game exists).
+     * Raw store: option booleans, difficulty index, campaign progress, medals. The typed
+     * saved game ([savedGame]) is persisted under its own key.
      */
     private val store = mutableMapOf<String, Any?>()
 
@@ -50,6 +52,7 @@ object SaveManager {
             return
         }
         for ((k, v) in root) {
+            if (k == KEY_SAVE_GAME) continue // decoded separately as a typed document
             store[k] = when (v) {
                 is JsonPrimitive -> if (v.isString) v.content
                 else if (v.content == "true") true
@@ -58,6 +61,11 @@ object SaveManager {
                 is JsonArray -> v.map { (it as? JsonPrimitive)?.content }.filterNotNull()
                 else -> null
             }
+        }
+        savedGame = try {
+            root[KEY_SAVE_GAME]?.let { Json.decodeFromJsonElement<SavedGameConfig>(it) }
+        } catch (t: Throwable) {
+            null
         }
     }
 
@@ -76,6 +84,7 @@ object SaveManager {
                     else -> Unit
                 }
             }
+            savedGame?.let { put(KEY_SAVE_GAME, Json.encodeToJsonElement(it)) }
         }
         Fio.writeText(filePath, Json.encodeToString(obj))
     }
@@ -145,14 +154,23 @@ object SaveManager {
 
     // ---- the saved game -------------------------------------------------------
 
-    /** The serialized save XML, or null when no game is saved (SWF `saveGame`). */
-    var saveGame: String?
-        get() = getString("saveGame")
-        set(value) = setString("saveGame", value)
+    private const val KEY_SAVE_GAME = "saveGame"
+
+
+    /** The typed saved-game document, or null when no game is saved. */
+    var savedGame: SavedGameConfig? = null
+        set(value) {
+            field = value
+            flush()
+        }
+
+    /** Whether a saved game exists. */
+    fun hasSavedGame(): Boolean = savedGame != null
 
     /** Clears every persisted value (SWF `OptionsMenu.clearConfirm` → storage.clear). */
     fun clearAll() {
         store.clear()
+        savedGame = null
         flush()
     }
 }

@@ -1,24 +1,16 @@
 package cn.enaium.battalion.data
 
-import cn.enaium.battalion.util.XmlNode
-
 /**
- * The modifier system is the heart of the game's rules.
- *
- * A [Modifier] has a name and a *type* (e.g. "damage", "defense", "movementCost",
- * "attackRange", "resources"...). When the game asks for an effective value of some
- * type (say the damage a unit deals), it walks every modifier the unit / terrain has
- * and calls [Modifier.apply] with that type. Only modifiers whose type matches actually
- * change the value; the rest pass it through untouched.
- *
- * Each modifier holds a list of [ModifierEffect]s. An effect is a small "recipe" written
- * as a string, e.g. `"+50%"`, `"-10%"`, `"Infinity"`, `"2"`, `"*1.5"`. The exact rules
- * for interpreting these strings are faithfully reproduced in [ModifierEffect.apply].
- *
- * A [ModifierEffectMatch] is a conditional effect: it only applies when the unit matches
- * some property (its unit type, movement type, weapon type, armor type, or whether it has
- * a particular modifier). Matches can be nested, so a match can contain further effects
- * and even further matches.
+ * A named rule modifier (e.g. "Flak", "Water"). It has a name and a *type* — what it
+ * modifies ("damage", "defense", "movementCost", "attackRange", "resources"...). When the
+ * game asks for an effective value of some type, it walks every modifier the unit / terrain
+ * has and calls [apply] with that type. Only modifiers whose type matches actually change
+ * the value; the rest pass it through untouched.
+ */
+/**
+ * Effect recipe interpretation (copied exactly from the original ModifierEffect.as):
+ *  - `"0"` -> 0, `"infinity"` -> +Infinity, `"+N%"` -> *(1+N/100), `"+N"` -> +N,
+ *  - `"-N%"` -> *(1-N/100), `"-N"` -> -N, `"*N"` -> *N, plain `"N"` -> set to N.
  */
 class Modifier(
     val name: String,
@@ -52,19 +44,9 @@ class Modifier(
 
     override fun toString(): String = name + " " + effects.joinToString(" ") { it.toString() }
 }
-
 /**
- * A single effect recipe. The [value] string encodes how to transform the incoming value.
- *
- * The interpretation (copied exactly from the original ModifierEffect.as):
- *  - `"0"`          -> returns 0
- *  - `"infinity"`   -> returns +Infinity
- *  - `"+N%"`        -> value * (1 + N/100)   (add a percentage)
- *  - `"+N"`         -> value + N             (add a fixed amount)
- *  - `"-N%"`        -> value * (1 - N/100)   (subtract a percentage)
- *  - `"-N"`         -> value + (-N)          (subtract a fixed amount)
- *  - `"*N"`         -> value * N             (multiply)
- *  - `"N"` (plain)  -> N                     (SET the value to N, discarding the input)
+ * A single effect recipe: the [value] string encodes how to transform the incoming value
+ * (see the interpretation table in the file header).
  */
 open class ModifierEffect(val value: String) {
     val effects: MutableList<ModifierEffect> = mutableListOf()
@@ -125,8 +107,8 @@ open class ModifierEffect(val value: String) {
 }
 
 /**
- * A conditional effect (a `<match>` element). It only applies its nested effects when the
- * unit satisfies the condition described by [matchType] / [matchValue].
+ * A conditional effect. It only applies its nested effects when the unit satisfies the
+ * condition described by [matchType] / [matchValue].
  *
  * The match types are:
  *  - `unitType`     -> the unit's unit type string equals the value ("ground"/"sea"/"air")
@@ -166,8 +148,8 @@ class ModifierEffectMatch(
 }
 
 /**
- * Registry of all named modifiers. Modifiers are defined once (in the unitModifiers /
- * terrainModifiers XML) and then *referenced by name* from units and terrains.
+ * Registry of all named modifiers. Modifiers are defined once (`modifiers/unit/<id>.json`,
+ * `modifiers/terrain/<id>.json`) and then *referenced by name* from units and terrains.
  */
 object ModifierManager {
     private val modifiers = mutableMapOf<String, Modifier>()
@@ -187,64 +169,44 @@ object ModifierManager {
     }
 
     /**
-     * Imports a `<unitmodifiers>` / `<terrainmodifiers>` XML document.
-     *
-     * Expected structure per modifier:
-     * ```
-     * <modifier name="Flak">
-     *   <description value="..."/>
-     *   <image value="..."/>
-     *   <visible value="true"/>
-     *   <modify type="damage">
-     *     <effect value="+100%"/>
-     *     <match type="armorType" value="light">
-     *       <effect value="..."/>
-     *     </match>
-     *   </modify>
-     * </modifier>
-     * ```
+     * Imports every modifier document. Unit modifiers load before terrain modifiers so a
+     * name clash resolves like the original two-document order did.
      */
-    fun importXML(root: XmlNode) {
-        for (modifierNode in root.children("modifier")) {
-            val name = modifierNode.attr("name")
-            val visible = modifierNode.child("visible")?.value()?.lowercase() == "true"
-            val modify = modifierNode.child("modify")
-            val type = modify?.attr("type") ?: ""
-
-            val modifier = Modifier(
-                name = name,
-                description = modifierNode.child("description")?.value() ?: "",
-                image = modifierNode.child("image")?.value()?.ifEmpty { null },
-                visible = visible,
-                type = type,
-            )
-            if (modify != null) {
-                for (child in modify.children) {
-                    when (child.name.lowercase()) {
-                        "effect" -> modifier.addEffect(ModifierEffect(child.attr("value")))
-                        "match" -> {
-                            val match = ModifierEffectMatch(child.attr("type"), child.attr("value"))
-                            modifier.addEffect(match)
-                            handleEffect(child, match)
-                        }
-                    }
-                }
+    fun importAll(assetsDir: String) {
+        for (kind in listOf("Unit", "Terrain")) {
+            for (id in AssetLoader.list(assetsDir, "modifiers/${kind.lowercase()}").sorted()) {
+                val cfg = AssetLoader.modifier(assetsDir, kind, id) ?: continue
+                import(cfg)
             }
-            modifiers[name] = modifier
         }
     }
 
-    /** Recursively parses `<effect>` and `<match>` children into [parent]. */
-    private fun handleEffect(node: XmlNode, parent: ModifierEffect) {
-        for (child in node.children) {
-            when (child.name.lowercase()) {
-                "effect" -> parent.addEffect(ModifierEffect(child.attr("value")))
-                "match" -> {
-                    val match = ModifierEffectMatch(child.attr("type"), child.attr("value"))
-                    parent.addEffect(match)
-                    handleEffect(child, match)
-                }
-            }
+    private fun import(cfg: ModifierConfig) {
+        val modifier = Modifier(
+            name = cfg.name,
+            description = cfg.description,
+            image = cfg.image.ifEmpty { null },
+            visible = cfg.visible,
+            type = cfg.modify,
+        )
+        for (effect in cfg.effects) {
+            modifier.addEffect(ModifierEffect(effect))
         }
+        for (match in cfg.matches) {
+            modifier.addEffect(importMatch(match))
+        }
+        modifiers[cfg.name] = modifier
+    }
+
+    /** Recursively converts nested [ModifierMatchConfig]s into [ModifierEffectMatch]es. */
+    private fun importMatch(match: ModifierMatchConfig): ModifierEffectMatch {
+        val result = ModifierEffectMatch(match.match, match.value)
+        for (effect in match.effects) {
+            result.addEffect(ModifierEffect(effect))
+        }
+        for (nested in match.matches) {
+            result.addEffect(importMatch(nested))
+        }
+        return result
     }
 }

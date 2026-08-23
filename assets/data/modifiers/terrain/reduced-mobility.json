@@ -1,0 +1,18 @@
+{
+  "name": "Reduced Mobility",
+  "kind": "Terrain",
+  "modify": "movementCost",
+  "effects": [],
+  "matches": [
+    {
+      "match": "unitType",
+      "value": "sea",
+      "effects": [
+        "2"
+      ]
+    }
+  ],
+  "description": "Ship movement is reduced.",
+  "image": "ReducedMobility",
+  "visible": true
+}

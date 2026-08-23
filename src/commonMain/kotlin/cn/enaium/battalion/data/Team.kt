@@ -4,7 +4,6 @@ import cn.enaium.battalion.game.Controller
 import cn.enaium.battalion.game.controllers.DummyController
 import cn.enaium.battalion.game.controllers.HALController
 import cn.enaium.battalion.game.controllers.HumanController
-import cn.enaium.battalion.util.XmlNode
 
 /**
  * A team of one or more players. Teams hold the game *statistics* (units built/killed/lost,
@@ -66,54 +65,30 @@ class Team(
         fun getScoreModifier(scoreType: Int): Int = MULTIPLIERS[scoreType] ?: 0
 
         /**
-         * Builds a team from a `<team>` element (see [MapSettings.getFromXML]).
-         *
-         * ```
-         * <team active="true">
-         *   <name value="Player 1"/>
-         *   <teamname value="Blue"/>
-         *   <color value="ff0000"/>
-         *   <avatar value="..."/>
-         *   <rank value="1"/>
-         *   <controllertype value="Human"/>
-         *   <difficulty value="1"/>
-         *   <stats value="0,0,..."/>
-         *   <allies value="0"/>
-         * </team>
-         * ```
+         * Builds a team from its typed [TeamConfig] (see [MapSettings] / campaign docs).
+         * AI teams inherit the mission difficulty; human teams are always difficulty 1.
          */
-        fun getFromXML(xml: XmlNode): Team {
-            val activeString = xml.attr("active")
-            val active = activeString.lowercase().firstOrNull() == 't'
-
-            var d = xml.child("difficulty")?.value()?.toDoubleOrNull()
-            val controllerType = xml.child("controllertype")?.value() ?: ""
-            if (d == null || d.isNaN() || controllerType == "Human") d = 1.0
-
-            val t = Team(
-                name = xml.child("name")?.value() ?: "",
-                teamName = xml.child("teamname")?.value() ?: "",
-                avatarString = xml.child("avatar")?.value() ?: "",
-                rank = xml.child("rank")?.value()?.toIntOrNull() ?: 0,
-                color = (xml.child("color")?.value()?.toUIntOrNull(16) ?: 0u),
-                controllerType = controllerType,
+        fun fromConfig(cfg: TeamConfig, missionDifficulty: Int = 1): Team {
+            val isHuman = cfg.controllerType == "Human"
+            val d = if (isHuman) 1.0
+                    else cfg.difficulty.takeIf { it > 0 }?.toDouble() ?: missionDifficulty.toDouble()
+            return Team(
+                name = cfg.name,
+                teamName = cfg.teamName,
+                avatarString = cfg.avatar,
+                rank = cfg.rank,
+                color = cfg.color.toUIntOrNull(16) ?: 0u,
+                controllerType = cfg.controllerType,
                 difficulty = d.toInt(),
-                active = active,
-            )
-
-            xml.child("stats")?.value()?.let { statsString ->
-                if (statsString.isNotEmpty()) {
-                    val parts = statsString.split(",")
-                    for (i in parts.indices) t.addStatistic(i, parts[i].toIntOrNull() ?: 0)
-                }
+                active = cfg.active,
+            ).apply {
+                for ((i, v) in cfg.stats.withIndex()) addStatistic(i, v)
+                for (ally in cfg.allies) addAlly(ally)
             }
-            xml.child("allies")?.value()?.let { alliesString ->
-                if (alliesString.isNotEmpty()) {
-                    for (ally in alliesString.split(",")) t.addAlly(ally.toIntOrNull() ?: 0)
-                }
-            }
-            return t
         }
+
+        /** Restores a team from a saved-game snapshot. */
+        fun fromSave(cfg: TeamConfig): Team = fromConfig(cfg)
     }
 
     /** True if this team is allied with player index [player]. */
@@ -155,42 +130,6 @@ class Team(
         stats[FINAL_SCORE] = score
     }
 
-    /**
-     * Serializes this team for a saved game (mirrors `Team.toXML` in the original).
-     *
-     * ```
-     * <team active="true">
-     *   <name value="Player 1"/>
-     *   <teamname value="Blue"/>
-     *   <color value="ff0000"/>
-     *   <avatar value="..."/>
-     *   <rank value="1"/>
-     *   <controllertype value="Human"/>
-     *   <difficulty value="1"/>
-     *   <stats value="0,0,..."/>
-     *   <allies value="0"/>
-     * </team>
-     * ```
-     */
-    fun toXML(includeStats: Boolean = true): String {
-        val sb = StringBuilder("<team active=\"$active\">")
-        sb.append("<name value=\"${escape(name)}\"/>")
-        sb.append("<teamname value=\"${escape(teamName)}\"/>")
-        sb.append("<color value=\"${color.toString(16)}\"/>")
-        sb.append("<avatar value=\"${escape(avatarString)}\"/>")
-        sb.append("<rank value=\"$rank\"/>")
-        sb.append("<controllertype value=\"$controllerType\"/>")
-        sb.append("<difficulty value=\"$difficulty\"/>")
-        if (includeStats) {
-            sb.append("<stats value=\"${stats.joinToString(",")}\"/>")
-        }
-        sb.append("<allies value=\"${allies.joinToString(",")}\"/>")
-        sb.append("</team>")
-        return sb.toString()
-    }
-
-    private fun escape(s: String): String =
-        s.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;")
 
     /** Creates the controller that drives this team's units. */
     fun createController(): Controller = when (controllerType) {

@@ -1,0 +1,34 @@
+{
+  "name": "Stealth Tank",
+  "unitType": "ground",
+  "movementType": "tracked",
+  "weaponType": "medium",
+  "armorType": "medium",
+  "cost": 340,
+  "range": 5,
+  "health": 40,
+  "damage": 30,
+  "weaponRangeMin": 1,
+  "weaponRangeMax": 1,
+  "description": "Stealth attack bonuses make this a powerful weapon in the hands of a capable general.",
+  "modifiers": [
+    "Cloaking"
+  ],
+  "sprite": {
+    "sheet": "stealth",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "stealth_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "TankMove1",
+    "fire": "FireStealthTank"
+  }
+}

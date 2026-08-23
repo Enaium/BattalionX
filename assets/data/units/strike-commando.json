@@ -1,0 +1,35 @@
+{
+  "name": "Strike Commando",
+  "unitType": "ground",
+  "movementType": "feet",
+  "weaponType": "light",
+  "armorType": "light",
+  "cost": 75,
+  "range": 3,
+  "health": 40,
+  "damage": 28,
+  "weaponRangeMin": 1,
+  "weaponRangeMax": 1,
+  "description": "Enemy Commandos and Trucks fear the property-capturing Strike Commando.",
+  "modifiers": [
+    "Capture",
+    "Tracking"
+  ],
+  "sprite": {
+    "sheet": "commando",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "commando_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "CommandoMove1",
+    "fire": "FireStrikeCommando"
+  }
+}

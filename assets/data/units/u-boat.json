@@ -1,0 +1,37 @@
+{
+  "name": "U-Boat",
+  "unitType": "sea",
+  "movementType": "rudder",
+  "weaponType": "heavy",
+  "armorType": "light",
+  "cost": 475,
+  "range": 4,
+  "health": 25,
+  "damage": 35,
+  "weaponRangeMin": 1,
+  "weaponRangeMax": 1,
+  "description": "The U-boat's cloak is useful for holding choke points and attacking an entrenched foe.",
+  "modifiers": [
+    "Cloaking",
+    "Submerged",
+    "Anti-Sub",
+    "Sea Bound"
+  ],
+  "sprite": {
+    "sheet": "uboat",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "uboat_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "SubmarineMove",
+    "fire": "FireUboat"
+  }
+}

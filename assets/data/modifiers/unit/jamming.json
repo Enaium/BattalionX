@@ -1,0 +1,10 @@
+{
+  "name": "Jamming",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Emits a no-fly zone that also uncloaks stealth units.",
+  "image": "Jamming",
+  "visible": true
+}

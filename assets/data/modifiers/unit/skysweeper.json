@@ -1,0 +1,10 @@
+{
+  "name": "Skysweeper",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "This unit can engage air craft.",
+  "image": "Skysweeper",
+  "visible": true
+}

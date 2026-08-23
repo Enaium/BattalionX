@@ -165,7 +165,7 @@ private fun diag(dir: String, mission: Int, skirmish: String?) {
     val render = BattalionRenderer(game, text, r, tm)
     render.setupTextures()
     for (sw in game.map.palette) {
-        if (sw.getTeam() != 0) continue
+        if (sw.ownerTeam() != 0) continue
         val f = sw.imageFiles.firstOrNull() ?: "NONE"
         val key = f.substringBeforeLast('.')
         val path = tm.pathFor(key)
@@ -187,7 +187,7 @@ private fun diag(dir: String, mission: Int, skirmish: String?) {
         }
         println("terrain '${sw.name}' img='$f' $status")
     }
-    val names = game.map.palette.filter { it.getTeam() == 0 }.map { it.name }.toSet()
+    val names = game.map.palette.filter { it.ownerTeam() == 0 }.map { it.name }.toSet()
     var mism = 0
     for (row in 0 until game.map.height) for (col in 0 until game.map.width) {
         val t = game.tileAt(col, row) ?: continue
@@ -269,7 +269,10 @@ private fun facetest(dir: String, mission: Int, skirmish: String?) {
                 cn.enaium.battalion.game.actions.MoveUnitAction.stringizePath(pathStrings))
             move.isNetworked = false
             am.add(move)
-            while (!am.isEmpty()) am.update()
+            var guard = 0
+            while (!am.isEmpty() && guard++ < 10000) {
+                game.update(16)   // advance the clock so the walk animation can complete
+            }
             val expected = when {
                 dy < 0 -> 0; dy > 0 -> 2; dx > 0 -> 1; else -> 3
             }
@@ -394,8 +397,8 @@ private fun assetreport(dir: String) {
     fun exercise(load: () -> cn.enaium.battalion.game.GameManager) {
         val game = load()
         // Mission brief dialogue (startGame event) -> dialogue panel + avatars + continue.
-        val script = game.map.getScript()
-        if (script != null && script.children("event").any { it.child("condition")?.attr("type") == "startGame" }) {
+        val script = game.map.script
+        if (script.events.any { e -> e.conditions.any { it.type == "startGame" } }) {
             val dlg = cn.enaium.battalion.game.ui.Dialogue(script)
             if (dlg.play("startGame")) {
                 val brief = BattalionRenderer(game, text, r, tm)
@@ -408,10 +411,10 @@ private fun assetreport(dir: String) {
         render.setupTextures()
         // Every registered unit sprite incl. firing sheet (build page / deps can show all).
         for (u in cn.enaium.battalion.data.UnitManager.getAll()) {
-            val key = render.debugSpriteKeyFor(u.name, u.sprite)
+            val key = u.spriteKey.sheet
             if (key.isEmpty()) continue
             tm.texture(key)
-            tm.texture("${key}_firing")
+            tm.texture(u.spriteKey.firingSheet.ifEmpty { "no_such_sprite" })
             tm.textureForTeam(key, green)
         }
         // Structure sprites (drawStructure pulls them from the structure's terrain sprite).
@@ -614,12 +617,17 @@ private fun shot(dir: String, mission: Int, skirmish: String?) {
     val renderer = cn.enaium.battalion.game.BattalionRenderer(game, text, r, tm)
     renderer.setupTextures()
     game.startGame()
-    val dia = cn.enaium.battalion.game.ui.Dialogue(game.map.getScript())
+    val dia = cn.enaium.battalion.game.ui.Dialogue(game.map.script)
     renderer.dialogue = dia
     dia.play("startGame")
 
     fun snap(name: String) {
-        for (i in 1..3) { game.update(16); renderer.render() }
+        for (i in 1..3) {
+            game.update(16)
+            try { renderer.render() } catch (t: Throwable) {
+                println("RENDER THREW during $name: $t"); t.printStackTrace(); break
+            }
+        }
         val surf = r.renderReadPixels(null)
         if (surf != null) {
             cn.enaium.sdl.image.SDLImage.savePNG(surf, "/Users/enaium/.claude/jobs/19cccc80/tmp/$name.png")
@@ -698,7 +706,7 @@ private fun shot(dir: String, mission: Int, skirmish: String?) {
                     val menu = human.buildMenu
                     if (menu != null) {
                         for ((i, u) in menu.units.withIndex()) {
-                            val key = renderer.debugSpriteKeyFor(u.name, u.sprite)
+                            val key = u.spriteKey.sheet
                             val path = tm.pathFor(key)
                             val tex = tm.texture(key)
                             val size = tm.textureSize(key)
@@ -731,6 +739,14 @@ private fun shot(dir: String, mission: Int, skirmish: String?) {
             println("no Constructor unit type in roster for build-page verification")
         }
     }
+    // In-game options menu with the four Vista buttons (mouse parked over Quit for hover).
+    renderer.setInGameMenuOpen(true)
+    SDL.warpMouseInWindow(win.id, 459f, 313f)
+    snap("shot9_ingamemenu")
+    renderer.setQuitConfirm(true)
+    snap("shot8_quitconfirm")
+
+
 
     tm.close(); text.close(); r.close(); win.close(); SDL.quit()
 }

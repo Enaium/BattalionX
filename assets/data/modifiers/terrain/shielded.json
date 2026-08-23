@@ -1,0 +1,10 @@
+{
+  "name": "Shielded",
+  "kind": "Terrain",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Units in Shielded terrain can't be targetted by ranged units.",
+  "image": "Shielded",
+  "visible": true
+}

@@ -1,19 +1,20 @@
 package cn.enaium.battalion.game.ui
 
-import cn.enaium.battalion.util.XmlNode
+import cn.enaium.battalion.data.MapScriptConfig
+import cn.enaium.battalion.data.parseArgb
 
 /**
  * The mission briefing / dialogue system.
  *
- * Each map's `<script>` element contains a sequence of `<event>`s, each with a `<condition>`
- * (e.g. `startGame`, `endGame`) and a list of `<response type="chat">` lines. Each chat line
- * has a sender name, a message, an avatar id and a colour. This class parses those lines and
+ * Each map script contains a sequence of [cn.enaium.battalion.data.EventConfig]s, each with a
+ * condition (e.g. `startGame`, `endGame`) and a list of `chat` responses. Each chat line has
+ * a sender name, a message, an avatar id and a colour. This class collects those lines and
  * steps through them one at a time so the renderer can draw a dialogue box.
  *
- * The game shows the `startGame` brief when a mission begins and the `endGame` dialogue when it
- * ends; the player advances each line with a click / key press.
+ * The game shows the `startGame` brief when a mission begins and the `endGame` dialogue when
+ * it ends; the player advances each line with a click / key press.
  */
-class Dialogue(private val script: XmlNode?) {
+class Dialogue(private val script: MapScriptConfig?) {
 
     /** One line of dialogue. */
     data class Line(
@@ -34,16 +35,21 @@ class Dialogue(private val script: XmlNode?) {
 
     private fun parse() {
         val script = script ?: return
-        for (event in script.children("event")) {
-            val condition = event.child("condition")?.attr("type") ?: continue
+        for (event in script.events) {
+            val condition = event.conditions.firstOrNull()?.type ?: continue
             val lines = events.getOrPut(condition) { mutableListOf() }
-            for (response in event.children("response")) {
-                if (response.attr("type") != "chat") continue
-                val sender = response.child("sender")?.value() ?: ""
-                val message = response.child("message")?.value() ?: ""
-                val avatar = response.child("avatar")?.value() ?: ""
-                val color = response.child("color")?.value()?.toLong(16)?.toInt() ?: 0xFF00FF00.toInt()
-                if (message.isNotEmpty()) lines.add(Line(sender, message, avatar, color))
+            for (response in event.responses) {
+                if (response.type != "chat") continue
+                if (response.message.isNotEmpty()) {
+                    lines.add(
+                        Line(
+                            sender = response.sender,
+                            message = response.message,
+                            avatar = response.avatar,
+                            color = parseArgb(response.color),
+                        )
+                    )
+                }
             }
         }
     }

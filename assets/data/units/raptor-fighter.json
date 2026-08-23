@@ -1,0 +1,35 @@
+{
+  "name": "Raptor Fighter",
+  "unitType": "air",
+  "movementType": "wings",
+  "weaponType": "light",
+  "armorType": "light",
+  "cost": 400,
+  "range": 7,
+  "health": 50,
+  "damage": 25,
+  "weaponRangeMin": 1,
+  "weaponRangeMax": 1,
+  "description": "Effective at engaging air, sea and ground targets.",
+  "modifiers": [
+    "Skysweeper",
+    "Irreparable"
+  ],
+  "sprite": {
+    "sheet": "raptor",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "raptor_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "AircraftMove",
+    "fire": "FireRaptorFighter"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "Sea Control",
+  "cost": 1.0,
+  "description": "Sea Controls enable sea unit manufacturing at your sea-bordering warfactories.",
+  "minimapImage": "minimap_control",
+  "sprite": "seacontrol",
+  "modifiers": [
+    "Ground",
+    "Capturable",
+    "Sea Proficiency",
+    "Cover"
+  ],
+  "sprites": {
+    "single": "seacontrol"
+  }
+}

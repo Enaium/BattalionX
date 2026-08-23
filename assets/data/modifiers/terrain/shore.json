@@ -1,0 +1,10 @@
+{
+  "name": "Shore",
+  "kind": "Terrain",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "I am a shore, sure!",
+  "image": "Shore",
+  "visible": false
+}

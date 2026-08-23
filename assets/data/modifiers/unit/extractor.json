@@ -1,0 +1,10 @@
+{
+  "name": "Extractor",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "This unit can extract resources from Ore Deposits.",
+  "image": "Extractor",
+  "visible": true
+}

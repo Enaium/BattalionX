@@ -1,0 +1,10 @@
+{
+  "name": "Capturable",
+  "kind": "Terrain",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "This structure can be captured.",
+  "image": "Capturable",
+  "visible": true
+}

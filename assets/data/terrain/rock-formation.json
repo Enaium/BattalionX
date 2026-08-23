@@ -1,0 +1,15 @@
+{
+  "name": "Rock Formation",
+  "cost": 1.0,
+  "description": "The Rock Formation provides heavy defensive cover, but will damage sea units that rest on them.",
+  "minimapImage": "minimap_reef",
+  "sprite": "",
+  "modifiers": [
+    "Water",
+    "Garrison",
+    "Hazard"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

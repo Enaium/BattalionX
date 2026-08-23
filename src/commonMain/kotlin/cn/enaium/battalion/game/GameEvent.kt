@@ -1,5 +1,7 @@
 package cn.enaium.battalion.game
 
+import cn.enaium.battalion.data.EventConfig
+
 /**
  * A scripted event from the map `<script>` block: a set of [Condition]s that, once satisfied,
  * push a sequence of [Response]s onto the [ResponseManager].
@@ -21,10 +23,10 @@ class GameEvent(repeats: Int = REPEAT_ONCE) {
     private val responses = mutableListOf<Response>()
 
     /**
-     * The `<event>` XML node this event was parsed from (set by [cn.enaium.battalion.game.ScriptManager]).
+     * The [EventConfig] this event was parsed from (set by [ScriptManager]).
      * Kept so a saved game can re-emit the event definition verbatim.
      */
-    var sourceXml: cn.enaium.battalion.util.XmlNode? = null
+    var source: EventConfig? = null
 
     /** Whether the event has finished all of its repetitions. */
     fun isCompleted(): Boolean = repeats == 0

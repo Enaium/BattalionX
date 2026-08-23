@@ -1,0 +1,25 @@
+{
+  "name": "Rugged",
+  "kind": "Terrain",
+  "modify": "movementCost",
+  "effects": [],
+  "matches": [
+    {
+      "match": "movementType",
+      "value": "wheeled",
+      "effects": [
+        "2.5"
+      ]
+    },
+    {
+      "match": "movementType",
+      "value": "tracked",
+      "effects": [
+        "2"
+      ]
+    }
+  ],
+  "description": "Slows wheeled vehicles and somewhat slows tracked vehicles.",
+  "image": "Rugged",
+  "visible": true
+}

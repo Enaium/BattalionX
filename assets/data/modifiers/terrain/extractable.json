@@ -1,0 +1,18 @@
+{
+  "name": "Extractable",
+  "kind": "Terrain",
+  "modify": "movementCost",
+  "effects": [],
+  "matches": [
+    {
+      "match": "unitType",
+      "value": "sea",
+      "effects": [
+        "Infinity"
+      ]
+    }
+  ],
+  "description": "Resources can be extracted from this tile.",
+  "image": "Extractable",
+  "visible": true
+}

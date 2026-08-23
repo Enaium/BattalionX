@@ -1,93 +1,64 @@
 package cn.enaium.battalion.data
 
 import cn.enaium.battalion.game.GameManager
-import cn.enaium.battalion.util.Fio
-import cn.enaium.battalion.util.JsonXml
-import cn.enaium.battalion.util.XmlNode
-import cn.enaium.battalion.util.XmlParser
 
 /**
- * Loads the game's static data (terrain, units, modifiers, ballistics) and builds a
- * ready-to-run [GameManager] for a chosen mission or skirmish map.
+ * Loads the game's static data and builds a ready-to-run [GameManager] for a chosen mission
+ * or skirmish map.
  *
- * The original Flash game embedded every XML document as a `.bin` byte array asset. Here the
- * same documents live as JSON under the project's `assets/data/` directory (one file per doc,
- * each `{"name", "attrs", "children", "text"}` — the [JsonXml] layout), so mods ship by editing
- * or adding those JSON files. [loadAssets] imports the fixed set of registry documents;
- * campaigns and maps are resolved by name from `data/` (`campaign.json`, `bootcamp.json`,
- * `maps/<Mission>.json`, `maps/bootcamp/<...>.json`).
+ * Every document is typed JSON (see [AssetConfigs] for the on-disk contract):
+ *  - `modifiers/{unit,terrain}/<id>.json` — rule modifiers, imported FIRST because terrain /
+ *    unit configs only reference them by name.
+ *  - `units/<id>.json` / `terrain/<id>.json` — one file per template.
+ *  - `ballistics.json`, `sprites.json`.
+ *  - `campaigns/campaign.json` + `campaigns/bootcamp.json`.
+ *  - `maps/<Map>.json`.
  *
- * The two high-level entry points are:
- *  - [loadCampaignMission] — a single-player mission from the Ep3 campaign (Human vs AI).
- *  - [loadSkirmish] — any map played as a free-for-all skirmish (2 players: Human vs AI).
+ * Mods add content by dropping files into these folders; nothing else changes.
  */
 object GameLoader {
 
-    /** Returns the map settings XML for a given mission, or null. */
     class MissionInfo(
         val number: Int,
         val name: String,
-        val mapUrl: String,
-        val mapSettingsXml: XmlNode,
-        /** The mission brief (from the campaign `<level><brief/>`), for the mission-select panel. */
+        /** Map base name resolved under `maps/` (e.g. "Mission_1", "bootcamp/batut_basics"). */
+        val mapId: String,
+        val settings: MissionSettingsConfig,
         val brief: String = "",
-    )
+    ) {
+        /** Kept for callers that key saves/medals off the old URL form. */
+        val mapUrl: String get() = "maps/$mapId"
+    }
 
     /**
-     * Imports the fixed set of registry documents (JSON under `assets/data/`) into the global
-     * registries ([TileManager], [UnitManager], [ModifierManager], [BallisticsTable]).
-     * The doc names are the modding contract: `unitmodifiers.json` + `terrainmodifiers.json`
-     * are imported FIRST because terrain/unit entries only reference modifiers by name
-     * (`<modifier type="Water"/>`), so the definitions must exist before the registries that
-     * resolve them — importing them afterwards would silently register every terrain and unit
-     * without its modifier effects (e.g. no `movementCost` block -> fully walkable maps).
-     * The arena `units_arena.json` (full arena unit set) replaces base entries by name and
-     * therefore comes last; `ballistics.json` is independent.
+     * Imports the registries: unit+terrain modifiers, then terrain, then units, then
+     * ballistics. Order matters — modifier definitions must exist before the registries that
+     * resolve them by name.
      */
     fun loadAssets(assetsDir: String) {
-        for (file in registryDocs) {
-            val root = readDoc(assetsDir, file) ?: continue
-            when (root.name) {
-                "unitmodifiers", "terrainmodifiers" -> ModifierManager.importXML(root)
-                "terrain" -> TileManager.importXML(root)
-                "units" -> UnitManager.importXML(root)
-                "ballisticsTable" -> BallisticsTable.load(root)
-                else -> Unit // campaign / map handled separately
-            }
-        }
+        AssetLoader.clearCache()
+        ModifierManager.clear()
+        TileManager.clear()
+        UnitManager.clear()
+        ModifierManager.importAll(assetsDir)
+        TileManager.importAll(assetsDir)
+        UnitManager.importAll(assetsDir)
+        AssetLoader.ballistics(assetsDir)?.let { BallisticsTable.load(it) }
     }
 
-    /** The registry documents imported by [loadAssets], in import order. */
-    private val registryDocs = listOf(
-        "unitmodifiers.json",
-        "terrainmodifiers.json",
-        "terrain.json",
-        "units.json",
-        "units_arena.json",
-        "ballistics.json",
-    )
-
-    /** Parses a `<campaign>` XML document into its ordered list of missions. */
-    fun parseCampaign(root: XmlNode): List<MissionInfo> {
-        val missions = mutableListOf<MissionInfo>()
-        for (level in root.children("level")) {
-            val number = level.attr("number").toIntOrNull() ?: continue
-            val name = level.attr("name")
-            val map = level.child("map") ?: continue
-            val mapSettings = level.children("mapsettings").firstOrNull() ?: continue
-            val brief = level.child("brief")?.attr("value") ?: ""
-            missions.add(
+    /** Parses a campaign document into its ordered list of missions. */
+    fun parseCampaign(cfg: CampaignConfig): List<MissionInfo> =
+        cfg.levels
+            .map { level ->
                 MissionInfo(
-                    number = number,
-                    name = name,
-                    mapUrl = map.attr("url"),
-                    mapSettingsXml = mapSettings,
-                    brief = brief,
+                    number = level.number,
+                    name = level.name,
+                    mapId = level.map,
+                    settings = level.settings,
+                    brief = level.brief,
                 )
-            )
-        }
-        return missions.sortedBy { it.number }
-    }
+            }
+            .sortedBy { it.number }
 
     /** Finds the Ep3 single-player campaign (not bootcamp). */
     fun findCampaign(assetsDir: String): List<MissionInfo>? =
@@ -97,20 +68,19 @@ object GameLoader {
     fun findBootcamp(assetsDir: String): List<MissionInfo>? =
         findCampaignNamed(assetsDir, isBootcamp = true)
 
-    /**
-     * Finds the campaign document (JSON): `bootcamp.json` for the tutorial campaign, otherwise
-     * `campaign.json` (the Ep3 single-player campaign). Returns null when the doc is absent.
-     */
+    /** Finds a campaign document (`bootcamp` for the tutorial, otherwise the Ep3 campaign). */
     fun findCampaignNamed(assetsDir: String, isBootcamp: Boolean): List<MissionInfo>? {
-        val root = readDoc(assetsDir, if (isBootcamp) "bootcamp.json" else "campaign.json") ?: return null
-        return parseCampaign(root)
+        val cfg = AssetLoader.campaign(assetsDir, if (isBootcamp) "bootcamp" else "campaign")
+            ?: return null
+        return parseCampaign(cfg)
     }
 
-    /**
-     * Loads a single-player mission. [assetsDir] is the project's asset directory (JSON data
-     * under `assets/data/`), [missionIndex] selects which campaign mission to play (0-based).
-     */
-    fun loadCampaignMission(assetsDir: String, missionIndex: Int, difficultyOverride: Int? = null): GameManager {
+    /** Loads a single-player campaign mission ([missionIndex], 0-based). */
+    fun loadCampaignMission(
+        assetsDir: String,
+        missionIndex: Int,
+        difficultyOverride: Int? = null,
+    ): GameManager {
         loadAssets(assetsDir)
         val missions = findCampaign(assetsDir)
             ?: error("GameLoader: no campaign document found in $assetsDir")
@@ -118,17 +88,20 @@ object GameLoader {
             error("GameLoader: mission $missionIndex out of range (0..${missions.lastIndex})")
         }
         val mission = missions[missionIndex]
-        val mapNode = findMapXml(assetsDir, mission.mapUrl)
-            ?: error("GameLoader: could not find map for '${mission.mapUrl}'")
-        return buildGame(mapNode, mission.mapSettingsXml, difficultyOverride = difficultyOverride, mapUrl = mission.mapUrl, mapName = mission.mapUrl.substringAfterLast("/"))
-            .also { it.setCampaignContext(missionIndex, bootcamp = false, mission.mapUrl) }
+        val mapCfg = findMap(assetsDir, mission.mapId)
+            ?: error("GameLoader: could not find map for '${mission.mapId}'")
+        return buildGame(mapCfg, mission.settings,
+            difficultyOverride = difficultyOverride,
+            mapUrl = "maps/${mission.mapId}", mapName = mission.mapId.substringAfterLast("/"))
+            .also { it.setCampaignContext(missionIndex, bootcamp = false, "maps/${mission.mapId}") }
     }
 
-    /**
-     * Loads a single-player bootcamp mission (the "Boot Camp" tutorial campaign).
-     * [missionIndex] selects which bootcamp mission to play (0-based).
-     */
-    fun loadBootcampMission(assetsDir: String, missionIndex: Int, difficultyOverride: Int? = null): GameManager {
+    /** Loads a single-player bootcamp mission ([missionIndex], 0-based). */
+    fun loadBootcampMission(
+        assetsDir: String,
+        missionIndex: Int,
+        difficultyOverride: Int? = null,
+    ): GameManager {
         loadAssets(assetsDir)
         val missions = findBootcamp(assetsDir)
             ?: error("GameLoader: no bootcamp document found in $assetsDir")
@@ -136,105 +109,82 @@ object GameLoader {
             error("GameLoader: bootcamp mission $missionIndex out of range (0..${missions.lastIndex})")
         }
         val mission = missions[missionIndex]
-        val mapNode = findMapXml(assetsDir, mission.mapUrl)
-            ?: error("GameLoader: could not find map for '${mission.mapUrl}'")
-        return buildGame(mapNode, mission.mapSettingsXml, difficultyOverride = difficultyOverride, mapUrl = mission.mapUrl, mapName = mission.mapUrl.substringAfterLast("/"))
-            .also { it.setCampaignContext(missionIndex, bootcamp = true, mission.mapUrl) }
+        val mapCfg = findMap(assetsDir, mission.mapId)
+            ?: error("GameLoader: could not find map for '${mission.mapId}'")
+        return buildGame(mapCfg, mission.settings,
+            difficultyOverride = difficultyOverride,
+            mapUrl = "maps/${mission.mapId}", mapName = mission.mapId.substringAfterLast("/"))
+            .also { it.setCampaignContext(missionIndex, bootcamp = true, "maps/${mission.mapId}") }
     }
 
     /** True when a campaign [MissionInfo]'s map file is actually present and loadable. */
     fun isMissionLoadable(assetsDir: String, mission: MissionInfo): Boolean =
-        findMapXml(assetsDir, mission.mapUrl) != null
+        findMap(assetsDir, mission.mapId) != null
 
     /**
-     * Reconstructs a [GameManager] from a serialized saved game (the XML produced by
-     * [cn.enaium.battalion.game.GameManager.toXML]).
+     * Reconstructs a [GameManager] from a serialized saved game ([GameManager.toSave]).
      *
-     * Mirrors the original's restore: the map is re-loaded from the save's `mapurl`, the
-     * `mapsettings` (rounds/teams/difficulty) come from the save, and the `<script>` snapshot
-     * rehydrates the exact turn/round/controller/resources/units/structures before the new
-     * [GameManager] is returned — it is NOT started; the caller resumes with
-     * [cn.enaium.battalion.game.GameManager.resumeFromSave].
+     * The map is re-loaded from the save's [SavedGameConfig.mapId], the settings come from
+     * the snapshot, and its script section rehydrates the exact turn/round/controller/
+     * resources/units/structures before the new [GameManager] is returned — it is NOT
+     * started; the caller resumes with [GameManager.resumeFromSave].
      */
-    fun loadSavedGame(assetsDir: String, saveXml: String): GameManager {
+    fun loadSavedGame(assetsDir: String, save: SavedGameConfig): GameManager {
         loadAssets(assetsDir)
-        val root = XmlParser.parseOrNull(saveXml) ?: error("GameLoader: invalid save XML")
-        val mapUrl = root.attr("mapurl")
-        val mapNode = findMapXml(assetsDir, mapUrl)
-            ?: error("GameLoader: save references unknown map '$mapUrl'")
-        val settingsNode = root.child("mapsettings") ?: error("GameLoader: save missing <mapsettings>")
-        val scriptNode = root.child("script")
-        return buildGame(mapNode, settingsNode, scriptNode,
-            mapUrl = mapUrl, mapName = root.attr("mapname").ifEmpty { mapUrl.substringAfterLast('/') })
+        val mapCfg = findMap(assetsDir, save.mapId)
+            ?: error("GameLoader: save references unknown map '${save.mapId}'")
+        return buildGame(mapCfg, save.settings, save.script,
+            mapUrl = "maps/${save.mapId}",
+            mapName = save.mapName.ifEmpty { save.mapId.substringAfterLast('/') })
     }
 
-    /** Public access to the parsed `<map>` XML for a mission, or null (used by the menu minimap). */
-    fun findMapXmlPublic(assetsDir: String, url: String): XmlNode? = findMapXml(assetsDir, url)
+    /** Public access to the parsed [MapConfig] for a mission (used by the menu minimap). */
+    fun findMapPublic(assetsDir: String, mapId: String): MapConfig? = findMap(assetsDir, mapId)
 
     /**
      * Loads a skirmish / multiplayer map. [mapFile] is a map base name (e.g. `Mission_1`),
-     * resolved to `data/maps/<mapFile>.json`. Player 1 is Human, every other team is AI.
+     * resolved to `maps/<base>.json`. Player 1 is Human, every other team is AI.
      */
     fun loadSkirmish(assetsDir: String, mapFile: String): GameManager {
         loadAssets(assetsDir)
-        val base = mapFile.substringBeforeLast('.')
-        val rel = if (mapFile.contains("/")) mapFile else "maps/$base.json"
-        val mapNode = readDoc(assetsDir, rel)
+        val base = mapFile.substringBeforeLast('.').removePrefix("maps/")
+        val mapCfg = findMap(assetsDir, base)
             ?: error("GameLoader: cannot read map file $mapFile")
 
-        // Build a default mapsettings with one Human + AI per team found in the map palette.
-        val map = GameMap(mapNode, mapFile, mapFile)
-        val teamCount = map.palette.mapNotNull { it.getTeam().takeIf { t -> t > 0 } }.maxOrNull() ?: 2
-        val sb = StringBuilder()
-        sb.append("<mapsettings rounds=\"2147483647\" resources=\"3000\" difficulty=\"1\"><teams>")
-        for (i in 1..teamCount) {
-            val type = if (i == 1) "Human" else "AI"
-            sb.append("<team active=\"true\"><name value=\"Player $i\"/><teamname value=\"Team $i\"/>")
-            sb.append("<color value=\"${if (i == 1) "ff00ff00" else "ff0000ff"}\"/>")
-            sb.append("<rank value=\"1\"/><controllertype value=\"$type\"/></team>")
+        // Build default settings with one Human + AI per team found in the map palette.
+        val map = GameMap(mapCfg, "maps/$base", base)
+        val teamCount = map.palette.map { it.ownerTeam() }.filter { it > 0 }.maxOrNull() ?: 2
+        val teams = (1..teamCount).map { i ->
+            TeamConfig(
+                name = "Player $i",
+                teamName = "Team $i",
+                color = if (i == 1) "ff00ff00" else "ff0000ff",
+                controllerType = if (i == 1) "Human" else "AI",
+                active = true,
+            )
         }
-        sb.append("</teams></mapsettings>")
-        val settingsNode = XmlParser.parseOrNull(sb.toString())!!
-        return buildGame(mapNode, settingsNode, mapUrl = mapFile, mapName = mapFile.substringBeforeLast('.'))
+        val settings = MissionSettingsConfig(rounds = Int.MAX_VALUE, resources = 3000, teams = teams)
+        return buildGame(mapCfg, settings, mapUrl = base, mapName = base)
     }
 
-    /** Builds a [GameManager] from a map XML node, its `<mapsettings>` node, and an optional save `<script>` snapshot. */
+    /** Builds a [GameManager] from a map config, its settings, and an optional save script. */
     private fun buildGame(
-        mapNode: XmlNode,
-        settingsNode: XmlNode,
-        scriptNode: XmlNode? = null,
+        mapCfg: MapConfig,
+        settings: MissionSettingsConfig,
+        script: MapScriptConfig? = null,
         difficultyOverride: Int? = null,
         mapUrl: String? = null,
         mapName: String? = null,
     ): GameManager {
-        val mapSettings = MapSettings.getFromXML(settingsNode, difficultyOverride)
-        val url = mapUrl ?: mapNode.child("name")?.text ?: "Map"
-        val name = mapName ?: mapNode.child("name")?.text ?: "Map"
-        val map = GameMap(mapNode, url, name)
+        val mapSettings = MapSettings.fromConfig(settings, difficultyOverride = difficultyOverride)
+        val url = mapUrl ?: mapCfg.name
+        val name = mapName ?: mapCfg.name
+        val map = GameMap(mapCfg, url, name)
         mapSettings.map = map
-        return GameManager(mapSettings, scriptNode)
+        return GameManager(mapSettings, script)
     }
 
-    /**
-     * Resolves a campaign URL such as `maps/ep3/Mission_1.yimf` or
-     * `maps/ep3/bootcamp/batut_stealth.yimf` to its JSON document:
-     * `data/maps/<base>.json` (or `data/maps/bootcamp/<base>.json` when the URL is under a
-     * `bootcamp/` path segment). Returns the parsed map node, or null when unknown.
-     */
-    private fun findMapXml(assetsDir: String, url: String): XmlNode? {
-        val base = url.substringAfterLast('/').substringBeforeLast('.')
-        val boot = "/bootcamp/".let { url.contains(it) }
-        val rel = if (boot) "maps/bootcamp/$base.json" else "maps/$base.json"
-        val root = readDoc(assetsDir, rel) ?: return null
-        return if (root.name == "map") root else null
-    }
-
-    /** The directory that holds the JSON documents. */
-    private fun dataDir(assetsDir: String): String = "$assetsDir/data"
-
-    /** Reads and parses one JSON document (relative to `dataDir`), or null when absent/broken. */
-    private fun readDoc(assetsDir: String, rel: String): XmlNode? {
-        val text = Fio.readText("${dataDir(assetsDir)}/$rel") ?: return null
-        return JsonXml.parseNodeOrNull(text)
-    }
+    /** Resolves a map id like `Mission_1` or `bootcamp/batut_basics` to its document. */
+    private fun findMap(assetsDir: String, mapId: String): MapConfig? =
+        AssetLoader.map(assetsDir, "$mapId.json")
 }

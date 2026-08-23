@@ -1,0 +1,12 @@
+{
+  "name": "Sea Proficiency",
+  "kind": "Terrain",
+  "modify": "seaCost",
+  "effects": [
+    "-5%"
+  ],
+  "matches": [],
+  "description": "Each Sea Control reduces cost of deploying sea units by 5%.",
+  "image": "SeaProficiency",
+  "visible": true
+}

@@ -12,25 +12,63 @@ All game resources live under `assets/` in the project root (versioned, no runti
 
 ```
 assets/
-├── data/                # game data as JSON (one document per file)
-│   ├── terrainmodifiers.json / unitmodifiers.json   #   modifier rules (imported first:
-│   │                                                 #   terrain/units reference them by name)
-│   ├── terrain.json     #   terrain + structure definitions
-│   ├── units.json       #   unit definitions
-│   ├── units_arena.json #   arena unit set (replaces base entries by name)
-│   ├── ballistics.json
-│   ├── campaign.json    #   Ep3 single-player campaign (mission list, briefs, medals)
-│   ├── bootcamp.json    #   tutorial campaign
-│   └── maps/            #   mission documents: Mission_1..10, bootcamp/, Kongregate_Bonus_Map
-├── images/              # sprite/texture files, named by sprite key (scorpion.png, sea_0_nw.png)
-└── sounds/              # sound effects + BGM, named by event name (ExplosionSound.mp3)
+├── data/                        # game data as typed JSON documents
+│   ├── units/<id>.json          # ONE file per unit (stats + sprite sheet + sounds)
+│   ├── terrain/<id>.json        # ONE file per terrain/structure type
+│   ├── modifiers/
+│   │   ├── unit/<id>.json       # ONE file per unit rule modifier (Flak, Transport, ...)
+│   │   └── terrain/<id>.json    # ONE file per terrain rule modifier (Water, Cover, ...)
+│   ├── ballistics.json          # weapon-type x armor-type damage multipliers
+│   ├── sprites.json             # sheet slicing: regions/grids for avatars, explosions, cursor
+│   ├── campaigns/
+│   │   ├── campaign.json        # Ep3 campaign: mission list, briefs, medals, teams
+│   │   └── bootcamp.json        # tutorial campaign
+│   └── maps/                    # mission documents: Mission_1..10, bootcamp/, Kongregate_Bonus_Map
+├── images/                      # sprite files, named by key (scorpion.png, sea_0_nw.png)
+└── sounds/                      # sound effects + BGM, named by event name (ExplosionSound.mp3)
 ```
 
-The data documents use an XML-shaped JSON layout — every element is
-`{"name", "attrs", "children", "text"}` (see `JsonXml.kt`) — so mods ship by editing or
-adding files here: swap a sprite under `images/`, add a map under `data/maps/`, tweak a unit
-under `data/units.json`. `./gradlew jvmRun --args="assets --assetreport"` lists every sprite
-name the game requests (a mod checklist: any requested sprite with no backing file is reported).
+Every document is parsed with kotlinx.serialization against the `@Serializable` config models
+in `data/AssetConfigs.kt` — there is no XML or XML-shaped JSON anywhere in the pipeline.
+Unknown fields are ignored, so mods can annotate configs freely.
+
+### Per-unit configuration (`units/warmachine.json`)
+
+```json
+{
+  "name": "Warmachine",
+  "unitType": "ground", "movementType": "tracked",
+  "weaponType": "medium", "armorType": "medium",
+  "cost": 2500, "range": 3, "health": 75, "damage": 60,
+  "weaponRangeMin": 2, "weaponRangeMax": 3,
+  "description": "The Warmachine is the cornerstone of your army.",
+  "modifiers": ["Constructor", "Skysweeper", "Extractor", "Linchpin", "Unbuildable"],
+  "sprite": {
+    "sheet": "warmachine",            // images/warmachine.png — 6 columns × 4 rows
+    "facingColumns": [0, 1, 2, 3],    // facing N/E/S/W -> column
+    "cellWidth": 56, "rows": 4,
+    "firingSheet": "warmachine_firing", "firingCellWidth": 144
+  },
+  "audio": { "move": "TankMove1", "fire": "" }
+}
+```
+
+The `sprite` block IS the sprite contract: which sheet to use, how it is sliced into cells,
+which column each facing maps to, and which dedicated firing sheet (with its cell size) plays
+during an attack. No pixel offsets or name-mangling heuristics live in the code.
+
+Terrain configs carry a `sprites` block the same way (`variants` for interchangeable textures,
+`composite` for 2×2 sea/shore/canyon mosaics, `single` for one fixed image), and map palette
+entries may override it per entry.
+
+### Modding
+
+- **New unit**: drop `units/my-unit.json` (+ its sheets under `images/`) and reference it from
+  a map palette entry.
+- **New terrain / modifier / sound**: same — one file per item.
+- **New map**: drop `maps/mymap.json`; add it to a campaign's `levels` to make it playable.
+- `./gradlew jvmRun --args="assets --assetreport"` lists every sprite the game requests and
+  every image that was never used (a mod checklist).
 
 ## Running
 
@@ -43,7 +81,6 @@ name the game requests (a mod checklist: any requested sprite with no backing fi
 #   --mission N     campaign mission N (0-based, default 0)
 #   --skirmish x    free-for-all skirmish on assets/data/maps/x.json (name only, e.g. Mission_1)
 #   --selftest      load the mission and tick the game loop without a window (startup self-check)
-#   --assetreport   drive every mission/menu and report requested sprites missing a file
 ```
 
 Other targets:

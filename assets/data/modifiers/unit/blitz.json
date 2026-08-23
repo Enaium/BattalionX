@@ -1,0 +1,12 @@
+{
+  "name": "Blitz",
+  "kind": "Unit",
+  "modify": "attackBonus",
+  "effects": [
+    "+20%"
+  ],
+  "matches": [],
+  "description": "+20% damage if unit initiates attack.",
+  "image": "Blitz",
+  "visible": true
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Mammoth",
+  "kind": "Unit",
+  "modify": "returnAttackBonus",
+  "effects": [
+    "-15%"
+  ],
+  "matches": [],
+  "description": "Unit does 15% less damage on counter attack.",
+  "image": "Mammoth",
+  "visible": true
+}

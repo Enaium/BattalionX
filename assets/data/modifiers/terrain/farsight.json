@@ -1,0 +1,12 @@
+{
+  "name": "Farsight",
+  "kind": "Terrain",
+  "modify": "attackRange",
+  "effects": [
+    "+1"
+  ],
+  "matches": [],
+  "description": "Increases maximum attack range of ranged units by 1.",
+  "image": "Farsight",
+  "visible": true
+}

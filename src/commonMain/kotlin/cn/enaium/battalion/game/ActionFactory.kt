@@ -1,16 +1,15 @@
 package cn.enaium.battalion.game
 
+import cn.enaium.battalion.data.ResponseConfig
 import cn.enaium.battalion.game.actions.SurrenderAction
-import cn.enaium.battalion.util.XmlNode
 
 /**
- * Builds a [Action] from an `<action>`/`<SurrenderAction>` XML node (used by the scripted
- * sendAction response). The original only reconstructed a SurrenderAction.
+ * Builds an [Action] from a scripted `sendAction` response (the original only reconstructed
+ * a SurrenderAction, which carries its player index).
  */
 object ActionFactory {
-    fun get(node: XmlNode): Action {
-        // SurrenderAction carries a @player attribute.
-        val player = node.attr("player").toIntOrNull()?.minus(1) ?: 0
+    fun get(cfg: ResponseConfig): Action {
+        val player = (cfg.player ?: 1) - 1
         return SurrenderAction(player).apply { isNetworked = false }
     }
 }

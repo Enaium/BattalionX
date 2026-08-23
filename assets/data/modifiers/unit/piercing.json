@@ -1,0 +1,10 @@
+{
+  "name": "Piercing",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Attack damages any unit directly behind target.",
+  "image": "Piercing",
+  "visible": true
+}

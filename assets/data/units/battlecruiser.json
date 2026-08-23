@@ -1,0 +1,35 @@
+{
+  "name": "Battlecruiser",
+  "unitType": "sea",
+  "movementType": "rudder",
+  "weaponType": "heavy",
+  "armorType": "heavy",
+  "cost": 800,
+  "range": 4,
+  "health": 140,
+  "damage": 50,
+  "weaponRangeMin": 3,
+  "weaponRangeMax": 6,
+  "description": "The massive guns of the Battlecruiser can fire further than all other units.",
+  "modifiers": [
+    "Counter Battery",
+    "Massive Hull"
+  ],
+  "sprite": {
+    "sheet": "battlecruiser",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "battlecruiser_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "ShipMove",
+    "fire": "FireBattlecruiser"
+  }
+}

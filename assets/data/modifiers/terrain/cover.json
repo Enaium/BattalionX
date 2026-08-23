@@ -1,0 +1,25 @@
+{
+  "name": "Cover",
+  "kind": "Terrain",
+  "modify": "defense",
+  "effects": [],
+  "matches": [
+    {
+      "match": "unitType",
+      "value": "ground",
+      "effects": [
+        "-10%"
+      ]
+    },
+    {
+      "match": "unitType",
+      "value": "sea",
+      "effects": [
+        "-10%"
+      ]
+    }
+  ],
+  "description": "Damage to non-air units reduced by 10%.",
+  "image": "Cover",
+  "visible": true
+}

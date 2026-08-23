@@ -1,0 +1,34 @@
+{
+  "name": "Spider Tank",
+  "unitType": "ground",
+  "movementType": "feet",
+  "weaponType": "light",
+  "armorType": "light",
+  "cost": 250,
+  "range": 4,
+  "health": 32,
+  "damage": 55,
+  "weaponRangeMin": 1,
+  "weaponRangeMax": 1,
+  "description": "The Spider Tank stuns its target to avoid counter attack.",
+  "modifiers": [
+    "Stun"
+  ],
+  "sprite": {
+    "sheet": "spider",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "spider_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "TankMove1",
+    "fire": "FireScorpionTank"
+  }
+}

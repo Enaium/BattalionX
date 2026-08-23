@@ -166,8 +166,8 @@ class BattalionGame(
             // bootcamp tutorial campaign; otherwise a campaign mission at the chosen difficulty.
             // The AI difficulty selection (Easy/Normal/Hard) overrides the AI teams' difficulty.
             game = when {
-                resumeSave && SaveManager.saveGame != null ->
-                    GameLoader.loadSavedGame(assetsDir, SaveManager.saveGame!!)
+                resumeSave && SaveManager.hasSavedGame() ->
+                    GameLoader.loadSavedGame(assetsDir, SaveManager.savedGame!!)
                 skirmish != null -> GameLoader.loadSkirmish(assetsDir, skirmish)
                 bootcamp -> GameLoader.loadBootcampMission(assetsDir, mission ?: 0)
                 else -> GameLoader.loadCampaignMission(assetsDir, mission ?: 0,
@@ -209,7 +209,7 @@ class BattalionGame(
             // The brief is part of campaign flow and always shows on a fresh game — the
             // "Dialogs" option only gates mid-game chat responses, not the mission brief.
             if (!resumeSave) {
-                dialogue = Dialogue(game!!.map.getScript())
+                dialogue = Dialogue(game!!.map.script)
                 render!!.dialogue = dialogue
                 dialogue!!.play("startGame")
             }
@@ -641,8 +641,8 @@ class BattalionGame(
             "resume" -> render.setInGameMenuOpen(false)
             "save" -> {
                 val g = game ?: return
-                val xml = g.toXML()
-                SaveManager.saveGame = xml
+                val save = g.toSave()
+                SaveManager.savedGame = save
                 render.setInGameMenuOpen(false)
                 inMatch = false        // back to the menu; Continue is now enabled
             }

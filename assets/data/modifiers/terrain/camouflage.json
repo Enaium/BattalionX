@@ -1,0 +1,25 @@
+{
+  "name": "Camouflage",
+  "kind": "Terrain",
+  "modify": "defense",
+  "effects": [],
+  "matches": [
+    {
+      "match": "unitType",
+      "value": "ground",
+      "effects": [
+        "-20%"
+      ]
+    },
+    {
+      "match": "unitType",
+      "value": "sea",
+      "effects": [
+        "-20%"
+      ]
+    }
+  ],
+  "description": "Damage to ground and sea units reduced by 20%.",
+  "image": "Camouflage",
+  "visible": true
+}

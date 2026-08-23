@@ -1,0 +1,25 @@
+{
+  "name": "Garrison",
+  "kind": "Terrain",
+  "modify": "defense",
+  "effects": [],
+  "matches": [
+    {
+      "match": "unitType",
+      "value": "ground",
+      "effects": [
+        "-50%"
+      ]
+    },
+    {
+      "match": "unitType",
+      "value": "sea",
+      "effects": [
+        "-50%"
+      ]
+    }
+  ],
+  "description": "Damage to non-air units reduced by 50%",
+  "image": "Garrison",
+  "visible": true
+}

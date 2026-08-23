@@ -1,0 +1,12 @@
+{
+  "name": "Air Proficiency",
+  "kind": "Terrain",
+  "modify": "airCost",
+  "effects": [
+    "-5%"
+  ],
+  "matches": [],
+  "description": "Each Air Control reduces cost of deploying air units by 5%.",
+  "image": "AirProficiency",
+  "visible": true
+}

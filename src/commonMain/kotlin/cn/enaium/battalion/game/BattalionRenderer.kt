@@ -3,7 +3,9 @@ package cn.enaium.battalion.game
 import cn.enaium.battalion.data.Astar
 import cn.enaium.battalion.data.Tile
 import cn.enaium.battalion.data.TileManager
-import cn.enaium.battalion.data.TileSwatch
+import cn.enaium.battalion.data.SpriteKey
+import cn.enaium.battalion.data.TerrainSprites
+import cn.enaium.battalion.data.UnitManager
 import cn.enaium.battalion.data.Unit
 import cn.enaium.battalion.game.controllers.HALController
 import cn.enaium.battalion.game.controllers.HumanController
@@ -96,35 +98,9 @@ class BattalionRenderer(
     /** BattalionPanel alpha (0.65): the wood backing is drawn translucent so the map shows through. */
     private val DIALOGUE_PANEL_ALPHA = 0.65f
 
-    // Avatar sprite sheet: 780×600, 6 columns × 4 rows, each cell 130×150 pixels.
-    private val AVATAR_COLS = 6
-    private val AVATAR_ROWS = 4
-    private val AVATAR_CELL_W = 130
-    private val AVATAR_CELL_H = 150
-
-    // Avatar name -> frame index in the 6×4 sheet. The indices are the original tilesheet's
-    // `<animation name="..."><frame frame="N"/></animation>` entries (_assets/3316.bin),
-    // frame = row * 6 + column in the 780×600 sheet, NOT a visual-inspection ordering.
-    private val avatarFrames = mapOf(
-        "durand" to 0,
-        "mullen" to 1,
-        "pearl" to 2,
-        "tucker" to 3,
-        "argent" to 4,
-        "general" to 5,
-        "evil_durand" to 6,
-        "mayjor" to 7,
-        "akadian_3" to 8,
-        "evil_durand_dark" to 9,
-        "hayne" to 10,
-        "blank" to 11,
-        "usul" to 12,
-        "drag_2" to 13,
-        "drag_3" to 14,
-        "blank_asdasddd" to 15,
-        "blank_asdzxc" to 16,
-        "yurik" to 17,
-    )
+    // Avatar sheet: regions come from `data/sprites.json` (the "avatars" sheet names every
+    // portrait cell; the indices are the original tilesheet's animation entries, NOT a
+    // visual-inspection ordering).
 
     // Avatar texture, loaded once.
     private var avatarTexture: SDLTexture? = null
@@ -133,14 +109,12 @@ class BattalionRenderer(
      * Returns the source rectangle for the avatar with the given [name], or null if unknown.
      */
     private fun avatarFrame(name: String): SDLFRect? {
-        val index = avatarFrames[name.lowercase()] ?: return null
-        val col = index % AVATAR_COLS
-        val row = index / AVATAR_COLS
+        val region = textures.region("avatars", name.lowercase()) ?: return null
         return SDLFRect(
-            (col * AVATAR_CELL_W).toFloat(),
-            (row * AVATAR_CELL_H).toFloat(),
-            AVATAR_CELL_W.toFloat(),
-            AVATAR_CELL_H.toFloat()
+            region.x.toFloat(),
+            region.y.toFloat(),
+            region.width.toFloat(),
+            region.height.toFloat()
         )
     }
 
@@ -148,8 +122,7 @@ class BattalionRenderer(
      * Loads the avatar sprite sheet texture if not already loaded.
      */
     private fun loadAvatarTexture() {
-        if (avatarTexture != null) return
-        avatarTexture = textures.texture("avatars")
+        avatarTexture = textures.texture(textures.sheetImage("avatars") ?: "avatars")
     }
 
     /**
@@ -239,7 +212,7 @@ class BattalionRenderer(
     /** Resolves and caches the terrain textures from the map palette. */
     fun setupTextures() {
         for (swatch in game.map.palette) {
-            if (swatch.getTeam() != 0) continue // units are not terrain
+            if (swatch.ownerTeam() != 0) continue // units are not terrain
             for (file in swatch.imageFiles) {
                 val key = file.substringBeforeLast('.')
                 if (terrainTextures.containsKey(key)) continue
@@ -314,22 +287,25 @@ class BattalionRenderer(
     }
 
     /**
-     * Draws every queued firing-sheet overlay at its natural 144×144 size, centred on the firing
-     * unit's tile (mirroring the original UnitAttackAnimation overlay). Called after all units and
-     * attack-target frames are drawn so the firing sprite is never covered by the target's art.
+     * Draws every queued firing-sheet overlay at its natural cell size, centred on the firing
+     * unit's tile (mirroring the original UnitAttackAnimation overlay). Called after all units
+     * and attack-target frames are drawn so the firing sprite is never covered by the target's
+     * art.
      */
     private fun drawFiringOverlays() {
         for (ov in firingOverlays) {
             val unit = ov.unit
+            val key = unit.unitData.spriteKey
             val firingKey = firingSpriteKeyFor(unit) ?: continue
             val rawTeam = rawTeamColor(unit.controller?.team)
             val tex = textures.textureForTeam(firingKey, rawTeam) ?: continue
             val px = screenX(unit.x) + TileManager.TILE_WIDTH / 2
             val py = screenY(unit.y) + TileManager.TILE_HEIGHT / 2
+            val cell = key.firingCellWidth.toFloat()
             renderer.renderTexture(
                 tex,
-                src = SDLFRect((ov.col * 144).toFloat(), (ov.row * 144).toFloat(), 144f, 144f),
-                dst = SDLFRect((px - 72).toFloat(), (py - 72).toFloat(), 144f, 144f),
+                src = SDLFRect((ov.col * cell), (ov.row * cell), cell, cell),
+                dst = SDLFRect((px - cell / 2).toFloat(), (py - cell / 2).toFloat(), cell, cell),
             )
         }
     }
@@ -367,14 +343,15 @@ class BattalionRenderer(
         }
 
         val tex = textures.texture("cursor") ?: return
-        // The cursor sprite (467_cursor_cursor.png, 144×48) holds two 48×48 cells side by side:
-        // cell 0 = move, cell 1 = attack (the rightmost 48px of the sheet is empty padding).
-        val cellW = 48f
-        val cellH = 48f
+        // The cursor sheet (sprites.json) holds named "move" / "attack" cells.
+        val regionName = if (cellX == 1) "attack" else "move"
+        val region = textures.region("cursor", regionName) ?: return
+        val cellW = region.width.toFloat()
+        val cellH = region.height.toFloat()
         // Marker sits at the cursor's bottom-right.
         renderer.renderTexture(
             tex,
-            src = SDLFRect(cellX * cellW, 0f, cellW, cellH),
+            src = SDLFRect(region.x.toFloat(), region.y.toFloat(), cellW, cellH),
             dst = SDLFRect(mouse.x.toFloat(), mouse.y.toFloat(), cellW, cellH),
         )
     }
@@ -503,13 +480,16 @@ class BattalionRenderer(
         )
     }
 
-            /** Advances and draws every active explosion effect (above units, below the selection frame). */
+    /** Advances and draws every active explosion effect (above units, below the selection frame). */
     private fun drawExplosions() {
         if (explosions.isEmpty()) return
-        val cellW = 56
         val iter = explosions.iterator()
         while (iter.hasNext()) {
             val fx = iter.next()
+            val sheet = if (fx.big) explosionSheet else smallExplosionSheet
+            val sheetCfg = textures.atlas.sheets[sheet] ?: run { iter.remove(); continue }
+            val cellW = sheetCfg.cellWidth
+            val cellH = sheetCfg.cellHeight
             val frameCount = if (fx.big) 16 else 8
             val waitMs = if (fx.big) 75L else 100L
             val frame = ((game.elapsedMs - fx.startMs) / waitMs).toInt()
@@ -517,19 +497,17 @@ class BattalionRenderer(
                 iter.remove()
                 continue
             }
-            val sheet = if (fx.big) explosionSheet else smallExplosionSheet
-            val tex = textures.texture(sheet) ?: continue
-            // Deep frames (tall explosion) span 72 source px; the tilesheet declares the
-            // logical cell as 96 tall, so the blast is drawn scaled to 56×96.
-            val srcH = if (fx.big) 72 else 56
+            val tex = textures.texture(sheetCfg.image) ?: continue
+            // Deep frames (tall explosion) span 72 source px; the blast is drawn scaled to
+            // the atlas-declared logical height (96 for the big blast).
             val dstH = if (fx.big) 96 else 56
-            val srcX = (frame % 4) * cellW
-            val srcY = (frame / 4) * srcH
+            val srcX = (frame % sheetCfg.columns) * cellW
+            val srcY = (frame / sheetCfg.columns) * cellH
             val px = screenX(fx.x)
             val py = screenY(fx.y)
             renderer.renderTexture(
                 tex,
-                src = SDLFRect(srcX.toFloat(), srcY.toFloat(), cellW.toFloat(), srcH.toFloat()),
+                src = SDLFRect(srcX.toFloat(), srcY.toFloat(), cellW.toFloat(), cellH.toFloat()),
                 dst = SDLFRect(px.toFloat(), (py + TileManager.TILE_HEIGHT - dstH).toFloat(),
                     cellW.toFloat(), dstH.toFloat()),
             )
@@ -689,91 +667,31 @@ class BattalionRenderer(
     /** Accent colour for a unit's own team. */
     private fun unitColor(unit: Unit): SDLColor = teamColor(unit.controller?.team)
 
-    /** Maps a unit type name to its sprite-index key (the exported sprite's embedded name). */
-    /** Debug hook (used by the shot diagnostic): resolves a unit's sprite key by name. */
-    fun debugSpriteKeyFor(name: String, sprite: String): String = spriteKeyForUnitData(name, sprite)
 
-    private fun spriteKeyForUnit(unit: Unit): String =
-        spriteKeyForUnitData(unit.unitData.name, unit.unitData.sprite)
+    /** Debug hook (used by the shot diagnostic): a unit's base sprite sheet key. */
+    fun debugSpriteKeyFor(name: String, sprite: String): String =
+        UnitManager.get(name)?.spriteKey?.sheet ?: ""
 
-    /**
-     * Maps a unit type name (+ its XML sprite name) to the exported sprite-index key, with the
-     * explicit fallback table (source: _assets/3316.bin tilesheet definitions). Used by both
-     * the on-map unit rendering and the build-page thumbnails (the SWF `BuildMenuUnit` resolves
-     * its graphic by unit *name* via `TileSheetManager.getPalettized`, so names whose XML sprite
-     * is not directly indexed need this table to render a thumbnail).
-     */
-    private fun spriteKeyForUnitData(name: String, sprite: String): String {
-        // Prefer the unit's own registered sprite name from its XML (`<sprite value="Warmachine"/>`).
-        // The TextureManager indexes images by the repeated lowercase name in their filename
-        // (e.g. "Warmachine" -> "warmachine"), so we lowercase + strip spaces for the lookup.
-        val key = sprite
-            .lowercase()
-            .replace(" ", "")
-            .replace("-", "")
-        if (textures.pathFor(key) != null || textures.textureSize(key) != null) return key
-        // Fall back to the explicit complete table (source: _assets/3316.bin tilesheet definitions).
-        return when (name) {
-            "Warmachine" -> "warmachine"
-            "Jammer Truck" -> "jammer"
-            "Lancer Tank" -> "lancer"
-            "Spider Tank" -> "spider"
-            "Heavy Commando" -> "hcommando"
-            "Strike Commando" -> "commando"
-            "Blockade" -> "blockade"
-            "Flak Tank" -> "flak"
-            "Scorpion Tank" -> "scorpion"
-            "Mortar Truck" -> "mortar"
-            "Rocket Truck" -> "rocket"
-            "Annihilator Tank" -> "annihilator"
-            "Turret" -> "turret"
-            "Stealth Tank" -> "stealth"
-            "Albatross Transport" -> "albatross"
-            "Raptor Fighter" -> "raptor"
-            "Vulture Drone" -> "vulture"
-            "Condor Bomber" -> "condor"
-            "Leviathan Barge" -> "leviathan"
-            "Hunter Support" -> "hunter"
-            "Corvette Fighter" -> "corvette"
-            "U-Boat" -> "uboat"
-            "Battlecruiser" -> "battlecruiser"
-            "Intrepid" -> "intrepid"
-            else -> key
-        }
-    }
+    private fun spriteKeyForUnit(unit: Unit): SpriteKey = unit.unitData.spriteKey
 
     /**
-     * The `_firing` sprite key for [unit], e.g. "corvette_firing" for "corvette". Firing
-     * tilesheets exist for most armed units (Annihilator, Corvette, Flak, Scorpion, Turret,
-     * Warmachine, ...). Returns null for units with no firing sheet.
+     * The firing-sheet key for [unit], straight from its config (`sprite.firingSheet`).
+     * Returns null for units with no firing sheet.
      */
     private fun firingSpriteKeyFor(unit: Unit): String? {
-        val base = spriteKeyForUnit(unit)
-        val firing = "${base}_firing"
+        val key = unit.unitData.spriteKey
+        if (key.firingSheet.isEmpty()) return null
         // Only use the firing sheet if the texture actually exists in the asset index.
-        return if (textures.pathFor(firing) != null || textures.textureSize(firing) != null) firing else null
+        return if (textures.pathFor(key.firingSheet) != null ||
+            textures.textureSize(key.firingSheet) != null) key.firingSheet else null
     }
 
     /**
-     * Maps a compass facing (0=N, 1=E, 2=S, 3=W) to a column in a unit's direction
-     * sprite sheet.
-     *
-     * The original unit tilesheet (`_assets/3316.bin` and `TileSheetSliceManager`)
-     * lays out its 6 columns as, left → right:
-     *   col 0 = "right"    (facing EAST)
-     *   col 1 = "down"     (facing SOUTH)
-     *   col 2 = "left"     (facing WEST)
-     *   col 3 = "up"       (facing NORTH)
-     *   col 4 = "right_idle"  (east, animation frame 2)
-     *   col 5 = "left_idle"   (west,  animation frame 2)
-     * So east→0, south→1, west→2, north→3.
+     * Maps a compass facing (0=N, 1=E, 2=S, 3=W) to a column in a unit's direction sheet,
+     * using the unit's configured [SpriteKey.facingColumns].
      */
-    private fun facingColumn(facing: Int): Int = when (facing) {
-        1 -> 0  // east  → column 0 ("right")
-        2 -> 1  // south → column 1 ("down")
-        3 -> 2  // west  → column 2 ("left")
-        else -> 3  // north / unknown → column 3 ("up")
-    }
+    private fun facingColumn(key: SpriteKey, facing: Int): Int =
+        key.facingColumns.getOrElse(facing.coerceIn(0, 3)) { 0 }
 
     // ---------------------------------------------------------------------
     // Player-name intro animation
@@ -1094,8 +1012,6 @@ class BattalionRenderer(
         // match without saving, No / Close returns to the options menu.
         if (showQuitConfirm) {
             quitConfirmHits = emptyList()
-            renderer.drawColor = SDLColor(0, 0, 0, 150)
-            renderer.fillRect(SDLRect(0, 0, WINDOW_W, WINDOW_H))
             // Same BattalionPanel material as the main-menu clear-data confirm (SWF ConfirmMenu):
             // a frame2 nine-slice border over a spotted_texture fill.
             val cw = 410
@@ -1167,6 +1083,10 @@ class BattalionRenderer(
      * port approximates it with a translucent white overlay.
      */
     private fun drawVistaButton(x: Int, y: Int, w: Int, h: Int, hover: Boolean, title: String, desc: String = "", iconKey: String? = null) {
+        if (x == 125) { // first vista button: dump slice geometry once
+            val t = textures.texture("btn_tile9")
+            println("PROBE tile=${t != null} size=${t?.size} texSize=${textures.textureSize("btn_tile9")}")
+        }
         val tiles = textures.texture("btn_tile9")
         if (tiles != null) {
             // Tile9Data(new Bitmap(btn_tile9), new Rectangle(6,8,12,8)): the rect is
@@ -1205,13 +1125,12 @@ class BattalionRenderer(
             renderer.fillRect(SDLRect(x, y, w, h))
         }
 
-        // btn_overlay gloss at (1,1) sized (w-2)×(h-2) — the VistaButtonState overlay layer.
-        textures.texture("btn_overlay")?.let { ov ->
-            renderer.renderTexture(
-                ov,
-                dst = SDLFRect((x + 1).toFloat(), (y + 1).toFloat(), (w - 2).toFloat(), (h - 2).toFloat()),
-            )
-        }
+        // VistaButtonState's gloss bitmap, stretched over a 52px-tall button, washes the
+        // whole face white (its highlight band covers half the height). Reproduce the LOOK
+        // cheaply instead: a thin bright line along the top edge (the gloss band), and let
+        // the hover state carry the "brighter" feedback below.
+        renderer.drawColor = SDLColor(255, 255, 255, 40)
+        renderer.fillRect(SDLRect(x + 2, y + 1, w - 4, 2))
 
         // Icon at PADDING (6), scaled to (h − 10)/icon.height, vertically centred; the title
         // slides right to start at icon.width + 2*PADDING (VistaButtonState.updateDimensions).
@@ -1246,12 +1165,14 @@ class BattalionRenderer(
             text.drawCentered(desc, cx, y + h - 22, 12, SDLColor(90, 100, 110))
         }
 
-        // Hover brighten (SWF ColorTransform 1.1): translucent white wash.
+        // Hover feedback (SWF ColorTransform 1.1): a gentle brightness lift —
+        // visibly brighter, NOT a white-out.
         if (hover) {
-            renderer.drawColor = SDLColor(255, 255, 255, 28)
+            renderer.drawColor = SDLColor(255, 255, 255, 20)
             renderer.fillRect(SDLRect(x, y, w, h))
         }
     }
+
 
     /**
      * Advances the dialogue slide-in/out transitions (mirroring the original ChatWindow) and
@@ -1860,18 +1781,15 @@ class BattalionRenderer(
             // The unit's sprite, drawn inside the card (team-coloured). Fills the frame top.
             // Resolved by unit name (with the 3316.bin fallback table) so every buildable unit
             // shows a thumbnail — SWF BuildMenuUnit uses `TileSheetManager.getPalettized(name)`.
-            val key = spriteKeyForUnitData(unit.name, unit.sprite)
+            val key = unit.spriteKey
             val rawTeam = rawTeamColor(human.team)
-            val tex = if (key.isNotEmpty()) textures.textureForTeam(key, rawTeam) else null
+            val tex = if (key.sheet.isNotEmpty()) textures.textureForTeam(key.sheet, rawTeam) else null
             if (canBuildHere && tex != null) {
-                // One cell of the unit's sheet: every 336-wide sheet is 6 cells wide; the cell
-                // height is texH/4 (56 for regular sheets, 112 for tall "UnitTall" sheets).
-                // The thumbnail shows the whole cell SLICED from the sheet — drawing only the
-                // top 56px of a 112px cell would show just the turret roof (SWF BuildMenuUnit
-                // draws the palettized TileSheet's full frame at natural size).
+                // One cell of the unit's sheet (6 columns; cell height = texH / rows).
+                // The thumbnail shows the whole cell SLICED from the sheet.
                 val tw = tex.size.x.toInt()
                 val th = tex.size.y.toInt()
-                val cellH = if (tw == 336) th / 4 else th
+                val cellH = th / key.rows.coerceAtLeast(1)
                 // Anchor: the SWF places the unit graphic with its BOTTOM at y=75 of the
                 // 97px-high frame (`unitGraphic.y = 75 - height`), so tall units overflow
                 // upward inside the card. Scale down only when the cell exceeds the frame.
@@ -1892,7 +1810,7 @@ class BattalionRenderer(
                 val dim = !canAfford
                 if (dim) {
                     // Repaint a darker tint via colorMod on the cached team texture.
-                    val t = textures.textureForTeam(key, rawTeam) ?: return@drawCard
+                    val t = textures.textureForTeam(key.sheet, rawTeam) ?: return@drawCard
                     t.colorMod = SDLColor(130, 130, 135)
                     renderer.renderTexture(
                         t, src = SDLFRect(0f, 0f, 56f, cellH.toFloat()),
@@ -1991,12 +1909,12 @@ class BattalionRenderer(
 
         // Unit sprite (left cell).
         val rawTeam = rawTeamColor(human.team)
-        val key = spriteKeyForUnitData(unit.name, unit.sprite)
-        val tex = if (key.isNotEmpty()) textures.textureForTeam(key, rawTeam) else null
+        val key = unit.spriteKey
+        val tex = if (key.sheet.isNotEmpty()) textures.textureForTeam(key.sheet, rawTeam) else null
         if (tex != null) {
             val tw = tex.size.x.toInt(); val th = tex.size.y.toInt()
             val cellW = 56
-            val cellH = if (tw == 336) th / 4 else th
+            val cellH = th / key.rows.coerceAtLeast(1)
             val bodyH = minOf(cellH, 56)
             val scale = minOf(56f / 56f, 56f / bodyH)
             val dw = (56 * scale).toInt(); val dh = (bodyH * scale).toInt()
@@ -2138,12 +2056,12 @@ class BattalionRenderer(
     ) {
         if (unit == null) return
         val rawTeam = rawTeamColor(human.team)
-        val key = spriteKeyForUnitData(unit.name, unit.sprite)
-        val candidate = if (key.isNotEmpty()) textures.textureForTeam(key, rawTeam) else null
+        val key = unit.spriteKey
+        val candidate = if (key.sheet.isNotEmpty()) textures.textureForTeam(key.sheet, rawTeam) else null
         val tex = candidate ?: return
         val tw = tex.size.x.toInt(); val th = tex.size.y.toInt()
         val cellW = 56
-        val cellH = if (tw == 336) th / 4 else th
+        val cellH = th / key.rows.coerceAtLeast(1)
         val bodyH = minOf(cellH, 56)
         val scale = minOf(56f / 56f, 56f / bodyH)
         val dw = (56 * scale).toInt(); val dh = (bodyH * scale).toInt()
@@ -2275,22 +2193,20 @@ class BattalionRenderer(
         // multiplicative tint, so the red source art actually becomes the team colour.
         val rawTeam = rawTeamColor(unit.controller?.team)
         val isFiring = unit.anim == Unit.UnitAnim.FIRE
-        // While firing, prefer the unit's dedicated `_firing` tilesheet (e.g. corvette_firing)
-        // which has its own muzzle-flash animation; fall back to the base sheet when absent.
-        val sprite = if (isFiring) firingSpriteKeyFor(unit) ?: spriteKeyForUnit(unit)
-                     else spriteKeyForUnit(unit)
+        // While firing, prefer the unit's configured firing sheet (own muzzle-flash
+        // animation); fall back to the base sheet when absent.
+        val key = unit.unitData.spriteKey
+        val sprite = if (isFiring) firingSpriteKeyFor(unit) ?: key.sheet else key.sheet
         val tex = if (sprite.isNotEmpty()) textures.textureForTeam(sprite, rawTeam) else null
         if (tex != null) {
             val size = tex.size
             val texW = size.x.toInt()
             val texH = size.y.toInt()
 
-            val cellW = 56
-            // Every unit sheet is 6 cells wide. The cell height is either 56 (regular
-            // "Unit" tilesheets) or 112 (tall "UnitTall" tilesheets), and the full
-            // height is 4 frames tall (one frame = one row). For a 336x448 sheet that is
-            // 4 bands of 56x112; for a 336x224 sheet it is 4 bands of 56x56.
-            val cellH = if (texW == 336) texH / 4 else texH
+            val cellW = key.cellWidth
+            // The cell height is texH / rows: 4 rows of 56x56 (regular sheets) or 4 rows of
+            // 56x112 (tall "UnitTall" sheets).
+            val cellH = texH / key.rows.coerceAtLeast(1)
 
             // Expire a finished one-shot action animation back to the idle state. The game clock
             // ([GameManager.elapsedMs]) is the time base the action used to stamp [Unit.animStartMs].
@@ -2314,8 +2230,7 @@ class BattalionRenderer(
                 unit.anim == Unit.UnitAnim.FIRE -> fireFrame
                 else -> ((terrainAnimMs / 300) % 4).toInt()
             }
-            // The facing column used for the animation (motion may precede the settled idle).
-            val col = facingColumn(
+            val col = facingColumn(key,
                 if (unit.anim != Unit.UnitAnim.NONE || unit.isMoving) unit.animFacing else unit.facing
             )
 
@@ -2325,20 +2240,16 @@ class BattalionRenderer(
             // Tall units therefore overflow above the tile, which matches the source game.
             //
             // The `_firing` tilesheets (e.g. corvette_firing) are 576-wide = 4 columns × 144px
-            // cells, where column = facing direction (right/down/left/up = 0/1/2/3, i.e. the same
-            // as [facingColumn]) and row = animation frame. Each unit displays the cell via
-            // [firingDesc] so the body matches the idle sprite's size and position.
-            val isFiringSheet = isFiring && texW == 576
-            val fireCell = if (isFiringSheet) 144 else cellW
-
+            val isFiringSheet = isFiring && sprite == key.firingSheet && texW % key.firingCellWidth == 0
+            val fireCell = if (isFiringSheet) key.firingCellWidth else cellW
             val src = when {
-                texW == 336 -> SDLFRect(
+                !isFiringSheet && texW == cellW * 6 -> SDLFRect(
                     (col * cellW).toFloat(),
                     (row * cellH).toFloat(), cellW.toFloat(), cellH.toFloat())
                 isFiringSheet -> SDLFRect(
                     (col * fireCell).toFloat(),
                     (row * fireCell).toFloat(), fireCell.toFloat(), fireCell.toFloat())
-                // Single 56x56 sprite (or an unknown sheet): draw it unchanged.
+                // Single sprite (or an unknown sheet): draw it unchanged.
                 else -> SDLFRect(0f, 0f, minOf(texW, cellW).toFloat(),
                     minOf(texH, cellH).toFloat())
             }
@@ -2347,10 +2258,8 @@ class BattalionRenderer(
             // A firing sheet's 144px cell is drawn at its NATURAL 144×144 size, centred on the
             // unit's tile — exactly like the original UnitAttackAnimation overlay
             // (anim.x = unitX + (56-144)/2, anim.y = unitY + 28 - 72 + (144-h)); the base unit
-            // sprite is hidden during the shot and the firing sprite plays over the map. Other
-            // sprites draw at natural pixel size, centred on the tile and anchored to its bottom.
-            val w = if (isFiringSheet) 144 else minOf(frameW, cellW)
-            val h = if (isFiringSheet) 144 else minOf(frameH, cellH)
+            val w = if (isFiringSheet) key.firingCellWidth else minOf(frameW, cellW)
+            val h = if (isFiringSheet) key.firingCellWidth else minOf(frameH, cellH)
             // Recoil: while a *mobile* unit is firing, kick the sprite backward (opposite its
             // aim) and let it spring back quickly — a sharp punch peaking at muzzle ignition and
             // settling within the first ~200ms of the (longer) fire animation.
@@ -2474,7 +2383,7 @@ class BattalionRenderer(
         }
     }
 
-    /** For a `+` composite whose piece is plain "sea_0_v1", the directional sea strip it stands in for. */
+    /** For a composite whose piece is the "sea edge" placeholder, the directional sea strip it stands in for. */
     private val SEA_EDGE_STRIPS = listOf("sea_0_nw", "sea_0_ne", "sea_0_se", "sea_0_sw")
 
     /**
@@ -2587,17 +2496,17 @@ class BattalionRenderer(
     /**
      * Draws the terrain tile at pixel position (px, py).
      *
-     * The tile's swatch [TileSwatch.kind] decides how [Tile.spriteKeys] are assembled:
-     *  - [TileSwatch.Kind.SINGLE] / [TileSwatch.Kind.VARIANT]: one texture covers the whole
+     * The tile's swatch kind decides how [Tile.spriteKeys] are assembled:
+     *  - [TerrainSprites.Kind.SINGLE] / [TerrainSprites.Kind.VARIANT]: one texture covers the whole
      *    tile (variants pick one of [Tile.spriteKeys] via [Tile.variantIndex]).
-     *  - [TileSwatch.Kind.COMPOSITE]: a 2×2 quadrant mosaic (sea/shores/canyons) where each of
-     *    the four keys draws one quadrant; a `sea_0_v1` slot is replaced by the directional
+     *  - [TerrainSprites.Kind.COMPOSITE]: a 2×2 quadrant mosaic (sea/shores/canyons) where each of
+     *    the four keys draws one quadrant; a `sea_edge` slot is replaced by the directional
      *    sea strip for that corner, matching the original `TileSwatch.generateJoinedTile`.
      */
     private fun drawTerrainTile(tile: Tile, px: Int, py: Int) {
         val keys = tile.spriteKeys
         when (tile.spriteKind) {
-            TileSwatch.Kind.SINGLE, TileSwatch.Kind.VARIANT -> {
+            TerrainSprites.Kind.SINGLE, TerrainSprites.Kind.VARIANT -> {
                 if (keys.isEmpty()) {
                     renderer.drawColor = terrainColor(tile.terrain.name)
                     renderer.fillRect(SDLRect(px, py, TileManager.TILE_WIDTH, TileManager.TILE_HEIGHT))
@@ -2607,7 +2516,7 @@ class BattalionRenderer(
                 val key = keys[tile.variantIndex.coerceIn(0, keys.lastIndex)]
                 drawTerrainFrame(tile, key, px, py, TileManager.TILE_WIDTH, TileManager.TILE_HEIGHT)
             }
-            TileSwatch.Kind.COMPOSITE -> {
+            TerrainSprites.Kind.COMPOSITE -> {
                 if (keys.size != 4) {
                     // Malformed composite — fall back to a flat fill.
                     renderer.drawColor = terrainColor(tile.terrain.name)
@@ -2624,9 +2533,10 @@ class BattalionRenderer(
                 )
                 for (i in 0 until 4) {
                     val (ox, oy) = positions[i]
-                    // "sea_0_v1" in a composite slot means "the sea edge meeting this corner";
-                    // the original swaps in the matching directional sea strip.
-                    val key = if (keys[i] == "sea_0_v1") SEA_EDGE_STRIPS[i] else keys[i]
+                    // "sea_edge" (or legacy "sea_0_v1") in a composite slot means "the sea
+                    // edge meeting this corner"; swap in the matching directional strip.
+                    val key = if (keys[i] == TerrainSprites.SEA_EDGE || keys[i] == TerrainSprites.SEA_EDGE_LEGACY)
+                        SEA_EDGE_STRIPS[i] else keys[i]
                     drawTerrainFrame(tile, key, px + ox, py + oy, halfW, halfH, animShift = i)
                 }
             }
@@ -2996,9 +2906,9 @@ class BattalionRenderer(
         // (cloaked included — clicking the tile reveals it).
         val unit = tile.unit
         if (unit != null) {
-            val key = spriteKeyForUnit(unit)
+            val key = unit.unitData.spriteKey
             val rawTeam = rawTeamColor(unit.controller?.team)
-            val tex = if (key.isNotEmpty()) textures.textureForTeam(key, rawTeam) else null
+            val tex = if (key.sheet.isNotEmpty()) textures.textureForTeam(key.sheet, rawTeam) else null
             if (tex != null) {
                 drawReconIconTexture(tex, x, y, size)
                 return

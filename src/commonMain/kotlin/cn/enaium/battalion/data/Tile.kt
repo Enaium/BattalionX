@@ -42,10 +42,10 @@ class Tile(
      * The sprite key(s) of this tile's terrain image, resolved from the map swatch's image code.
      *
      * - **Single key** (`size == 1`): a normal tile; the renderer draws the one texture.
-     * - **Four keys** (`size == 4`) + [spriteKind] of [TileSwatch.Kind.COMPOSITE]: the `+`
+     * - **Four keys** (`size == 4`) + [spriteKind] of [TerrainSprites.Kind.COMPOSITE]: the `+`
      *   swatch joins its four sub-images (TL / TR / BL / BR) into one 2×2 tile to blend
      *   coastline / canyon transition edges. Use [spriteKind] to tell this apart from VARIANT.
-     * - **Several keys** (`size >= 2`) + [TileSwatch.Kind.VARIANT]: the `?` swatch shows ONE
+     * - **Several keys** (`size >= 2`) + [TerrainSprites.Kind.VARIANT]: the `?` swatch shows ONE
      *   of its interchangeable textures (forest/plains/hills/reef…). The tile picks one key
      *   and draws it at full tile size, NOT as a 2×2 grid.
      *
@@ -55,10 +55,10 @@ class Tile(
     var spriteKeys: List<String> = emptyList()
 
     /** How the [spriteKeys] should be assembled onto the tile (see [TileSwatch.kind]). */
-    var spriteKind: TileSwatch.Kind = TileSwatch.Kind.SINGLE
+    var spriteKind: TerrainSprites.Kind = TerrainSprites.Kind.SINGLE
 
     /**
-     * For [TileSwatch.Kind.VARIANT] tiles: which of the [spriteKeys] this tile displays.
+     * For [TerrainSprites.Kind.VARIANT] tiles: which of the [spriteKeys] this tile displays.
      * The original picks one variant per tile at load time; we derive a deterministic
      * per-tile index (position-based) so it stays stable across frames and look-ups.
      */
@@ -165,8 +165,8 @@ class Tile(
         val swatch = GameManager.instance.map.palette.firstOrNull { it.name == newTerrainName }
         if (swatch != null && swatch.imageFiles.isNotEmpty()) {
             spriteKind = swatch.kind
-            spriteKeys = swatch.imageFiles.map { it.substringBeforeLast('.') }
-            if (spriteKind == TileSwatch.Kind.VARIANT && spriteKeys.size > 1) {
+            spriteKeys = swatch.imageFiles
+            if (spriteKind == TerrainSprites.Kind.VARIANT && spriteKeys.size > 1) {
                 variantIndex = ((y * 73856093) xor (x * 19349663) and 0x7fffffff) % spriteKeys.size
             }
         }

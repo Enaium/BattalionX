@@ -1,0 +1,18 @@
+{
+  "name": "Strait",
+  "kind": "Terrain",
+  "modify": "defense",
+  "effects": [],
+  "matches": [
+    {
+      "match": "unitType",
+      "value": "sea",
+      "effects": [
+        "+10%"
+      ]
+    }
+  ],
+  "description": "Damage received by sea units is increased by 10%",
+  "image": "Strait",
+  "visible": true
+}

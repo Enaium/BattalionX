@@ -1,0 +1,34 @@
+{
+  "name": "Mortar Truck",
+  "unitType": "ground",
+  "movementType": "wheeled",
+  "weaponType": "medium",
+  "armorType": "light",
+  "cost": 285,
+  "range": 5,
+  "health": 50,
+  "damage": 48,
+  "weaponRangeMin": 2,
+  "weaponRangeMax": 3,
+  "description": "The Mortar Truck is a general purpose cost-effective medium range artillery unit.",
+  "modifiers": [
+    "Counter Battery"
+  ],
+  "sprite": {
+    "sheet": "mortar",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "mortar_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "VehicleMove",
+    "fire": "FireMortarTruck"
+  }
+}

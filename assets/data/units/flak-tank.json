@@ -1,0 +1,35 @@
+{
+  "name": "Flak Tank",
+  "unitType": "ground",
+  "movementType": "tracked",
+  "weaponType": "light",
+  "armorType": "medium",
+  "cost": 240,
+  "range": 5,
+  "health": 70,
+  "damage": 17,
+  "weaponRangeMin": 1,
+  "weaponRangeMax": 1,
+  "description": "The Flak Tank's cannon shreds aircraft and lightly armored units to pieces.",
+  "modifiers": [
+    "Flak",
+    "Skysweeper"
+  ],
+  "sprite": {
+    "sheet": "flak",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "flak_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "TankMove1",
+    "fire": "FireFlakTank"
+  }
+}

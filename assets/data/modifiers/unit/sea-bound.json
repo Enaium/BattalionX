@@ -1,0 +1,10 @@
+{
+  "name": "Sea Bound",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "This unit can engage sea units.",
+  "image": "SeaBound",
+  "visible": false
+}

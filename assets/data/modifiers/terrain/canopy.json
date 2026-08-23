@@ -1,0 +1,10 @@
+{
+  "name": "Canopy",
+  "kind": "Terrain",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Ranged units cannot fire from this tile.",
+  "image": "Canopy",
+  "visible": true
+}

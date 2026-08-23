@@ -1,0 +1,34 @@
+{
+  "name": "Lancer Tank",
+  "unitType": "ground",
+  "movementType": "tracked",
+  "weaponType": "medium",
+  "armorType": "medium",
+  "cost": 270,
+  "range": 6,
+  "health": 70,
+  "damage": 35,
+  "weaponRangeMin": 1,
+  "weaponRangeMax": 1,
+  "description": "Lancer attacks will hit any unit behind the one you targetted.",
+  "modifiers": [
+    "Piercing"
+  ],
+  "sprite": {
+    "sheet": "lancer",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "lancer_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "TankMove1",
+    "fire": "FireScorpionTank"
+  }
+}

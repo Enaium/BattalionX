@@ -1,10 +1,8 @@
 package cn.enaium.battalion.data
 
-import cn.enaium.battalion.util.XmlNode
-
 /**
- * Registry of all terrain templates. Terrains are defined once in the terrain XML and looked
- * up by name. [get] returns a clone so callers never mutate the shared template.
+ * Registry of all terrain templates. Terrains are defined once in `terrain/<id>.json` and
+ * looked up by name. [get] returns a clone so callers never mutate the shared template.
  */
 object TileManager {
     /** The logical size of one map tile, in world (SDL) pixels. */
@@ -34,33 +32,22 @@ object TileManager {
     }
 
     /**
-     * Imports a `<terrains>` XML document.
-     *
-     * Expected structure per terrain:
-     * ```
-     * <terrain name="Forest">
-     *   <cost value="2"/>
-     *   <description value="..."/>
-     *   <minimapimage value="minimap_forest"/>
-     *   <sprite value="forest.png"/>
-     *   <modifier type="Ground"/>
-     * </terrain>
-     * ```
+     * Imports every `terrain/<id>.json` document. Modifier names resolve against the
+     * [ModifierManager], so modifiers must be imported first.
      */
-    fun importXML(root: XmlNode) {
-        for (terrainNode in root.children("terrain")) {
+    fun importAll(assetsDir: String) {
+        for (id in AssetLoader.list(assetsDir, "terrain").sorted()) {
+            val cfg = AssetLoader.terrain(assetsDir, id) ?: continue
             val terra = Terrain(
-                name = terrainNode.attr("name"),
-                cost = terrainNode.child("cost")?.value()?.toDoubleOrNull() ?: 1.0,
-                description = terrainNode.child("description")?.value() ?: "",
-                miniMapImage = terrainNode.child("minimapimage")?.value() ?: "",
-                sprite = terrainNode.child("sprite")?.value() ?: "",
+                name = cfg.name,
+                cost = cfg.cost,
+                description = cfg.description,
+                miniMapImage = cfg.minimapImage,
+                sprite = cfg.sprite,
+                sprites = cfg.sprites.toTerrainSprites(),
             )
-            for (modifierNode in terrainNode.children("modifier")) {
-                val type = modifierNode.attr("type")
-                if (type.isNotEmpty()) {
-                    ModifierManager.get(type)?.let { terra.addModifier(it) }
-                }
+            for (modName in cfg.modifiers) {
+                ModifierManager.get(modName)?.let { terra.addModifier(it) }
             }
             terrain[terra.name] = terra
         }

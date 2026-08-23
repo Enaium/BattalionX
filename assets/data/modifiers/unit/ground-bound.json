@@ -1,0 +1,10 @@
+{
+  "name": "Ground Bound",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "This unit can engage ground units.",
+  "image": "GroundBound",
+  "visible": true
+}

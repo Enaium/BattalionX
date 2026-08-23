@@ -1,0 +1,12 @@
+{
+  "name": "Overdrive",
+  "kind": "Unit",
+  "modify": "overdrive",
+  "effects": [
+    "+2"
+  ],
+  "matches": [],
+  "description": "+2 range when at full health.",
+  "image": "Overdrive",
+  "visible": true
+}

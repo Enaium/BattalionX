@@ -1,0 +1,10 @@
+{
+  "name": "Counter Battery",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Counter-attacks ranged units.",
+  "image": "CounterBattery",
+  "visible": true
+}

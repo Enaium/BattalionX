@@ -1,0 +1,15 @@
+{
+  "name": "Wasteland",
+  "cost": 1.0,
+  "description": "Wastelands are dangerous to your units but they provide massive defensive bonuses.",
+  "minimapImage": "minimap_plains",
+  "sprite": "",
+  "modifiers": [
+    "Ground",
+    "Garrison",
+    "Hazard"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

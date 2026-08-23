@@ -1,0 +1,14 @@
+{
+  "name": "Canyon",
+  "cost": 1.0,
+  "description": "Use Canyons to avoid ranged fire when traversing an area.",
+  "minimapImage": "minimap_plains",
+  "sprite": "",
+  "modifiers": [
+    "Ground",
+    "Shielded"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

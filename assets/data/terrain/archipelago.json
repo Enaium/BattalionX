@@ -1,0 +1,15 @@
+{
+  "name": "Archipelago",
+  "cost": 1.0,
+  "description": "A cluster of small islands providing some defensive cover at the cost of mobility.",
+  "minimapImage": "minimap_reef",
+  "sprite": "",
+  "modifiers": [
+    "Water",
+    "Reduced Mobility",
+    "Camouflage"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

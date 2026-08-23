@@ -1,0 +1,35 @@
+{
+  "name": "Vulture Drone",
+  "unitType": "air",
+  "movementType": "wings",
+  "weaponType": "medium",
+  "armorType": "light",
+  "cost": 550,
+  "range": 5,
+  "health": 55,
+  "damage": 30,
+  "weaponRangeMin": 1,
+  "weaponRangeMax": 1,
+  "description": "A specialized scavenger that can move and attack again, if it kills its target.",
+  "modifiers": [
+    "Scavenge"
+  ],
+  "sprite": {
+    "sheet": "vulture",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": null,
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "BlimpMove",
+    "fire": ""
+  },
+  "rewardUnit": true
+}

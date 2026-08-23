@@ -1,0 +1,11 @@
+{
+  "name": "Depleted Ore Deposit",
+  "cost": 1.0,
+  "description": "Nothing else can be extracted from this tile.",
+  "minimapImage": "minimap_plains",
+  "sprite": "",
+  "modifiers": [],
+  "sprites": {
+    "single": ""
+  }
+}

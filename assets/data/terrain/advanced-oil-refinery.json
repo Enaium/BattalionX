@@ -1,0 +1,17 @@
+{
+  "name": "Advanced Oil Refinery",
+  "cost": 1.0,
+  "description": "An advanced oil production facility. Capture it to enhance your income stream.",
+  "minimapImage": "minimap_refinery",
+  "sprite": "oiladvanced",
+  "modifiers": [
+    "Ground",
+    "Capturable",
+    "Level 2 Oil Refining",
+    "Cover",
+    "Reduced Efficiency"
+  ],
+  "sprites": {
+    "single": "oiladvanced"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "Linchpin",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Keep at least one Linchpin unit alive to stay in the fight.",
+  "image": "Linchpin",
+  "visible": true
+}

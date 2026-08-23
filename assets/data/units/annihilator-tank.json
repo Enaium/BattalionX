@@ -1,0 +1,34 @@
+{
+  "name": "Annihilator Tank",
+  "unitType": "ground",
+  "movementType": "tracked",
+  "weaponType": "heavy",
+  "armorType": "heavy",
+  "cost": 525,
+  "range": 4,
+  "health": 140,
+  "damage": 70,
+  "weaponRangeMin": 1,
+  "weaponRangeMax": 1,
+  "description": "The mammoth Annihilator packs a big punch and knows how to take a beating.",
+  "modifiers": [
+    "Mammoth"
+  ],
+  "sprite": {
+    "sheet": "annihilator",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "annihilator_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "TankMove1",
+    "fire": "FireAnnihilatorTank"
+  }
+}

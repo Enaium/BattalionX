@@ -1,0 +1,10 @@
+{
+  "name": "Fixed",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "This unit does not prevent military defeat.",
+  "image": "Fixed",
+  "visible": true
+}

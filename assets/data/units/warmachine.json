@@ -1,0 +1,38 @@
+{
+  "name": "Warmachine",
+  "unitType": "ground",
+  "movementType": "tracked",
+  "weaponType": "medium",
+  "armorType": "medium",
+  "cost": 2500,
+  "range": 3,
+  "health": 75,
+  "damage": 60,
+  "weaponRangeMin": 2,
+  "weaponRangeMax": 3,
+  "description": "The Warmachine is the cornerstone of your army.",
+  "modifiers": [
+    "Constructor",
+    "Skysweeper",
+    "Extractor",
+    "Linchpin",
+    "Unbuildable"
+  ],
+  "sprite": {
+    "sheet": "warmachine",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "warmachine_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "TankMove1",
+    "fire": "FireScorpionTank"
+  }
+}

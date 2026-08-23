@@ -1,0 +1,35 @@
+{
+  "name": "Jammer Truck",
+  "unitType": "ground",
+  "movementType": "wheeled",
+  "weaponType": "none",
+  "armorType": "light",
+  "cost": 300,
+  "range": 5,
+  "health": 50,
+  "damage": 0,
+  "weaponRangeMin": 0,
+  "weaponRangeMax": 0,
+  "description": "The Jammer is effective at neutralizing cloak bonuses and air raids.",
+  "modifiers": [
+    "Radar",
+    "Jamming"
+  ],
+  "sprite": {
+    "sheet": "jammer",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": null,
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "VehicleMove",
+    "fire": ""
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Cloak Damage",
+  "kind": "Unit",
+  "modify": "damage",
+  "effects": [
+    "+100%"
+  ],
+  "matches": [],
+  "description": "This unit does 2x damage because it is cloaked.",
+  "image": "Flak",
+  "visible": true
+}

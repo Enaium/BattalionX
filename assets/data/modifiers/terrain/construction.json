@@ -1,0 +1,10 @@
+{
+  "name": "Construction",
+  "kind": "Terrain",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Controlling team may build new units from this structure.",
+  "image": "Construction",
+  "visible": true
+}

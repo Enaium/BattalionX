@@ -1,0 +1,10 @@
+{
+  "name": "Cloaking",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "This unit cloaks after moving.",
+  "image": "Cloaking",
+  "visible": true
+}

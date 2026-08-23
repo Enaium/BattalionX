@@ -1,0 +1,12 @@
+{
+  "name": "Fire Bomb",
+  "kind": "Unit",
+  "modify": "structureBonus",
+  "effects": [
+    "+20%"
+  ],
+  "matches": [],
+  "description": "Does 20% more damage if target is on a structure.",
+  "image": "FireBomb",
+  "visible": true
+}

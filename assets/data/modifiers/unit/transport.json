@@ -1,0 +1,10 @@
+{
+  "name": "Transport",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Transports other units.",
+  "image": "Transport",
+  "visible": true
+}

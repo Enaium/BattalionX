@@ -1,5 +1,8 @@
 package cn.enaium.battalion.game.ui
 
+import cn.enaium.battalion.data.AssetLoader
+import cn.enaium.battalion.data.SpriteAtlasConfig
+import cn.enaium.battalion.data.SpriteRegionConfig
 import cn.enaium.battalion.util.Fio
 import cn.enaium.sdl.SDLBlendMode
 import cn.enaium.sdl.SDLColor
@@ -15,9 +18,12 @@ import cn.enaium.sdl.image.SDLImage
  *
  * Each file is stored under its sprite key — `scorpion.png`, `sea_0_nw.png`,
  * `unitOptionsButton.png` — so the key is simply the file base name. This manager scans the
- * directory once, indexes every file by base name, and loads textures on demand through
- * [SDLImage.loadTexture]. Loaded textures are cached and released on [close]. Mods add a
- * sprite by dropping `<sprite-key>.png` into the directory.
+ * directory once, indexes every file by base name, and loads textures on demand. Loaded
+ * textures are cached and released on [close]. Mods add a sprite by dropping
+ * `<sprite-key>.png` into the directory.
+ *
+ * Sheet slicing (regions/grids for multi-frame art: avatars, explosions, cursor cells) comes
+ * from `assets/data/sprites.json` ([SpriteAtlasConfig]) — no pixel offsets live in the code.
  */
 class TextureManager(
     private val assetsDir: String,
@@ -25,6 +31,10 @@ class TextureManager(
 ) {
 
     private val imagesDir: String = "$assetsDir/images"
+
+    /** The parsed `data/sprites.json` sheet registry (regions/grid slicing). */
+    val atlas: SpriteAtlasConfig = AssetLoader.sprites(assetsDir) ?: SpriteAtlasConfig()
+
     private val index = mutableMapOf<String, String>() // sprite name -> file path
     private val cache = mutableMapOf<String, SDLTexture>()
     private val sizes = mutableMapOf<String, Pair<Int, Int>>() // sprite name -> (width, height)
@@ -60,6 +70,31 @@ class TextureManager(
 
     /** Returns the (width, height) of a loaded texture, or null if not loaded. */
     fun textureSize(name: String): Pair<Int, Int>? = sizes[name]
+
+    /**
+     * Resolves a named region inside an atlas sheet from `data/sprites.json`:
+     * [sheet] is the sheet key, [region] either a named region or a grid cell index.
+     * Returns the source rect in pixels, or null when the sheet/region is unknown.
+     */
+    fun region(sheet: String, region: String): SpriteRegionConfig? {
+        val s = atlas.sheets[sheet] ?: return null
+        s.regions[region]?.let { return it }
+        // Grid fallback: region is a cell index ("3", or "r,c").
+        if (s.cellWidth <= 0 || s.cellHeight <= 0) return null
+        val idx = region.toIntOrNull()
+        return when {
+            idx != null && idx >= 0 -> SpriteRegionConfig(
+                x = (idx % s.columns) * s.cellWidth,
+                y = (idx / s.columns) * s.cellHeight,
+                width = s.cellWidth,
+                height = s.cellHeight,
+            )
+            else -> null
+        }
+    }
+
+    /** The image key backing an atlas sheet (for [texture]/[pathFor]). */
+    fun sheetImage(sheet: String): String? = atlas.sheets[sheet]?.image
 
     /**
      * Loads (and caches) the texture for a sprite [name]. Returns null if the sprite is

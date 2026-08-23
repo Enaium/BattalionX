@@ -1,0 +1,32 @@
+{
+  "name": "Precipitous",
+  "kind": "Terrain",
+  "modify": "movementCost",
+  "effects": [],
+  "matches": [
+    {
+      "match": "movementType",
+      "value": "feet",
+      "effects": [
+        "2"
+      ]
+    },
+    {
+      "match": "movementType",
+      "value": "wheeled",
+      "effects": [
+        "Infinity"
+      ]
+    },
+    {
+      "match": "movementType",
+      "value": "tracked",
+      "effects": [
+        "Infinity"
+      ]
+    }
+  ],
+  "description": "Allows only commandos. Severe movement cost.",
+  "image": "Precipitous",
+  "visible": true
+}

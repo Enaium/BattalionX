@@ -1,0 +1,12 @@
+{
+  "name": "Reduced Efficiency",
+  "kind": "Terrain",
+  "modify": "reducedResources",
+  "effects": [
+    "-50%"
+  ],
+  "matches": [],
+  "description": "When running at reduced efficiency, this structure provides 50% less resources.",
+  "image": "Level1OilRefining",
+  "visible": false
+}

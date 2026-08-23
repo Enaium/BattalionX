@@ -1,0 +1,184 @@
+{
+  "sheets": {
+    "explosion": {
+      "image": "explosion",
+      "columns": 4,
+      "cellWidth": 56,
+      "cellHeight": 72
+    },
+    "small_explosion": {
+      "image": "small_explosion",
+      "columns": 4,
+      "cellWidth": 56,
+      "cellHeight": 56
+    },
+    "cursor": {
+      "image": "cursor",
+      "regions": {
+        "move": {
+          "x": 0,
+          "y": 0,
+          "width": 48,
+          "height": 48
+        },
+        "attack": {
+          "x": 48,
+          "y": 0,
+          "width": 96,
+          "height": 48
+        }
+      }
+    },
+    "attackTargets": {
+      "image": "attackTargets",
+      "columns": 3,
+      "cellWidth": 56,
+      "cellHeight": 56
+    },
+    "dangerIndicator": {
+      "image": "dangerIndicator",
+      "columns": 3,
+      "cellWidth": 56,
+      "cellHeight": 56
+    },
+    "unitOptionsButton": {
+      "image": "unitOptionsButton",
+      "columns": 4,
+      "cellWidth": 24,
+      "cellHeight": 24
+    },
+    "rankBadges": {
+      "image": "rankBadges",
+      "regions": {
+        "1": {
+          "x": 0,
+          "y": 0,
+          "width": 72,
+          "height": 18
+        },
+        "2": {
+          "x": 0,
+          "y": 19,
+          "width": 72,
+          "height": 9
+        }
+      }
+    },
+    "avatars": {
+      "image": "avatars",
+      "columns": 6,
+      "cellWidth": 130,
+      "cellHeight": 150,
+      "regions": {
+        "durand": {
+          "x": 0,
+          "y": 0,
+          "width": 130,
+          "height": 150
+        },
+        "mullen": {
+          "x": 130,
+          "y": 0,
+          "width": 130,
+          "height": 150
+        },
+        "pearl": {
+          "x": 260,
+          "y": 0,
+          "width": 130,
+          "height": 150
+        },
+        "tucker": {
+          "x": 390,
+          "y": 0,
+          "width": 130,
+          "height": 150
+        },
+        "argent": {
+          "x": 520,
+          "y": 0,
+          "width": 130,
+          "height": 150
+        },
+        "general": {
+          "x": 650,
+          "y": 0,
+          "width": 130,
+          "height": 150
+        },
+        "evil_durand": {
+          "x": 0,
+          "y": 150,
+          "width": 130,
+          "height": 150
+        },
+        "mayjor": {
+          "x": 130,
+          "y": 150,
+          "width": 130,
+          "height": 150
+        },
+        "akadian_3": {
+          "x": 260,
+          "y": 150,
+          "width": 130,
+          "height": 150
+        },
+        "evil_durand_dark": {
+          "x": 390,
+          "y": 150,
+          "width": 130,
+          "height": 150
+        },
+        "hayne": {
+          "x": 520,
+          "y": 150,
+          "width": 130,
+          "height": 150
+        },
+        "blank": {
+          "x": 650,
+          "y": 150,
+          "width": 130,
+          "height": 150
+        },
+        "usul": {
+          "x": 0,
+          "y": 300,
+          "width": 130,
+          "height": 150
+        },
+        "drag_2": {
+          "x": 130,
+          "y": 300,
+          "width": 130,
+          "height": 150
+        },
+        "drag_3": {
+          "x": 260,
+          "y": 300,
+          "width": 130,
+          "height": 150
+        },
+        "blank_asdasddd": {
+          "x": 390,
+          "y": 300,
+          "width": 130,
+          "height": 150
+        },
+        "blank_asdzxc": {
+          "x": 520,
+          "y": 300,
+          "width": 130,
+          "height": 150
+        },
+        "yurik": {
+          "x": 650,
+          "y": 300,
+          "width": 130,
+          "height": 150
+        }
+      }
+    }
+  }
+}

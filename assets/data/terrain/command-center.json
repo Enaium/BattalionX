@@ -1,0 +1,17 @@
+{
+  "name": "Command Center",
+  "cost": 1.0,
+  "description": "This is your base of operations. Do not allow the enemy to capture any Command Center.",
+  "minimapImage": "minimap_capital",
+  "sprite": "capital",
+  "modifiers": [
+    "Ground",
+    "Capturable",
+    "Garrison",
+    "Mission Critical",
+    "Reduced Efficiency"
+  ],
+  "sprites": {
+    "single": "capital"
+  }
+}

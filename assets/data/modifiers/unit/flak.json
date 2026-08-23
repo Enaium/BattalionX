@@ -1,0 +1,18 @@
+{
+  "name": "Flak",
+  "kind": "Unit",
+  "modify": "damage",
+  "effects": [],
+  "matches": [
+    {
+      "match": "armorType",
+      "value": "light",
+      "effects": [
+        "+100%"
+      ]
+    }
+  ],
+  "description": "Does 2x damage to light armor.",
+  "image": "Flak",
+  "visible": true
+}

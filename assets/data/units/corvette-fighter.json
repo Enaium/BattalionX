@@ -1,0 +1,35 @@
+{
+  "name": "Corvette Fighter",
+  "unitType": "sea",
+  "movementType": "rudder",
+  "weaponType": "medium",
+  "armorType": "medium",
+  "cost": 500,
+  "range": 5,
+  "health": 90,
+  "damage": 45,
+  "weaponRangeMin": 1,
+  "weaponRangeMax": 1,
+  "description": "The Corvette is the brawler of the seas, capable of engaging most enemy targets effectively.",
+  "modifiers": [
+    "Blitz",
+    "Massive Hull"
+  ],
+  "sprite": {
+    "sheet": "corvette",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "corvette_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "ShipMove",
+    "fire": "FireCorvetteFighter"
+  }
+}

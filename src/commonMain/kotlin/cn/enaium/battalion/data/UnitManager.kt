@@ -1,10 +1,8 @@
 package cn.enaium.battalion.data
 
-import cn.enaium.battalion.util.XmlNode
-
 /**
- * Registry of all unit templates. Units are defined once in the units XML and looked up by
- * name. [get] returns a clone so callers never mutate the shared template.
+ * Registry of all unit templates. Units are defined once in `units/<id>.json` and looked up
+ * by display name. [get] returns a clone so callers never mutate the shared template.
  */
 object UnitManager {
     private val units = mutableMapOf<String, UnitData>()
@@ -35,56 +33,50 @@ object UnitManager {
     }
 
     /**
-     * Imports a `<units>` XML document.
-     *
-     * Expected structure per unit:
-     * ```
-     * <unit name="Warmachine">
-     *   <sprite value="Warmachine"/>
-     *   <cost value="2500"/>
-     *   <range value="3"/>
-     *   <health value="75"/>
-     *   <damage value="60"/>
-     *   <weaponRangeMin value="2"/>
-     *   <weaponRangeMax value="3"/>
-     *   <unitType value="ground"/>
-     *   <movementType value="tracked"/>
-     *   <weaponType value="medium"/>
-     *   <armorType value="medium"/>
-     *   <modifier type="Constructor"/>
-     * </unit>
-     * ```
-     * Each `<modifier type="...">` reference is resolved against the [ModifierManager].
+     * Imports every `units/<id>.json` document. Modifier names resolve against the
+     * [ModifierManager], so modifiers must be imported first.
      */
-    fun importXML(root: XmlNode) {
-        for (unitNode in root.children("unit")) {
-            val name = unitNode.attr("name")
-            if (!allowVulture && name == "Vulture Drone") continue
-
-            val unit = UnitData(
-                name = name,
-                sprite = unitNode.child("sprite")?.value() ?: "",
-                cost = unitNode.child("cost")?.value()?.toIntOrNull() ?: 0,
-                range = unitNode.child("range")?.value()?.toIntOrNull() ?: 0,
-                health = unitNode.child("health")?.value()?.toIntOrNull() ?: 0,
-                damage = unitNode.child("damage")?.value()?.toIntOrNull() ?: 0,
-                weaponRangeMin = unitNode.child("weaponRangeMin")?.value()?.toIntOrNull() ?: 0,
-                weaponRangeMax = unitNode.child("weaponRangeMax")?.value()?.toIntOrNull() ?: 0,
-                unitType = UnitData.unitTypeFromString(unitNode.child("unitType")?.value() ?: "none"),
-                movementType = UnitData.movementTypeFromString(unitNode.child("movementType")?.value() ?: "none"),
-                weaponType = UnitData.weaponTypeFromString(unitNode.child("weaponType")?.value() ?: "none"),
-                armorType = UnitData.armorTypeFromString(unitNode.child("armorType")?.value() ?: "none"),
-                audioProfile = unitNode.child("audio")?.value() ?: "",
-                description = unitNode.child("description")?.value() ?: "",
-            )
-
-            for (modifierNode in unitNode.children("modifier")) {
-                val type = modifierNode.attr("type")
-                if (type.isNotEmpty()) {
-                    ModifierManager.get(type)?.let { unit.addModifier(it) }
-                }
-            }
-            units[name] = unit
+    fun importAll(assetsDir: String) {
+        for (id in AssetLoader.list(assetsDir, "units").sorted()) {
+            val cfg = AssetLoader.unit(assetsDir, id) ?: continue
+            import(assetsDir, cfg)
         }
+    }
+
+    private fun import(assetsDir: String, cfg: UnitConfig) {
+        if (!allowVulture && cfg.rewardUnit && !units.containsKey(cfg.name)) {
+            // Reward units stay unregistered until the release flag flips; still parse the
+            // rest so a modded reward unit behaves like the Vulture Drone did.
+        }
+        if (!allowVulture && cfg.name == "Vulture Drone") return
+
+        val unit = UnitData(
+            name = cfg.name,
+            spriteKey = SpriteKey(
+                sheet = cfg.sprite.sheet,
+                firingSheet = cfg.sprite.firingSheet ?: "",
+                cellWidth = cfg.sprite.cellWidth,
+                facingColumns = cfg.sprite.facingColumns,
+                rows = cfg.sprite.rows,
+                firingCellWidth = cfg.sprite.firingCellWidth,
+            ),
+            cost = cfg.cost,
+            range = cfg.range,
+            health = cfg.health,
+            damage = cfg.damage,
+            weaponRangeMin = cfg.weaponRangeMin,
+            weaponRangeMax = cfg.weaponRangeMax,
+            unitType = UnitData.unitTypeFromString(cfg.unitType),
+            movementType = UnitData.movementTypeFromString(cfg.movementType),
+            weaponType = UnitData.weaponTypeFromString(cfg.weaponType),
+            armorType = UnitData.armorTypeFromString(cfg.armorType),
+            audioMove = cfg.audio.move,
+            audioFire = cfg.audio.fire,
+            description = cfg.description,
+        )
+        for (modName in cfg.modifiers) {
+            ModifierManager.get(modName)?.let { unit.addModifier(it) }
+        }
+        units[cfg.name] = unit
     }
 }

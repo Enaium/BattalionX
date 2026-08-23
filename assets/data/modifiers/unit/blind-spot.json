@@ -1,0 +1,10 @@
+{
+  "name": "Blind Spot",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "This unit cannot counter attack.",
+  "image": "BlindSpot",
+  "visible": true
+}

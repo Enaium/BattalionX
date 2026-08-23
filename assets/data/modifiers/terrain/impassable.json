@@ -1,0 +1,12 @@
+{
+  "name": "Impassable",
+  "kind": "Terrain",
+  "modify": "movementCost",
+  "effects": [
+    "Infinity"
+  ],
+  "matches": [],
+  "description": "No unit may enter.",
+  "image": "Impassable",
+  "visible": true
+}

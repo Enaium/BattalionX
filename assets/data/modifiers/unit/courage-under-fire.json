@@ -1,0 +1,12 @@
+{
+  "name": "Courage Under Fire",
+  "kind": "Unit",
+  "modify": "counterAttackBonus",
+  "effects": [
+    "+25%"
+  ],
+  "matches": [],
+  "description": "+25% damage on counter attack.",
+  "image": "CourageUnderFire",
+  "visible": true
+}

@@ -1,0 +1,10 @@
+{
+  "name": "Air Bound",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "This unit can engage air units.",
+  "image": "AirBound",
+  "visible": true
+}

@@ -1,0 +1,35 @@
+{
+  "name": "Heavy Commando",
+  "unitType": "ground",
+  "movementType": "feet",
+  "weaponType": "heavy",
+  "armorType": "light",
+  "cost": 100,
+  "range": 3,
+  "health": 40,
+  "damage": 35,
+  "weaponRangeMin": 1,
+  "weaponRangeMax": 1,
+  "description": "Heavies like to engage tanks and capture properties.",
+  "modifiers": [
+    "Capture",
+    "Tracking"
+  ],
+  "sprite": {
+    "sheet": "hcommando",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "hcommando_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "CommandoMove1",
+    "fire": "FireHeavyCommando"
+  }
+}

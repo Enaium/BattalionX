@@ -1,0 +1,35 @@
+{
+  "name": "Condor Bomber",
+  "unitType": "air",
+  "movementType": "wings",
+  "weaponType": "heavy",
+  "armorType": "light",
+  "cost": 600,
+  "range": 3,
+  "health": 72,
+  "damage": 70,
+  "weaponRangeMin": 1,
+  "weaponRangeMax": 1,
+  "description": "The Condor Bomber is as hardy as it is powerful. It fears only the enemy Raptor.",
+  "modifiers": [
+    "Anti-Sub",
+    "Blind Spot"
+  ],
+  "sprite": {
+    "sheet": "condor",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "condor_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "AircraftMove",
+    "fire": "FireCondorBomber"
+  }
+}

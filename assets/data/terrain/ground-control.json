@@ -1,0 +1,16 @@
+{
+  "name": "Ground Control",
+  "cost": 1.0,
+  "description": "Ground Controls enable ground unit manufacturing at your warfactories.",
+  "minimapImage": "minimap_control",
+  "sprite": "groundcontrol",
+  "modifiers": [
+    "Ground",
+    "Capturable",
+    "Ground Proficiency",
+    "Cover"
+  ],
+  "sprites": {
+    "single": "groundcontrol"
+  }
+}

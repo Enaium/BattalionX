@@ -1,0 +1,13 @@
+{
+  "name": "Volcano",
+  "cost": 1.0,
+  "description": "No unit can cross the deadly Volcano.",
+  "minimapImage": "minimap_plains",
+  "sprite": "",
+  "modifiers": [
+    "Impassable"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

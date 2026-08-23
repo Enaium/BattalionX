@@ -1,0 +1,10 @@
+{
+  "name": "Mission Critical",
+  "kind": "Terrain",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Losing this structure means defeat (or victory!).",
+  "image": "MissionCritical",
+  "visible": true
+}

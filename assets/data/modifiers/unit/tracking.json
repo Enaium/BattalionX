@@ -1,0 +1,10 @@
+{
+  "name": "Tracking",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Unit will attack stealth units on interception.",
+  "image": "Tracking",
+  "visible": true
+}

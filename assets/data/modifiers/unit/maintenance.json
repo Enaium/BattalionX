@@ -1,0 +1,12 @@
+{
+  "name": "Maintenance",
+  "kind": "Unit",
+  "modify": "heal",
+  "effects": [
+    "5"
+  ],
+  "matches": [],
+  "description": "Unit heals 5 HP each round.",
+  "image": "Maintenance",
+  "visible": true
+}

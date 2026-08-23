@@ -1,0 +1,10 @@
+{
+  "name": "Massive Hull",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Unit cannot enter shallow waters.",
+  "image": "MassiveHull",
+  "visible": true
+}

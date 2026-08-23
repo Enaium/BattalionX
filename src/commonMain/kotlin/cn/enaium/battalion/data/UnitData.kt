@@ -4,14 +4,14 @@ import cn.enaium.battalion.game.Controller
 
 /**
  * Static template for a kind of unit (e.g. "Warmachine"). This holds the base stats read
- * from the units XML. A live [Unit] wraps a [UnitData] plus mutable per-unit state
- * (position, health, whether it has moved/fired...).
+ * from the unit's config document. A live [Unit] wraps a [UnitData] plus mutable per-unit
+ * state (position, health, whether it has moved/fired...).
  *
  * Units also carry *modifiers* (referenced by name from the [ModifierManager]). These are
  * applied on demand via [applyModifiers], which is how special rules (Flak, Skysweeper,
  * Transport, Cloaking...) are expressed.
  *
- * The type arrays below mirror the original's string tables:
+ * The type ints mirror the original's string tables:
  *  - unitType:      none, ground, sea, air
  *  - movementType:  none, feet, wheeled, tracked, rudder, wings
  *  - weaponType:    none, light, medium, heavy
@@ -19,7 +19,8 @@ import cn.enaium.battalion.game.Controller
  */
 class UnitData(
     val name: String,
-    val sprite: String,
+    /** Which sprite sheet to draw, in which state, from which region. */
+    val spriteKey: SpriteKey,
     val cost: Int,
     val range: Int,
     val health: Int,
@@ -30,7 +31,10 @@ class UnitData(
     val movementType: Int,
     val weaponType: Int,
     val armorType: Int,
-    val audioProfile: String,
+    /** Movement sound event name (empty = silent). */
+    val audioMove: String,
+    /** Firing sound event name (empty = silent). */
+    val audioFire: String,
     val description: String,
 ) {
     val modifiers: MutableList<Modifier> = mutableListOf()
@@ -139,9 +143,9 @@ class UnitData(
 
     fun clone(): UnitData {
         val stats = UnitData(
-            name, sprite, cost, range, health, damage,
+            name, spriteKey, cost, range, health, damage,
             weaponRangeMin, weaponRangeMax, unitType, movementType, weaponType, armorType,
-            audioProfile, description,
+            audioMove, audioFire, description,
         )
         for (modifier in modifiers) stats.addModifier(modifier)
         return stats
@@ -149,3 +153,22 @@ class UnitData(
 
     override fun toString(): String = "<$name>"
 }
+
+/**
+ * The sprite-sheet contract for one unit, straight from its `units/<id>.json` `sprite` block.
+ * The renderer slices sheets with these numbers — no hardcoded width heuristics.
+ *
+ * @param sheet          base tilesheet key (`images/<sheet>.png`); 6 columns of [cellWidth],
+ *                       [rows] animation rows.
+ * @param facingColumns  compass facing (0=N,1=E,2=S,3=W) -> column index.
+ * @param firingSheet    dedicated firing sheet key, or empty when the unit has none.
+ * @param firingCellWidth cell size of the firing sheet's square cells.
+ */
+data class SpriteKey(
+    val sheet: String,
+    val firingSheet: String = "",
+    val cellWidth: Int = 56,
+    val facingColumns: List<Int> = listOf(0, 1, 2, 3),
+    val rows: Int = 4,
+    val firingCellWidth: Int = 144,
+)

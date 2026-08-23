@@ -1,0 +1,35 @@
+{
+  "name": "Leviathan Barge",
+  "unitType": "sea",
+  "movementType": "rudder",
+  "weaponType": "none",
+  "armorType": "medium",
+  "cost": 35,
+  "range": 4,
+  "health": 60,
+  "damage": 0,
+  "weaponRangeMin": 0,
+  "weaponRangeMax": 0,
+  "description": "Leviathans transport ground units across the oceans.",
+  "modifiers": [
+    "Transport",
+    "Unbuildable"
+  ],
+  "sprite": {
+    "sheet": "leviathan",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": null,
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "BoatMove",
+    "fire": ""
+  }
+}

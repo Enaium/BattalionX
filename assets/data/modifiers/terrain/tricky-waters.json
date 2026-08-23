@@ -1,0 +1,25 @@
+{
+  "name": "Tricky Waters",
+  "kind": "Terrain",
+  "modify": "movementCost",
+  "effects": [],
+  "matches": [
+    {
+      "match": "unitType",
+      "value": "sea",
+      "effects": [
+        "2"
+      ]
+    },
+    {
+      "match": "modifier",
+      "value": "Massive Hull",
+      "effects": [
+        "3"
+      ]
+    }
+  ],
+  "description": "Tricky waters severely slow Massive Hull ships and slows all other types.",
+  "image": "TrickyWaters",
+  "visible": true
+}

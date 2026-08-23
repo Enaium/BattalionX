@@ -1,0 +1,10 @@
+{
+  "name": "Scavenge",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Unit can move and attack again if it kills its target.",
+  "image": "Scavenge",
+  "visible": true
+}

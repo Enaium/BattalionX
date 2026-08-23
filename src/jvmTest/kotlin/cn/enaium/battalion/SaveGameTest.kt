@@ -11,13 +11,10 @@ import kotlin.test.assertTrue
 import java.io.File
 
 /**
- * Guards the saved-game round trip: [GameManager.toXML] serializes the live match state
+ * Guards the saved-game round trip: [GameManager.toSave] serializes the live match state
  * (turn/round/controller, resources, units with health/moved/fired, structures with chunks),
  * [GameLoader.loadSavedGame] rebuilds a GameManager from that snapshot, and resuming fires
  * START_TURN for the saved controller without re-running the fresh-start chain.
- *
- * Without the save system this test cannot compile-passes: `toXML` / `loadSavedGame` /
- * `resumeFromSave` did not exist.
  */
 class SaveGameTest {
 
@@ -32,14 +29,14 @@ class SaveGameTest {
         for (i in 1..40) original.update(16)  // let the first turn settle
 
         // Snapshot mid-match.
-        val xml = original.toXML()
-        assertTrue(xml.startsWith("<game mapurl="), "save must carry the map url")
-        assertTrue(xml.contains("<gamestate turn="), "save must carry turn/round/controller")
-        assertTrue(xml.contains("<unit "), "save must carry units")
+        val save = original.toSave()
+        assertTrue(save.mapId.isNotEmpty(), "save must carry the map id")
+        assertTrue(save.script.state.turn != null, "save must carry turn/round/controller")
+        assertTrue(save.script.units.isNotEmpty(), "save must carry units")
         assertTrue(original.currentController >= 0)
 
         // Rebuild from the snapshot.
-        val restored = GameLoader.loadSavedGame(assetsDir, xml)
+        val restored = GameLoader.loadSavedGame(assetsDir, save)
         assertTrue(restored.wasLoadedFromSavedGame, "restored game must know it came from a save")
         assertEquals(original.turn, restored.turn, "turn must be restored")
         assertEquals(original.round, restored.round, "round must be restored")
@@ -78,7 +75,7 @@ class SaveGameTest {
         val turnBefore = g.turn
         val controllerBefore = g.currentController
 
-        val restored = GameLoader.loadSavedGame(assetsDir, g.toXML())
+        val restored = GameLoader.loadSavedGame(assetsDir, g.toSave())
         assertEquals(turnBefore, restored.turn)
         assertEquals(controllerBefore, restored.currentController)
         // The restored game must not have re-run the fresh-start chain (resources would reset).

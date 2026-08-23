@@ -1,0 +1,36 @@
+{
+  "name": "Rocket Truck",
+  "unitType": "ground",
+  "movementType": "wheeled",
+  "weaponType": "heavy",
+  "armorType": "light",
+  "cost": 470,
+  "range": 4,
+  "health": 40,
+  "damage": 40,
+  "weaponRangeMin": 3,
+  "weaponRangeMax": 5,
+  "description": "Specialized long range unit that can fire on enemy aircraft and tanks.",
+  "modifiers": [
+    "Counter Battery",
+    "Skysweeper",
+    "Anti-Sub"
+  ],
+  "sprite": {
+    "sheet": "rocket",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "rocket_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "VehicleMove",
+    "fire": "FireRocketTruck"
+  }
+}

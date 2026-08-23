@@ -1,0 +1,16 @@
+{
+  "name": "Factory",
+  "cost": 1.0,
+  "description": "Warfactories allow you to build new units.",
+  "minimapImage": "minimap_control",
+  "sprite": "factory",
+  "modifiers": [
+    "Shore",
+    "Capturable",
+    "Construction",
+    "Cover"
+  ],
+  "sprites": {
+    "single": "factory"
+  }
+}

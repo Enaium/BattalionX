@@ -1,0 +1,10 @@
+{
+  "name": "Submerged",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Can only be attacked by Anti-Sub units.",
+  "image": "Submerged",
+  "visible": true
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Enriched Ore Deposit",
+  "cost": 1.0,
+  "description": "Warmachines can extract Ore from Enriched Ore Deposits.",
+  "minimapImage": "minimap_plains",
+  "sprite": "",
+  "modifiers": [
+    "Extractable"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

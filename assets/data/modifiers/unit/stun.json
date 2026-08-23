@@ -1,0 +1,10 @@
+{
+  "name": "Stun",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "Enemy units will not counter-attack in response to an attack.",
+  "image": "Stun",
+  "visible": true
+}

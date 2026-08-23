@@ -3,7 +3,6 @@ package cn.enaium.battalion.game.ui
 import cn.enaium.battalion.data.GameLoader
 import cn.enaium.battalion.data.GameLoader.MissionInfo
 import cn.enaium.battalion.util.Fio
-import cn.enaium.battalion.util.XmlParser
 import cn.enaium.sdl.SDL
 import cn.enaium.sdl.SDLColor
 import cn.enaium.sdl.SDLFRect
@@ -429,18 +428,15 @@ class StartScreen(
             renderer.drawColor = if (hover) SDLColor(150, 150, 170) else SDLColor(80, 84, 100)
             renderer.fillRect(SDLRect(x, y, w, h))
         }
-        // btn_overlay gloss at (1,1) sized (w-2)×(h-2).
-        textures.texture("btn_overlay")?.let { ov ->
-            renderer.renderTexture(
-                ov,
-                dst = SDLFRect((x + 1).toFloat(), (y + 1).toFloat(), (w - 2).toFloat(), (h - 2).toFloat()),
-            )
-        }
+        // Thin bright line along the top edge (the VistaButton gloss band) — the full
+        // stretched btn_overlay washes a short button white.
+        renderer.drawColor = SDLColor(255, 255, 255, 40)
+        renderer.fillRect(SDLRect(x + 2, y + 1, w - 4, 2))
         // Black centred title (VistaButtonState HeadingTextField).
         text.drawCentered(title, x + w / 2, y + (h - 18) / 2, 16, SDLColor(20, 20, 20))
-        // Hover brighten (SWF ColorTransform 1.1).
+        // Hover brighten (SWF ColorTransform 1.1): gentle lift, not a white-out.
         if (hover) {
-            renderer.drawColor = SDLColor(255, 255, 255, 28)
+            renderer.drawColor = SDLColor(255, 255, 255, 20)
             renderer.fillRect(SDLRect(x, y, w, h))
         }
         buttons.add(Btn("toggle", w, h, x, y, action))
@@ -465,7 +461,7 @@ class StartScreen(
         val y = 380
 
         // Continue (restore): enabled only when a saved game exists.
-        val hasSave = SaveManager.saveGame != null
+        val hasSave = SaveManager.hasSavedGame()
         drawButton("restoreButton", btnW, btnH, x, y, { if (hasSave) { resumeRequested = true; running = false } }, disabled = !hasSave); x += btnW + gap
         drawButton("singleplayerButton", btnW, btnH, x, y, { openCampaign() }); x += btnW + gap
         drawButton("multiplayerButton", btnW, btnH, x, y, { /* multiplayer exclude */ }, disabled = true); x += btnW + gap
@@ -541,8 +537,8 @@ class StartScreen(
 
     /** The main-menu bonus map button: plays the Kongregate bonus map as a skirmish. */
     private fun loadBonusMap() {
-        if (Fio.readText("$assetsDir/data/maps/Kongregate_Bonus_Map.json") != null) {
-            chosenSkirmish = "Kongregate_Bonus_Map.json"
+        if (GameLoader.findMapPublic(assetsDir, "Kongregate_Bonus_Map") != null) {
+            chosenSkirmish = "Kongregate_Bonus_Map"
             running = false
         }
     }
@@ -758,9 +754,9 @@ class StartScreen(
         if (previewKey == key) return
         previewKey = key
         preview = null
-        val mapXml = GameLoader.findMapXmlPublic(assetsDir, m.mapUrl) ?: return
+        val mapCfg = GameLoader.findMapPublic(assetsDir, m.mapId) ?: return
         try {
-            val map = cn.enaium.battalion.data.GameMap(mapXml, m.mapUrl, m.mapUrl)
+            val map = cn.enaium.battalion.data.GameMap(mapCfg, m.mapUrl, m.mapUrl)
             val cols = map.width
             val rows = map.height
             if (cols <= 0 || rows <= 0) return
@@ -872,10 +868,10 @@ class StartScreen(
         Screen.MAIN, Screen.OPTIONS -> emptyList()
     }
 
-    /** Reads the silver/gold medal thresholds from the mission's mapsettings. */
+    /** Reads the silver/gold medal thresholds from the mission's settings. */
     private fun medalThresholds(assetsDir: String, m: MissionInfo): Pair<Int?, Int?> {
-        val silver = m.mapSettingsXml.attr("silverMedal").toIntOrNull()
-        val gold = m.mapSettingsXml.attr("goldMedal").toIntOrNull()
+        val silver = m.settings.silverMedal.takeIf { it >= 0 }
+        val gold = m.settings.goldMedal.takeIf { it >= 0 }
         return silver to gold
     }
 }

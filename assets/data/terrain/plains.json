@@ -1,0 +1,15 @@
+{
+  "name": "Plains",
+  "cost": 1.0,
+  "description": "Plains slow movement slightly but provide some minimal cover against enemy attacks.",
+  "minimapImage": "minimap_plains",
+  "sprite": "",
+  "modifiers": [
+    "Ground",
+    "Uneven",
+    "Cover"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "Hazard",
+  "kind": "Terrain",
+  "modify": "damage",
+  "effects": [],
+  "matches": [
+    {
+      "match": "unitType",
+      "value": "ground",
+      "effects": [
+        "20"
+      ]
+    },
+    {
+      "match": "unitType",
+      "value": "sea",
+      "effects": [
+        "20"
+      ]
+    }
+  ],
+  "description": "Does 20 damage to any non-air units that start their turn on this tile.",
+  "image": "Hazard",
+  "visible": true
+}

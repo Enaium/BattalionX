@@ -1,1 +1,55 @@
-{"name":"ballisticsTable","attrs":{},"children":[{"name":"attack","attrs":{"type":"light"},"children":[{"name":"defense","attrs":{"type":"light","value":"1.5"},"children":[],"text":""},{"name":"defense","attrs":{"type":"medium","value":"1"},"children":[],"text":""},{"name":"defense","attrs":{"type":"heavy","value":"0.5"},"children":[],"text":""}],"text":"\n\t\t\n\t\t\n\t\t\n\t"},{"name":"attack","attrs":{"type":"medium"},"children":[{"name":"defense","attrs":{"type":"light","value":"1"},"children":[],"text":""},{"name":"defense","attrs":{"type":"medium","value":"1"},"children":[],"text":""},{"name":"defense","attrs":{"type":"heavy","value":"1"},"children":[],"text":""}],"text":"\n\t\t\n\t\t\n\t\t\n\t"},{"name":"attack","attrs":{"type":"heavy"},"children":[{"name":"defense","attrs":{"type":"light","value":"0.5"},"children":[],"text":""},{"name":"defense","attrs":{"type":"medium","value":"1"},"children":[],"text":""},{"name":"defense","attrs":{"type":"heavy","value":"1.5"},"children":[],"text":""}],"text":"\n\t\t\n\t\t\n\t\t\n\t"}],"text":"\n\t\n\t\n\t\n\t\n"}
+{
+  "weapons": [
+    {
+      "weapon": "light",
+      "defenses": [
+        {
+          "armor": "light",
+          "multiplier": 1.5
+        },
+        {
+          "armor": "medium",
+          "multiplier": 1.0
+        },
+        {
+          "armor": "heavy",
+          "multiplier": 0.5
+        }
+      ]
+    },
+    {
+      "weapon": "medium",
+      "defenses": [
+        {
+          "armor": "light",
+          "multiplier": 1.0
+        },
+        {
+          "armor": "medium",
+          "multiplier": 1.0
+        },
+        {
+          "armor": "heavy",
+          "multiplier": 1.0
+        }
+      ]
+    },
+    {
+      "weapon": "heavy",
+      "defenses": [
+        {
+          "armor": "light",
+          "multiplier": 0.5
+        },
+        {
+          "armor": "medium",
+          "multiplier": 1.0
+        },
+        {
+          "armor": "heavy",
+          "multiplier": 1.5
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Ground Proficiency",
+  "kind": "Terrain",
+  "modify": "groundCost",
+  "effects": [
+    "-5%"
+  ],
+  "matches": [],
+  "description": "Each Ground Control reduces cost of deploying ground units by 5%.",
+  "image": "GroundProficiency",
+  "visible": true
+}

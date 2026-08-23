@@ -1,0 +1,13 @@
+{
+  "name": "Sea",
+  "cost": 1.0,
+  "description": "The open sea forms the theater for naval combat.",
+  "minimapImage": "minimap_sea",
+  "sprite": "",
+  "modifiers": [
+    "Water"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "Irreparable",
+  "kind": "Unit",
+  "modify": "",
+  "effects": [],
+  "matches": [],
+  "description": "This unit cannot be repaired.",
+  "image": "Irreparable",
+  "visible": true
+}

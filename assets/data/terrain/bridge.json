@@ -1,0 +1,13 @@
+{
+  "name": "Bridge",
+  "cost": 1.0,
+  "description": "Bridges are useful for connecting islands of land, but they lack defensive cover.",
+  "minimapImage": "minimap_bridge",
+  "sprite": "",
+  "modifiers": [
+    "Ground"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

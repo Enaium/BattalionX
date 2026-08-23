@@ -1,0 +1,16 @@
+{
+  "name": "Air Control",
+  "cost": 1.0,
+  "description": "Air Controls enable air unit manufacturing at your warfactories.",
+  "minimapImage": "minimap_control",
+  "sprite": "aircontrol",
+  "modifiers": [
+    "Ground",
+    "Capturable",
+    "Air Proficiency",
+    "Cover"
+  ],
+  "sprites": {
+    "single": "aircontrol"
+  }
+}

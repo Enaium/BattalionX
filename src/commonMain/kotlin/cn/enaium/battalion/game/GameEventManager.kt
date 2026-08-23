@@ -1,5 +1,7 @@
 package cn.enaium.battalion.game
 
+import cn.enaium.battalion.data.EventConfig
+
 /**
  * Owns every scripted [GameEvent] loaded from the map's `<script>` block and drives them each
  * frame so their [Condition]s can be evaluated.
@@ -40,18 +42,9 @@ class GameEventManager {
     }
 
     /**
-     * Serializes every live [GameEvent] back to its `<event>` XML (mirrors
-     * `GameEventManager.toXML`). Re-emitting the ORIGINAL definitions keeps the event set
-     * intact across a save/load; already-fired one-shot events re-arm on resume (the original
-     * serialized their satisfied flags — the port re-runs `startGame`-gated events only when a
-     * fresh START_GAME fires, which a resume never does).
+     * Re-emits every live [GameEvent]'s original [EventConfig] (for a saved game).
+     * Re-emitting the ORIGINAL definitions keeps the event set intact across a save/load;
+     * already-fired one-shot events re-arm on resume.
      */
-    fun toXML(): String {
-        val sb = StringBuilder()
-        for (e in gameEvents) {
-            val src = e.sourceXml
-            if (src != null) sb.append(src.toXmlString())
-        }
-        return sb.toString()
-    }
+    fun toConfigs(): List<EventConfig> = gameEvents.mapNotNull { it.source }
 }

@@ -1,0 +1,35 @@
+{
+  "name": "Intrepid",
+  "unitType": "sea",
+  "movementType": "rudder",
+  "weaponType": "light",
+  "armorType": "light",
+  "cost": 200,
+  "range": 5,
+  "health": 50,
+  "damage": 15,
+  "weaponRangeMin": 1,
+  "weaponRangeMax": 1,
+  "description": "Use the Intrepid to capture sea properties and warfactories along coast lines.",
+  "modifiers": [
+    "Capture",
+    "Sea Bound"
+  ],
+  "sprite": {
+    "sheet": "intrepid",
+    "facingColumns": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "cellWidth": 56,
+    "rows": 4,
+    "firingSheet": "intrepid_firing",
+    "firingCellWidth": 144
+  },
+  "audio": {
+    "move": "ShipMove",
+    "fire": "FireIntrepid"
+  }
+}

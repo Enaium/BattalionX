@@ -1,0 +1,15 @@
+{
+  "name": "Reef",
+  "cost": 1.0,
+  "description": "Reefs slow movement and improves defense against attack.",
+  "minimapImage": "minimap_reef",
+  "sprite": "",
+  "modifiers": [
+    "Water",
+    "Tricky Waters",
+    "Cover"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

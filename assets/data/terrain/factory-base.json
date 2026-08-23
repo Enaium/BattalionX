@@ -1,0 +1,11 @@
+{
+  "name": "Factory Base",
+  "cost": 1.0,
+  "description": "",
+  "minimapImage": "minimap_plains",
+  "sprite": "",
+  "modifiers": [],
+  "sprites": {
+    "single": ""
+  }
+}

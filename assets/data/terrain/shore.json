@@ -1,0 +1,14 @@
+{
+  "name": "Shore",
+  "cost": 1.0,
+  "description": "Shores are the link between the land and sea. Order Leviathan pick ups for ground troops here.",
+  "minimapImage": "minimap_shore",
+  "sprite": "",
+  "modifiers": [
+    "Shore",
+    "Shallow"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Oil Refinery",
+  "cost": 1.0,
+  "description": "The most basic oil producing property. Capture it to establish an income stream.",
+  "minimapImage": "minimap_refinery",
+  "sprite": "oilrefinery",
+  "modifiers": [
+    "Ground",
+    "Capturable",
+    "Level 1 Oil Refining",
+    "Cover",
+    "Reduced Efficiency"
+  ],
+  "sprites": {
+    "single": "oilrefinery"
+  }
+}

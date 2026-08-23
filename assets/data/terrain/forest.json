@@ -1,0 +1,15 @@
+{
+  "name": "Forest",
+  "cost": 1.0,
+  "description": "Forests will slow wheeled and tracked units, but will provide defensive cover from attacks.",
+  "minimapImage": "minimap_forest",
+  "sprite": "",
+  "modifiers": [
+    "Ground",
+    "Rugged",
+    "Camouflage"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}

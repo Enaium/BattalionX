@@ -1,0 +1,13 @@
+{
+  "name": "Road",
+  "cost": 1.0,
+  "description": "Roads help slower ground units cover long distances quickly, but provide no defensive cover.",
+  "minimapImage": "minimap_road",
+  "sprite": "",
+  "modifiers": [
+    "Ground"
+  ],
+  "sprites": {
+    "single": ""
+  }
+}
