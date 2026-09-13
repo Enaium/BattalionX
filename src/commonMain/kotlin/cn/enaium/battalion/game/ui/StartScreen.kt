@@ -45,6 +45,8 @@ class StartScreen(
         /** Campaign document name (e.g. `"vengeance"`, `"nemesis"`, `"bootcamp"`). */
         val campaignId: String? = null,
         val missionIndex: Int? = null,
+        /** Team (index into the mission's teams) the player chose to command, or null. */
+        val playerTeam: Int? = null,
         val skirmishMap: String? = null,
         /** True when the player chose "Continue" on the main menu to resume a saved game. */
         val resume: Boolean = false,
@@ -67,6 +69,12 @@ class StartScreen(
 
         /** Height of a BattalionPanel title band (the heading's height + 5 in the original). */
         private const val TITLE_BAND_H = 21
+
+        /** The chapter-title panel (SWF `CampaignMenu`: 350×70 at y=200) with its arrow buttons. */
+        private const val CHAPTER_Y = 200
+        private const val CHAPTER_H = 70
+        private const val CHAPTER_W = 350
+        private const val MISSION_ARROW_W = 33
 
         /**
          * The credits roll (`CreditsMenu`): the episode name, the Urbansquall team, then the
@@ -150,6 +158,13 @@ class StartScreen(
     private var preview: MapPreview? = null
     private var previewKey: Pair<String, Int>? = null
 
+    /**
+     * The team the player chose to command, per visited mission ("<campaign>#<mission>").
+     * Missions default to the side their author assigned to the player; picking the other side
+     * swaps the human/AI roles (see [GameLoader.withPlayerTeam]).
+     */
+    private val playerTeamChoices = mutableMapOf<String, Int>()
+
     /** How far the credits text has scrolled up, in pixels (CreditsMenu's rolling message). */
     private var creditsScroll = 0f
 
@@ -176,6 +191,7 @@ class StartScreen(
             Screen.MISSIONS -> Selection(
                 campaignId = campaign?.id,
                 missionIndex = selected.coerceIn(0, maxOf(0, (campaign?.missions?.size ?: 1) - 1)),
+                playerTeam = campaign?.missions?.getOrNull(selected)?.let { playerTeamIndex(it) },
             )
         }
     }
@@ -385,10 +401,11 @@ class StartScreen(
     fun setScreenForCapture(s: String) {
         reloadCampaigns()
         val target = when {
-            s.startsWith("campaign:") -> s.substringAfter(':')
+            s.startsWith("campaign:") -> s.substringAfter(':').substringBefore('#')
             s == "bootcamp" -> GameLoader.BOOTCAMP_CAMPAIGN
             else -> null
         }
+        val targetMission = s.substringAfter('#', "").toIntOrNull()
         screen = when (s) {
             "main" -> Screen.MAIN
             "options" -> Screen.OPTIONS
@@ -399,6 +416,7 @@ class StartScreen(
             val index = campaigns.indexOfFirst { it.id == target }
             if (index >= 0) openCampaign(index)
         }
+        if (targetMission != null && targetMission in missionList().indices) selected = targetMission
     }
 
     /** Diagnostic: forwards a synthetic click at ([x], [y]) to the current screen. */
@@ -731,6 +749,7 @@ class StartScreen(
 
         drawMedalRow(missions)
         drawChapterPanel(campaign, m)
+        drawFactionPicker(m)
         drawMissionBriefPanel(m)
         drawMissionPreviewPanel()
         if (campaign.id != GameLoader.BOOTCAMP_CAMPAIGN) drawDifficultyPanel()
@@ -894,17 +913,114 @@ class StartScreen(
 
     /** Draws the chapter-title panel with prev/next mission TileSheetButtons (SWF: top at y=200). */
     private fun drawChapterPanel(campaign: GameLoader.Campaign, m: MissionInfo) {
-        val x = 350 - 175
-        val y = 200
-        drawPanel(x, y, 350, 70, "frame1", 16, "spotted_texture")
+        val x = 350 - CHAPTER_W / 2
+        val y = CHAPTER_Y
+        drawPanel(x, y, CHAPTER_W, CHAPTER_H, "frame1", 16, "spotted_texture")
         // Text on the light spotted panel reads better in black (SWF panel text is dark).
         text.drawCentered(m.name, 350, y + 18, 22, SDLColor(20, 20, 20))
         text.drawCentered("${campaign.displayName}   •   Mission ${m.number + 1}", 350, y + 44, 14,
             SDLColor(60, 60, 70))
 
         // Prev / next tilesheet buttons flank the chapter panel.
-        drawButton("previousMissionButton", 33, 46, x - 33 - 4, y + (70 - 46) / 2, { move(-1) })
-        drawButton("nextMissionButton", 33, 46, x + 350 + 4, y + (70 - 46) / 2, { move(1) })
+        drawButton("previousMissionButton", MISSION_ARROW_W, 46, x - MISSION_ARROW_W - 4, y + (CHAPTER_H - 46) / 2, { move(-1) })
+        drawButton("nextMissionButton", MISSION_ARROW_W, 46, x + CHAPTER_W + 4, y + (CHAPTER_H - 46) / 2, { move(1) })
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Faction picker (next to the mission arrows)                        */
+    /* ------------------------------------------------------------------ */
+
+    /** The mission's own player team: the one its author marked human. */
+    private fun defaultPlayerTeam(m: MissionInfo): Int =
+        m.settings.teams.indexOfFirst { it.controllerType.equals("Human", ignoreCase = true) }
+            .coerceAtLeast(0)
+
+    /** The team the player commands for [m] (the picker's selection, default = the mission's). */
+    private fun playerTeamIndex(m: MissionInfo): Int {
+        val teams = m.settings.teams
+        if (teams.isEmpty()) return -1
+        val key = campaigns.getOrNull(campaignIndex)?.let { "${it.id}#${m.number}" }
+        val chosen = key?.let { playerTeamChoices[it] } ?: defaultPlayerTeam(m)
+        return chosen.coerceIn(0, teams.lastIndex)
+    }
+
+    /** The team the player faces: the first team they do not command, in mission order. */
+    private fun enemyTeamIndex(m: MissionInfo, playerTeam: Int): Int =
+        m.settings.teams.indices.firstOrNull { it != playerTeam } ?: -1
+
+    /** Switches the player's side for the selected mission (both picker buttons call this). */
+    private fun choosePlayerTeam(team: Int) {
+        val campaign = campaigns.getOrNull(campaignIndex) ?: return
+        val m = missionList().getOrNull(selected) ?: return
+        if (team !in m.settings.teams.indices) return
+        playerTeamChoices["${campaign.id}#${m.number}"] = team
+    }
+
+    /** ARGB team colour as an [SDLColor]. */
+    private fun teamColorOf(color: String): SDLColor {
+        val argb = cn.enaium.battalion.data.parseArgb(color)
+        return SDLColor((argb shr 16) and 0xff, (argb shr 8) and 0xff, argb and 0xff)
+    }
+
+    /**
+     * Draws the faction picker: the team the player commands to the left of the previous
+     * mission button, the team(s) they face to the right of the next one. Each button is the
+     * faction's own colour; the selected one is boxed. Clicking either side commands that team
+     * (the border follows the choice, so the two groups swap when the other side is picked).
+     */
+    private fun drawFactionPicker(m: MissionInfo) {
+        val teams = m.settings.teams
+        if (teams.size < 2) return
+        val chosen = playerTeamIndex(m)
+        if (chosen < 0) return
+        val swatch = 22
+        val gap = 4
+        val pad = 8
+        val y = CHAPTER_Y + (CHAPTER_H - swatch) / 2
+
+        // Our side: right-aligned against the previous-mission button.
+        val prevX = 350 - CHAPTER_W / 2 - MISSION_ARROW_W - 4
+        var x = prevX - pad - (teams.size * (swatch + gap) - gap)
+        for (i in teams.indices) {
+            drawTeamSwatch(x, y, swatch, teams[i], selected = i == chosen) { choosePlayerTeam(i) }
+            x += swatch + gap
+        }
+
+        // Their side: left-aligned after the next-mission button, the chosen team left out (it
+        // is the player's). The first of the rest is the mission's opponent.
+        val nextX = 350 + CHAPTER_W / 2 + 4 + MISSION_ARROW_W
+        val enemy = enemyTeamIndex(m, chosen)
+        var ex = nextX + pad
+        for (i in teams.indices) {
+            if (i == chosen) continue
+            drawTeamSwatch(ex, y, swatch, teams[i], selected = i == enemy) { choosePlayerTeam(i) }
+            ex += swatch + gap
+        }
+    }
+
+    /** One faction button: the team colour, hover brighten and a box around the selection. */
+    private fun drawTeamSwatch(x: Int, y: Int, size: Int, team: cn.enaium.battalion.data.TeamConfig, selected: Boolean, action: () -> Unit) {
+        val hover = mouseX >= x && mouseX < x + size && mouseY >= y && mouseY < y + size
+        val color = teamColorOf(team.color)
+        renderer.drawColor = color
+        renderer.fillRect(SDLRect(x, y, size, size))
+        if (hover) {
+            val prevBlend = renderer.blendMode
+            renderer.blendMode = SDLBlendMode.BLEND
+            renderer.drawColor = SDLColor(255, 255, 255, 60)
+            renderer.fillRect(SDLRect(x, y, size, size))
+            renderer.blendMode = prevBlend
+        }
+        // Dark outline for the swatch itself; the selected side gets a bright box around it.
+        renderer.drawColor = SDLColor(20, 20, 20)
+        renderer.drawRect(SDLRect(x, y, size, size))
+        if (selected) {
+            renderer.drawColor = SDLColor(255, 255, 224)
+            renderer.drawRect(SDLRect(x - 2, y - 2, size + 4, size + 4))
+            renderer.drawColor = SDLColor(20, 20, 20)
+            renderer.drawRect(SDLRect(x - 1, y - 1, size + 2, size + 2))
+        }
+        buttons.add(Btn("faction", size, size, x, y, action))
     }
 
     /** Draws the "Mission Brief" BattalionPanel (SWF: at (188, 297), 330×200). */

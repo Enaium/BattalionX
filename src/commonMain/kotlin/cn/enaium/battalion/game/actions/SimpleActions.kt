@@ -139,7 +139,9 @@ class StartGameAction : Action() {
         val gameManager = GameManager.instance
         gameManager.turn = 0
         gameManager.round = 0
-        gameManager.currentController = 0
+        // The match opens with the player's team (team 0 unless the faction picker chose another
+        // side of the mission).
+        gameManager.currentController = gameManager.startingController
         TriggerManager.add(Trigger(Trigger.START_GAME))
     }
 }

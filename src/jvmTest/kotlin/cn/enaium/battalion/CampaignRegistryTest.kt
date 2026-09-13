@@ -53,6 +53,38 @@ class CampaignRegistryTest {
     }
 
     /**
+     * The mission select's faction picker must swap which side the player commands: the picked
+     * team becomes the human one and the other side turns AI (otherwise a mission could start
+     * with two humans or none).
+     */
+    @Test
+    fun `choosing the other faction swaps the human and AI sides`() {
+        if (!File("$assetsDir/data").isDirectory) return
+        val mission = GameLoader.findCampaign(assetsDir, GameLoader.DEFAULT_CAMPAIGN)?.missions?.first()
+            ?: return
+        assertEquals(
+            listOf("Human", "AI"),
+            mission.settings.teams.map { it.controllerType },
+            "the first mission's authored side assignment",
+        )
+        val swapped = GameLoader.withPlayerTeam(mission.settings, 1)
+        assertEquals(listOf("AI", "Human"), swapped.teams.map { it.controllerType })
+
+        val game = GameLoader.loadCampaignMission(assetsDir, 0, playerTeam = 1)
+        assertEquals("AI", game.getController(0)?.team?.controllerType)
+        assertEquals("Human", game.getController(1)?.team?.controllerType)
+        assertEquals(
+            1,
+            game.controllers.indexOfFirst { it?.team?.controllerType == "Human" },
+            "exactly the picked team must be human",
+        )
+        // The match opens with the player's turn whichever side they picked.
+        game.startGame()
+        for (i in 1..20) game.update(16)
+        assertEquals(1, game.currentController, "the picked team must take the first turn")
+    }
+
+    /**
      * Nemesis, Ghosts and Skirmish name their maps `Mission_N` exactly like Vengeance does, so
      * their documents must be namespaced per generation — a shared id would make the medals of
      * one generation follow the levels of another and the wrong map load.

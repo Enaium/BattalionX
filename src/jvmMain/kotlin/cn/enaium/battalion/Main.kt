@@ -28,6 +28,8 @@ import io.github.vinceglb.filekit.FileKit
  *                     opening a window (used to verify data loading / startup).
  *   --unit name       (with `--shot`) select that unit type before capturing, e.g.
  *                     `--shot --unit Warmachine`.
+ *   --playerteam N    command team N of the mission (the mission select's faction picker),
+ *                     e.g. `--campaign vengeance --mission 0 --playerteam 1`.
  *   --assetreport     drive every mission/menu and report which requested sprites have no
  *                     backing file under `assets/images/` (verifies the asset set is complete).
  */
@@ -39,6 +41,8 @@ fun main(args: Array<String>) {
     val campaignArg = args.indexOf("--campaign")
     val campaign = if (campaignArg >= 0 && campaignArg + 1 < args.size) args[campaignArg + 1]
     else GameLoader.DEFAULT_CAMPAIGN
+    val playerTeamArg = args.indexOf("--playerteam")
+    val playerTeam = if (playerTeamArg >= 0 && playerTeamArg + 1 < args.size) args[playerTeamArg + 1].toIntOrNull() else null
     val missionArg = args.indexOf("--mission")
     val mission = if (missionArg >= 0 && missionArg + 1 < args.size) args[missionArg + 1].toIntOrNull() ?: 0 else 0
     val skirmishArg = args.indexOf("--skirmish")
@@ -87,13 +91,13 @@ fun main(args: Array<String>) {
         return
     }
     if (selftest) {
-        selftest(dir, mission, skirmish, campaign)
+        selftest(dir, mission, skirmish, campaign, playerTeam)
         return
     }
     // The game shows the start menu by default; only a real --mission/--skirmish flag pins a
     // specific mission (passing a non-null default would skip the menu and jump into mission 0).
     val playMission = if (missionArg >= 0) mission else null
-    BattalionGame(dir, playMission, skirmish, campaign).run()
+    BattalionGame(dir, playMission, skirmish, campaign, playerTeam).run()
 }
 
 /**
@@ -149,6 +153,23 @@ private fun menushot(dir: String) {
     for (id in GameLoader.CAMPAIGN_IDS + GameLoader.BOOTCAMP_CAMPAIGN) {
         snap("campaign:$id", "menu_$id")
     }
+    // Three-team level: the picker must show all three faction colours (Ghosts M6 adds the
+    // green Dragoons to the blue Akadians and red N. Federation).
+    snap("campaign:ghosts#5", "menu_ghosts_3teams")
+
+    // Faction picker: the enemy swatch sits right of the next-mission arrow (a 22px button at
+    // x = 570 for a two-team mission, vertically centred on the chapter panel).
+    val faction = cn.enaium.battalion.game.ui.StartScreen(dir, r, text, tm)
+    faction.setScreenForCapture("campaign:vengeance")
+    for (i in 1..4) { faction.renderFrameForCapture(); SDL.delay(20) }
+    faction.clickForCapture(580, 235)
+    for (i in 1..4) { faction.renderFrameForCapture(); SDL.delay(20) }
+    val swapped = r.renderReadPixels(null)
+    if (swapped != null) {
+        saveShot(swapped, "menu_faction_swapped")
+        swapped.close()
+    } else println("capture failed for menu_faction_swapped")
+
     // Switch generations through the real click path: park the pointer on the "Nemesis"
     // button of the Vengeance page and click it, then capture the resulting list.
     val start = cn.enaium.battalion.game.ui.StartScreen(dir, r, text, tm)
@@ -724,6 +745,66 @@ private fun shot(dir: String, mission: Int, skirmish: String?, campaign: String,
         if (unit != null) {
             human.selectUnit(unit)
             snap("shot3_selected")
+
+            // Hovering an attackable enemy must keep previewing the walk: the path to the tile
+            // the unit strikes from ("nomove" when it can already fire from where it stands).
+            val enemy = game.unitsAttackableThisTurn(unit).firstOrNull()
+            if (enemy != null) {
+                // First hover a plain empty tile so a path is on screen, then the enemy: an
+                // attackable target with no reachable firing tile must keep that path (the
+                // original's chooseMove returns without clearing it).
+                val startTile = game.tileAt(unit.x, unit.y)!!
+                var emptyPath = -1
+                outerEmpty@ for (dy in -3..3) {
+                    for (dx in -3..3) {
+                        if (dx == 0 && dy == 0) continue
+                        val t = game.tileAt(unit.x + dx, unit.y + dy) ?: continue
+                        if (t.unit != null) continue
+                        val p = cn.enaium.battalion.data.Astar.path(startTile, t, unit) ?: continue
+                        if (!game.canMove(unit, p)) continue
+                        val (ex, ey) = renderer.tileCenterScreenForCapture(t.x, t.y)
+                        if (ex !in 0..560 || ey !in 0..560) continue
+                        SDL.warpMouseInWindow(win.id, ex.toFloat(), ey.toFloat())
+                        for (i in 1..3) { game.update(16); renderer.render() }
+                        emptyPath = renderer.hoverPathSizeForCapture()
+                        break@outerEmpty
+                    }
+                }
+                val (hx, hy) = renderer.tileCenterScreenForCapture(enemy.x, enemy.y)
+                if (hx in 0..560 && hy in 0..560) {
+                    SDL.warpMouseInWindow(win.id, hx.toFloat(), hy.toFloat())
+                    for (i in 1..3) { game.update(16); renderer.render() }
+                    snap("shot3b_hover_enemy")
+                    println("HOVER ENEMY ${enemy.unitData.name}@(${enemy.x},${enemy.y}) " +
+                        "path=${renderer.hoverPathSizeForCapture()} nomove=${renderer.hoverNomoveForCapture()} " +
+                        "emptyHover=$emptyPath")
+                } else {
+                    println("HOVER ENEMY off-screen at ($hx,$hy)")
+                }
+            } else {
+                println("HOVER ENEMY none attackable for ${unit.unitData.name}")
+            }
+
+            // Attack-from-here marker: a unit that can already strike an enemy without moving
+            // must show movement_nomove on its own tile (the original's single-tile path).
+            hoverNomove@ for (u in game.units.filter { it.controller === human && it.isDeployed() }) {
+                for (e in game.unitsAttackableThisTurn(u)) {
+                    if (!u.isRanged() && !game.canAttack(u, e)) continue
+                    val (nx, ny) = renderer.tileCenterScreenForCapture(e.x, e.y)
+                    if (nx !in 0..560 || ny !in 0..560) continue
+                    // The marker lands on the unit's own tile — require it to be on screen too.
+                    val (ux, uy) = renderer.tileCenterScreenForCapture(u.x, u.y)
+                    if (ux !in 40..520 || uy !in 40..520) continue
+                    human.selectUnit(u)
+                    SDL.warpMouseInWindow(win.id, nx.toFloat(), ny.toFloat())
+                    for (i in 1..3) { game.update(16); renderer.render() }
+                    snap("shot3c_hover_nomove")
+                    println("HOVER NOMOVE ${u.unitData.name} on ${e.unitData.name}: " +
+                        "nomove=${renderer.hoverNomoveForCapture()} path=${renderer.hoverPathSizeForCapture()} " +
+                        "tex=${renderer.hoverNomoveTextureForCapture()} unitScreen=($ux,$uy)")
+                    break@hoverNomove
+                }
+            }
             // Move the selected unit to a passable neighbour so shot4 shows the moved/acting unit.
             for ((dx, dy) in listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)) {
                 val dest = game.tileAt(unit.x + dx, unit.y + dy)
@@ -870,6 +951,52 @@ private fun shot(dir: String, mission: Int, skirmish: String?, campaign: String,
     snap("shot9_ingamemenu")
     renderer.setQuitConfirm(true)
     snap("shot8_quitconfirm")
+    // Quick Help card: the original blits the 700×600 bitmap over the whole stage.
+    renderer.setQuitConfirm(false)
+    renderer.setInGameMenuOpen(true)
+    renderer.showQuickHelp = true
+    snap("shot7_quickhelp")
+    renderer.showQuickHelp = false
+    renderer.setInGameMenuOpen(false)
+
+    // Results screen (GameOverMenu). Seed statistics so every column is legible, then capture
+    // the victory variant (medal grading + chapter panel) and the defeat variant.
+    val team = cn.enaium.battalion.data.Team
+    for ((i, c) in game.controllers.filterNotNull().withIndex()) {
+        val t = c.team
+        t.addStatistic(team.UNITS_BUILT, 7 + i * 3)
+        t.addStatistic(team.GROUND_UNITS_BUILT, 4 + i)
+        t.addStatistic(team.SEA_UNITS_BUILT, 3 + i)
+        t.addStatistic(team.AIR_UNITS_BUILT, 1)
+        t.addStatistic(team.RESOURCES_SPENT, 4200 + i * 900)
+        t.addStatistic(team.KILLED_PLAYER1_UNIT, 3 + i)
+        t.addStatistic(team.KILLED_PLAYER2_UNIT, 2)
+        t.addStatistic(team.KILLED_PLAYER4_UNIT, 1)
+        t.addStatistic(team.RESOURCE_DAMAGE_CAUSED, 1500 + i * 700)
+        t.addStatistic(team.ORE_EXTRACTED, 3200 + i * 400)
+        t.addStatistic(team.STRUCTURES_CAPTURED, 2 * (2 - i))
+        t.addStatistic(team.STRUCTURES_LOST, 1 + i)
+        t.addStatistic(team.UNITS_KILLED, 6 - i * 2)
+        t.addStatistic(team.RESOURCES_COLLECTED, 9000)
+        t.addStatistic(team.ROUNDS_TAKEN, 3)
+    }
+    // The real quit flow: the in-game menu's Quit surrenders the local player, so every unit
+    // and structure they own blasts on the way out, and the results screen then shows a defeat.
+    val blastCount = game.units.count { it.controller === game.controllers.filterNotNull().firstOrNull { c -> c is cn.enaium.battalion.game.controllers.HumanController } }
+    game.surrenderLocalPlayer()
+    // The blast sheet runs 16 frames × 75 ms; capture early and at the fireball's peak.
+    for (i in 1..10) { game.update(16); renderer.render(); SDL.delay(16) }
+    snap("shot14_surrender_blasts")
+    for (i in 1..16) { game.update(16); renderer.render(); SDL.delay(16) }
+    snap("shot15_surrender_blasts_peak")
+    println("SURRENDER: units before=$blastCount units after=${game.units.size} gameOver=${game.gameOver} playerWon=${game.playerWon}")
+
+    // The blast sheet runs out after ~1.2s and the results screen takes over only then
+    // (EndGameAction waits for the original's TweenManager to drain).
+    for (i in 1..80) { game.update(16); renderer.render(); SDL.delay(4) }
+    snap("shot13_gameover_defeat")
+    game.forceGameOverForCapture(true)
+    snap("shot12_gameover_victory")
 
 
 
@@ -880,11 +1007,11 @@ private fun shot(dir: String, mission: Int, skirmish: String?, campaign: String,
  * Loads the game and exercises the startup path without SDL, printing diagnostics. Also plays
  * a few full rounds (auto-ending the human's turn) to confirm the AI and the turn loop work.
  */
-private fun selftest(dir: String, mission: Int, skirmish: String?, campaign: String) {
+private fun selftest(dir: String, mission: Int, skirmish: String?, campaign: String, playerTeam: Int? = null) {
     val game = if (skirmish != null) {
         GameLoader.loadSkirmish(dir, skirmish)
     } else {
-        GameLoader.loadCampaignMission(dir, mission, campaign)
+        GameLoader.loadCampaignMission(dir, mission, campaign, playerTeam = playerTeam)
     }
     println("Map: ${game.map.name} (${game.map.width}x${game.map.height})")
     println("Controllers: " + game.controllers.mapIndexed { i, c -> "$i=${c?.team?.name}(${c?.team?.controllerType})" }.joinToString(", "))

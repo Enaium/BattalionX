@@ -10,6 +10,7 @@ import cn.enaium.battalion.data.Unit
 import cn.enaium.battalion.game.controllers.HALController
 import cn.enaium.battalion.game.controllers.HumanController
 import cn.enaium.battalion.game.triggers.AttackUnitTrigger
+import cn.enaium.battalion.game.triggers.ExplosionTrigger
 import cn.enaium.battalion.game.triggers.KillUnitTrigger
 import cn.enaium.battalion.game.ui.Dialogue
 import cn.enaium.battalion.game.ui.SaveManager
@@ -265,14 +266,21 @@ class BattalionRenderer(
         }
         for (key in PANEL_SPRITES) textures.textureOrFallback(key)
 
-        // Attack impact (small puff on the target) and destruction (big blast) effects.
+        // Attack impact (small puff on the target), destruction (big blast) and the explicit
+        // explosion trigger the original fires at every unit a surrendering player loses.
+        // No game-over guard: the original's addExplosion is unconditional, and the surrender
+        // blasts happen on the very frames the match is being decided.
         TriggerManager.addListener(AttackUnitTrigger.NAME) { trigger ->
             val t = trigger as? AttackUnitTrigger ?: return@addListener
-            if (!game.gameOver) addExplosion(t.targetX, t.targetY, big = false)
+            addExplosion(t.targetX, t.targetY, big = false)
         }
         TriggerManager.addListener(KillUnitTrigger.NAME) { trigger ->
             val t = trigger as? KillUnitTrigger ?: return@addListener
-            if (!game.gameOver) addExplosion(t.unitX, t.unitY, big = true)
+            addExplosion(t.unitX, t.unitY, big = true)
+        }
+        TriggerManager.addListener(ExplosionTrigger.NAME) { trigger ->
+            val t = trigger as? ExplosionTrigger ?: return@addListener
+            addExplosion(t.tileX, t.tileY, t.big)
         }
     }
 
@@ -289,6 +297,12 @@ class BattalionRenderer(
     private var hoverPath: List<Tile> = emptyList()
 
     /**
+     * True while the cursor is on a target the selected unit can already strike from where it
+     * stands: the original draws the single-tile path as the `movement_nomove` marker.
+     */
+    private var hoverNomove: Boolean = false
+
+    /**
      * Firing-sheet overlays queued while drawing units. They are rendered AFTER every unit and
      * the attackable-target frames, so a firing sprite is never covered by the target vehicle's
      * art (matching the original UnitAttackAnimation, which is added to the scroller's TOP).
@@ -300,36 +314,77 @@ class BattalionRenderer(
      * Recomputes [hoverPath] from the cursor position. The path is computed exactly like the
      * click handler (Astar.path + canMove), so the preview *is* the final movement path.
      */
-    private fun updateHoverPath() {
+    private fun clearHoverPath() {
         hoverPath = emptyList()
-        val human = game.activeController as? HumanController ?: return
+        hoverNomove = false
+    }
+
+    private fun updateHoverPath() {
+        val human = game.activeController as? HumanController ?: return clearHoverPath()
         // The move/attack hover preview is part of the "mode" that is dismissed while the
         // floating action menu is open — don't recompute the path under the open bar.
-        if (human.unitOptionsOpen) return
-        val unit = human.selectedUnit ?: return
-        if (!unit.isAvailable() || !unit.canMove() || unit.isMoving) return
-        if (!unit.isDeployed()) return
+        if (human.unitOptionsOpen) return clearHoverPath()
+        val unit = human.selectedUnit ?: return clearHoverPath()
+        if (!unit.isAvailable() || !unit.canMove() || unit.isMoving) return clearHoverPath()
+        if (!unit.isDeployed()) return clearHoverPath()
 
         // Hovered tile from the cursor (a float offset the mouse is inside the map area).
         val mouse = SDL.mouseState
-        if (mouse.x < MAP_X || mouse.y < MAP_Y) return
+        if (mouse.x < MAP_X || mouse.y < MAP_Y) return clearHoverPath()
         val tx = mapColAt(mouse.x)
         val ty = mapRowAt(mouse.y)
         val g = game
-        if (tx < 0 || ty < 0 || tx >= g.map.width || ty >= g.map.height) return
-        if (tx == unit.x && ty == unit.y) return
+        if (tx < 0 || ty < 0 || tx >= g.map.width || ty >= g.map.height) return clearHoverPath()
+        if (tx == unit.x && ty == unit.y) return clearHoverPath()
 
-        // Enemy units the player can attack this turn get the red target markers instead of a
-        // path (a click there attacks, it does not move there).
+        // An attackable enemy still previews movement (SWF HumanController.chooseMove with
+        // attack = true): the path shown is the walk the click performs, to the tile the unit
+        // strikes from. A unit that can already fire from where it stands (ranged, or one
+        // already in weapon range) shows the "nomove" marker — the original's single-tile path.
         val hoveredUnit = g.unitAt(tx, ty)
-        if (hoveredUnit != null && g.unitsAttackableThisTurn(unit).contains(hoveredUnit)) return
+        if (hoveredUnit != null && g.unitsAttackableThisTurn(unit).contains(hoveredUnit)) {
+            if (unit.isRanged() || g.canAttack(unit, hoveredUnit)) {
+                clearHoverPath()
+                hoverNomove = true
+                return
+            }
+            // No reachable firing tile this turn: the original's chooseMove simply returns, so
+            // the path already drawn for the previously hovered tile stays on screen. Leave it
+            // alone rather than blanking the preview.
+            val from = g.attackPositionFor(unit, hoveredUnit) ?: return
+            if (from.x == unit.x && from.y == unit.y) {
+                clearHoverPath()
+                hoverNomove = true
+                return
+            }
+            val startTile = g.tileAt(unit.x, unit.y) ?: return
+            val attackPath = Astar.path(startTile, from, unit) ?: return
+            if (!g.canMove(unit, attackPath)) return
+            clearHoverPath()
+            hoverPath = attackPath.filterIsInstance<Tile>().toList()
+            return
+        }
 
+        clearHoverPath()
         val start = g.tileAt(unit.x, unit.y) ?: return
         val end = g.tileAt(tx, ty) ?: return
         val path = Astar.path(start, end, unit) ?: return
         if (!g.canMove(unit, path)) return
         hoverPath = path.filterIsInstance<Tile>().toList()
     }
+
+    /** Capture/diagnostic: the window pixel at the centre of tile (x, y). */
+    fun tileCenterScreenForCapture(x: Int, y: Int): Pair<Int, Int> =
+        (screenX(x) + TileManager.TILE_WIDTH / 2) to (screenY(y) + TileManager.TILE_HEIGHT / 2)
+
+    /** Capture/diagnostic: the number of tiles in the current hover path preview. */
+    fun hoverPathSizeForCapture(): Int = hoverPath.size
+
+    /** Capture/diagnostic: whether the hover preview is showing the attack-from-here marker. */
+    fun hoverNomoveForCapture(): Boolean = hoverNomove
+
+    /** Capture/diagnostic: whether the `movement_nomove` marker texture resolved. */
+    fun hoverNomoveTextureForCapture(): Boolean = textures.texture("movement_nomove") != null
 
     /**
      * Draws every queued firing-sheet overlay at its natural cell size, centred on the firing
@@ -492,6 +547,13 @@ class BattalionRenderer(
     private fun drawHoverPath() {
         val g = game
         val unit = (g.activeController as? HumanController)?.selectedUnit ?: return
+
+        if (hoverNomove) {
+            // Attack-from-here marker (SWF `movement_nomove`, drawn for a single-tile path).
+            drawPathMarker("movement_nomove", unit.x, unit.y, 0)
+            drawHoverCursorArrow()
+            return
+        }
         if (hoverPath.size < 2) return
 
         // Start marker on the unit's tile, pointing along the first step.
@@ -514,7 +576,11 @@ class BattalionRenderer(
             }
         }
 
-        // The small arrow follows the cursor.
+        drawHoverCursorArrow()
+    }
+
+    /** The small selectedArrow that rides the cursor during destination selection. */
+    private fun drawHoverCursorArrow() {
         val mouse = SDL.mouseState
         val arrow = textures.texture("selectedArrow") ?: return
         val size = textures.textureSize("selectedArrow") ?: (9 to 10)
@@ -535,7 +601,11 @@ class BattalionRenderer(
             val sheetCfg = textures.atlas.sheets[sheet] ?: run { iter.remove(); continue }
             val cellW = sheetCfg.cellWidth
             val cellH = sheetCfg.cellHeight
-            val frameCount = if (fx.big) 16 else 8
+            // Frame count comes from the SHEET IMAGE, not a constant: the big blast's art is
+            // 224×288 with 56×96 cells (4×3 = 12 frames — the SWF's declared tilesheet size),
+            // not 4×4 of 56×72, which sliced across the art's rows and showed half frames.
+            val sheetH = textures.textureSize(sheetCfg.image)?.second ?: cellH
+            val frameCount = sheetCfg.columns * maxOf(1, sheetH / cellH)
             val waitMs = if (fx.big) 75L else 100L
             val frame = ((game.elapsedMs - fx.startMs) / waitMs).toInt()
             if (frame >= frameCount) {
@@ -628,7 +698,7 @@ class BattalionRenderer(
         /** Panel / recon art drawn from the first frame, warmed in [setupTextures]. */
         private val PANEL_SPRITES = listOf(
             "mainframe", "info_icons", "cursor", "selectedArrow", "unitOptionsButton",
-            "movement_start", "movement_straight", "movement_turn", "movement_end",
+            "movement_start", "movement_straight", "movement_turn", "movement_end", "movement_nomove",
             "recon_unit", "recon_terrain", "recon_none",
             "reconHealth_black", "reconHealth_green", "reconHealth_yellow",
             "reconHealth_orange", "reconHealth_red", "reconHealth_overlay",
@@ -890,9 +960,6 @@ class BattalionRenderer(
     private fun controllerIndex(unit: Unit): Int =
         game.getControllerIndex(unit.controller ?: return -1)
 
-    /** Accent colour for a unit's own team. */
-    private fun unitColor(unit: Unit): SDLColor = teamColor(unit.controller?.team)
-
 
     /** Debug hook (used by the shot diagnostic): a unit's base sprite sheet key. */
     fun debugSpriteKeyFor(name: String, sprite: String): String =
@@ -1092,7 +1159,10 @@ class BattalionRenderer(
         // The end-of-game dialogue plays BEFORE the results screen: while it is on screen
         // (or still sliding), the GameOverMenu stays hidden behind it. The first frame the
         // results screen actually draws, notify the game loop (BGM switch) exactly then.
-        if (game.gameOver && !dialogueVisible) {
+        // Explosions hold it back too: the original's EndGameAction waits for the TweenManager
+        // to drain, which is what keeps a surrendering player's unit blasts (1s) on screen
+        // before the results menu takes over.
+        if (game.gameOver && !dialogueVisible && explosions.isEmpty()) {
             if (!gameOverScreenNotified) {
                 gameOverScreenNotified = true
                 onGameOverScreenShown?.invoke()
@@ -1261,7 +1331,15 @@ class BattalionRenderer(
         if (showQuickHelp) {
             val help = textures.texture("quickHelpInfo")
             if (help != null) {
-                renderer.renderTexture(help, dst = SDLFRect(px.toFloat(), py.toFloat(), panelW.toFloat(), panelH.toFloat()))
+                // The card is 700×600 and the original blits it 1:1 over the whole stage
+                // (IngameOptionsMenu.quickHelpHandler). Scale uniformly to cover this window so
+                // the art keeps its aspect instead of being squashed into the panel rect.
+                val scale = maxOf(WINDOW_W.toFloat() / help.size.x, WINDOW_H.toFloat() / help.size.y)
+                val hw = (help.size.x * scale).toInt()
+                val hh = (help.size.y * scale).toInt()
+                renderer.renderTexture(help, dst = SDLFRect(
+                    ((WINDOW_W - hw) / 2).toFloat(), ((WINDOW_H - hh) / 2).toFloat(),
+                    hw.toFloat(), hh.toFloat()))
             } else {
                 renderer.drawColor = SDLColor(12, 14, 20, 240)
                 renderer.fillRect(SDLRect(px, py, panelW, panelH))
@@ -1269,7 +1347,8 @@ class BattalionRenderer(
                 text.drawCentered("Click any unit to select it; click to move / attack.", WINDOW_W / 2, py + 150, 15, SDLColor(240, 240, 245))
                 text.drawCentered("Click to dismiss.", WINDOW_W / 2, py + 200, 13, SDLColor(180, 185, 195))
             }
-            inGameMenuHits.add("help" to SDLRect(px, py, panelW, panelH))
+            // Any click on the card dismisses it — the original's container covers the stage.
+            inGameMenuHits.add("help" to SDLRect(0, 0, WINDOW_W, WINDOW_H))
         }
 
         // Quit confirmation (SWF ConfirmMenu modal over the whole window): Yes abandons the
@@ -1310,10 +1389,11 @@ class BattalionRenderer(
             }
             quitConfirmHits = buttonDefs.map { Pair(it.second, it.third) }
             // Text sits BELOW the button row (SWF ConfirmMenu textBox under the buttons);
-            // SWF text colour is 0 (black).
-            text.drawCentered("Are you sure you want to quit", WINDOW_W / 2, cy + 108, 15, SDLColor(20, 20, 20))
-            text.drawCentered("without saving?", WINDOW_W / 2, cy + 132, 15, SDLColor(20, 20, 20))
-            text.drawCentered("You will have to restart this mission when you return.", WINDOW_W / 2, cy + 162, 12, SDLColor(20, 20, 20))
+            // SWF text colour is 0 (black). Wording is the original's non-arena quit prompt
+            // (IngameOptionsMenu.quitAndNoSaveHandler).
+            text.drawCentered("Are you sure you want to quit without saving?", WINDOW_W / 2, cy + 100, 15, SDLColor(20, 20, 20))
+            text.drawCentered("You will have to restart this mission when", WINDOW_W / 2, cy + 122, 15, SDLColor(20, 20, 20))
+            text.drawCentered("you return.", WINDOW_W / 2, cy + 144, 15, SDLColor(20, 20, 20))
         }
     }
 
@@ -1473,44 +1553,59 @@ class BattalionRenderer(
     var gameOverFinishHit: SDLRect? = null
         private set
 
-    /** Draws the end-of-game results screen, reproducing the SWF `GameOverMenu`. */
+    private val BOTTOM_PANEL_H = 80
+    private val HEADER_H = 103
+    private val GAME_OVER_ROW_H = 100
+
+    /**
+     * Draws the end-of-game results screen, reproducing the SWF `GameOverMenu`:
+     * the victory/defeat banner, the wood panel with one `GameOverMenuPlayerBox` per team,
+     * the chapter panel (campaigns only), the grey bottom strip and the finish button.
+     */
     private fun drawGameOverMenu() {
         gameOverFinishHit = null
-        // Dim the board.
-        renderer.drawColor = SDLColor(0, 0, 0, 200)
-        renderer.fillRect(SDLRect(0, 0, WINDOW_W, WINDOW_H))
 
-        // Header banner (SWF header = banner_victory / banner_defeat, 700×95).
+        // Header banner (banner_victory / banner_defeat, 700×95) drawn 1:1 like the SWF's
+        // header Bitmap at (0,0); the window is 6px narrower than the original stage, so it is
+        // centred instead of squashed.
         val bannerKey = if (game.playerWon) "banner_victory" else "banner_defeat"
         val banner = textures.texture(bannerKey)
         if (banner != null) {
-            val bw = banner.size.x.toInt()
-            val bh = banner.size.y.toInt()
-            val scale = minOf(WINDOW_W.toFloat() / bw, 1f)
-            val dw = (bw * scale).toInt()
-            val dh = (bh * scale).toInt()
             renderer.renderTexture(
                 banner,
-                dst = SDLFRect(((WINDOW_W - dw) / 2).toFloat(), 0f, dw.toFloat(), dh.toFloat()),
+                dst = SDLFRect(
+                    ((WINDOW_W - banner.size.x) / 2f), 0f,
+                    banner.size.x, banner.size.y),
             )
         }
 
-        // Per-team score rows (SWF GameOverMenuPlayerBox, 100 tall each), like the SWF's
-        // wood BattalionPanel backing below the header.
-        val rowH = 100
-        val rowsTop = 105
-        val teamList = game.controllers.filterNotNull().map { it.team }
-        for ((i, team) in teamList.withIndex()) {
-            val rowY = rowsTop + i * rowH
-            if (rowY + rowH > WINDOW_H - 90) break
-            drawGameOverPlayerBox(rowY, rowH, team)
+        // Bottom strip (SWF bottomPanelBG: 700×80, colour 0x423D3D, at the screen's bottom).
+        renderer.drawColor = SDLColor(0x42, 0x3D, 0x3D)
+        renderer.fillRect(SDLRect(0, WINDOW_H - BOTTOM_PANEL_H, WINDOW_W, BOTTOM_PANEL_H))
+
+        // Wood panel behind the score rows (BattalionPanel(WIDTH, HEIGHT - 103 - 80, WOOD, FRAME2)).
+        drawGameOverPanel(0, HEADER_H, WINDOW_W, WINDOW_H - HEADER_H - BOTTOM_PANEL_H,
+            "frame2", 32, "wood_texture")
+
+        // Chapter panel: the campaign level's name (SWF: BattalionPanel(295,33,SPOTTED,FRAME1)
+        // + an 18px black centred label), hidden outside campaigns.
+        if (game.campaignLevelName.isNotEmpty()) {
+            drawGameOverPanel(0, 0, 295, 33, "frame1", 16, "spotted_texture")
+            text.drawCentered(game.campaignLevelName, 295 / 2, 11, 15, SDLColor(0, 0, 0))
         }
 
-        // Finish (button_finish) at the bottom right (SWF: x = WIDTH - w, y = HEIGHT - h).
+        // One score row per team (SWF sprite at y = HEADER_HEIGHT + 10, boxes 100px apart).
+        for ((i, controller) in game.controllers.filterNotNull().withIndex()) {
+            val rowY = HEADER_H + 10 + i * GAME_OVER_ROW_H
+            if (rowY + 94 > WINDOW_H - BOTTOM_PANEL_H) break
+            drawGameOverPlayerBox(rowY, controller.team)
+        }
+
+        // Finish button (button_finish) at the bottom right corner (SWF: WIDTH - w, HEIGHT - h).
         val finishW = 126
         val finishH = 71
-        val fx = WINDOW_W - finishW - 8
-        val fy = WINDOW_H - finishH - 8
+        val fx = WINDOW_W - finishW
+        val fy = WINDOW_H - finishH
         val tex = textures.texture("button_finish")
         if (tex != null) {
             // TileSheetButton frames: 0=disabled, 1=up, 2=over, 3=down.
@@ -1521,60 +1616,95 @@ class BattalionRenderer(
                 dst = SDLFRect(fx.toFloat(), fy.toFloat(), finishW.toFloat(), finishH.toFloat()),
             )
         }
+
+        // Campaign final victory: the campaign's artwork over everything on the last level
+        // (GameOverMenu shows finalVictoryDisplay, and any click leaves for the main menu).
+        if (game.playerWon && game.campaignIsFinalMission && game.campaignVictoryImage.isNotEmpty()) {
+            val art = textures.texture(game.campaignVictoryImage)
+            if (art != null) {
+                renderer.renderTexture(
+                    art,
+                    dst = SDLFRect(
+                        ((WINDOW_W - art.size.x) / 2f), ((WINDOW_H - art.size.y) / 2f),
+                        art.size.x, art.size.y),
+                )
+                gameOverFinishHit = SDLRect(0, 0, WINDOW_W, WINDOW_H)
+                return
+            }
+        }
+
         gameOverFinishHit = SDLRect(fx, fy, finishW, finishH)
     }
 
-    /** Draws one SWF `GameOverMenuPlayerBox`: team name bar, avatar, score, medal, stats. */
-    private fun drawGameOverPlayerBox(y: Int, rowH: Int, team: cn.enaium.battalion.data.Team) {
+    /**
+     * A `BattalionPanel` (SWF): the fill texture tiled inside, then the nine-slice frame whose
+     * corners keep their native size. The frame extends half its corner beyond the rectangle
+     * (FRAME1: -8; FRAME2: -16/-19, +3/+6 — the original's exact offsets).
+     */
+    private fun drawGameOverPanel(x: Int, y: Int, w: Int, h: Int, frameKey: String, corner: Int, fillKey: String) {
+        val fill = textures.texture(fillKey)
+        if (fill != null) drawTiled(fill, SDLRect(x, y, w, h))
+        val frame = textures.texture(frameKey) ?: return
+        val fw = frame.size.x.toInt()
+        val fh = frame.size.y.toInt()
+        if (fw <= corner * 2 || fh <= corner * 2) return
+        val ox = -corner / 2
+        val oy = if (frameKey == "frame2") -corner / 2 - 3 else -corner / 2
+        val ow = w + corner + (if (frameKey == "frame2") 3 else 0)
+        val oh = h + corner + (if (frameKey == "frame2") 6 else 0)
+        drawTiled9Grid(frame, x + ox, y + oy, ow, oh, corner, corner, fw - corner, fh - corner)
+    }
+
+    /** Draws one SWF `GameOverMenuPlayerBox`: nameplate, avatar, frame, score, medal, stats. */
+    private fun drawGameOverPlayerBox(rowY: Int, team: cn.enaium.battalion.data.Team) {
         team.calculateFinalScore()
         val x = 16
 
-        // frame_classic / frame_blitz background (671×94) scaled to the box width.
+        // The original's z-order: team-colour name bar, avatar, THEN the frame material on top
+        // (nameBG → avatar → frame_classic/blitz). The bar only shows through the frame's
+        // transparent name-plate and avatar windows.
+        val tc = team.color
+        renderer.drawColor = SDLColor(((tc shr 16) and 0xffu).toInt(), ((tc shr 8) and 0xffu).toInt(), (tc and 0xffu).toInt())
+        renderer.fillRect(SDLRect(x + 4, rowY + 4, 136, 24))
+
+        val avatar = avatarCell(team.avatarString.lowercase())
+        if (avatar != null) {
+            drawAvatarCell(avatar, SDLFRect((x + 3).toFloat(), (rowY + 26).toFloat(), 65f, 65f))
+        } else {
+            renderer.drawColor = SDLColor(60, 60, 70)
+            renderer.fillRect(SDLRect(x + 3, rowY + 26, 65, 65))
+        }
+
+        // frame_classic / frame_blitz, drawn 1:1 (671×94) like the SWF bitmap.
         val isClassic = game.mapSettings.map?.isClassic ?: false
         val frameKey = if (isClassic) "frame_classic" else "frame_blitz"
         val frameTex = textures.texture(frameKey) ?: textures.texture(if (isClassic) "frame_blitz" else "frame_classic")
         if (frameTex != null) {
-            val fw = frameTex.size.x.toInt()
-            val fh = frameTex.size.y.toInt()
-            val scale = rowH.toFloat() / fh
             renderer.renderTexture(
                 frameTex,
-                dst = SDLFRect(x.toFloat(), y.toFloat(), (fw * scale).toFloat(), rowH.toFloat()),
+                dst = SDLFRect(x.toFloat(), rowY.toFloat(), frameTex.size.x, frameTex.size.y),
             )
         }
 
-        // Name bar (team colour) + name text.
-        val tc = team.color
-        renderer.drawColor = SDLColor(((tc shr 16) and 0xffu).toInt(), ((tc shr 8) and 0xffu).toInt(), (tc and 0xffu).toInt())
-        renderer.fillRect(SDLRect(x + 4, y + 4, 136, 24))
-        text.draw(team.name, x + 10, y + 6, 14, SDLColor(255, 255, 255))
+        // Team name (SWF DefaultTextField: white, drop shadow) at (10, 5) in the box.
+        shadowedText(team.name, x + 10, rowY + 5, 15)
+        gameOverText(team.name, x + 10, rowY + 5, 15)
 
-        // Avatar (65×65) at the left under the name bar.
-        val avatar = avatarCell(team.avatarString.lowercase())
-        if (avatar != null) {
-            drawAvatarCell(avatar, SDLFRect((x + 3).toFloat(), (y + 26).toFloat(), 65f, 65f))
-        } else {
-            renderer.drawColor = SDLColor(60, 60, 70)
-            renderer.fillRect(SDLRect(x + 3, y + 26, 65, 65))
-        }
-
-        // Score with medal badge (SWF: medal sheet animation to the right of the score).
+        // Medal: thresholds come from the mission's <mapsettings>; every team is graded
+        // (GameOverMenu.pushed): gold/silver by score, bronze for everyone when the player won.
         val silver = game.mapSettings.silverMedalThreshold
         val gold = game.mapSettings.goldMedalThreshold
         val hasMedals = silver > 0 && gold > 0 && gold > silver
-        val medal = if (hasMedals) {
-            val score = team.getStatistic(cn.enaium.battalion.data.Team.FINAL_SCORE)
-            val isWinner = team.active && game.playerWon
-            when {
-                score > gold -> "gold"
-                score > silver -> "silver"
-                isWinner -> "bronze"
-                else -> "none"
-            }
-        } else "none"
-        // Dark text on the light frame_classic/store panel for legibility.
-        text.drawCentered(team.getStatistic(cn.enaium.battalion.data.Team.FINAL_SCORE).toString(),
-            x + 108, y + 48, 16, SDLColor(20, 20, 20))
+        val score = team.getStatistic(cn.enaium.battalion.data.Team.FINAL_SCORE)
+        val medal = if (!hasMedals) "none" else when {
+            score > gold -> "gold"
+            score > silver -> "silver"
+            game.playerWon -> "bronze"
+            else -> "none"
+        }
+        // Score sits at y=45 normally, at y=70 when a medal occupies the space above it.
+        val scoreY = if (hasMedals) 70 else 45
+        gameOverStat(score.toString(), x + 108, rowY + scoreY)
         if (hasMedals) {
             val medalTex = textures.texture("medal")
             if (medalTex != null) {
@@ -1584,25 +1714,52 @@ class BattalionRenderer(
                 renderer.renderTexture(
                     medalTex,
                     src = SDLFRect((frameIdx * 30).toFloat(), 0f, 30f, 30f),
-                    dst = SDLFRect((x + 106 - 15).toFloat(), (y + 52 - 15).toFloat(), 30f, 30f),
+                    dst = SDLFRect((x + 106 - 15).toFloat(), (rowY + 52 - 15).toFloat(), 30f, 30f),
                 )
             }
         }
 
-        // Stat columns (SWF createStatistic x positions).
-        val stats = listOf(
-            "Built" to team.getStatistic(cn.enaium.battalion.data.Team.UNITS_BUILT),
-            "Gnd" to team.getStatistic(cn.enaium.battalion.data.Team.GROUND_UNITS_BUILT),
-            "Sea" to team.getStatistic(cn.enaium.battalion.data.Team.SEA_UNITS_BUILT),
-            "Air" to team.getStatistic(cn.enaium.battalion.data.Team.AIR_UNITS_BUILT),
-            "Spent" to team.getStatistic(cn.enaium.battalion.data.Team.RESOURCES_SPENT),
-            "Capt" to team.getStatistic(cn.enaium.battalion.data.Team.STRUCTURES_CAPTURED),
-            "Lost" to team.getStatistic(cn.enaium.battalion.data.Team.STRUCTURES_LOST),
-        )
-        val statXs = listOf(178, 232, 270, 312, 380, 430, 470)
-        for ((j, s) in stats.withIndex()) {
-            text.drawCentered(s.second.toString(), x + statXs[j], y + 45, 13, SDLColor(20, 20, 20))
+        // Statistic columns at the original's x positions (the frame art carries the labels):
+        // units built, units destroyed per player, resources, and the blitz/classic tail.
+        gameOverStat(team.getStatistic(cn.enaium.battalion.data.Team.UNITS_BUILT).toString(), x + 178, rowY + 45)
+        gameOverStat(team.getStatistic(cn.enaium.battalion.data.Team.GROUND_UNITS_BUILT).toString(), x + 215, rowY + 45)
+        gameOverStat(team.getStatistic(cn.enaium.battalion.data.Team.SEA_UNITS_BUILT).toString(), x + 254, rowY + 45)
+        gameOverStat(team.getStatistic(cn.enaium.battalion.data.Team.AIR_UNITS_BUILT).toString(), x + 293, rowY + 45)
+        gameOverStat(trimStat(team.getStatistic(cn.enaium.battalion.data.Team.RESOURCES_SPENT)), x + 518, rowY + 45)
+        gameOverStat(team.getStatistic(cn.enaium.battalion.data.Team.KILLED_PLAYER1_UNIT).toString(), x + 347, rowY + 45)
+        gameOverStat(team.getStatistic(cn.enaium.battalion.data.Team.KILLED_PLAYER2_UNIT).toString(), x + 386, rowY + 45)
+        gameOverStat(team.getStatistic(cn.enaium.battalion.data.Team.KILLED_PLAYER3_UNIT).toString(), x + 422, rowY + 45)
+        gameOverStat(team.getStatistic(cn.enaium.battalion.data.Team.KILLED_PLAYER4_UNIT).toString(), x + 463, rowY + 45)
+        gameOverStat(trimStat(team.getStatistic(cn.enaium.battalion.data.Team.RESOURCE_DAMAGE_CAUSED)), x + 557, rowY + 45)
+        if (isClassic) {
+            gameOverStat(team.getStatistic(cn.enaium.battalion.data.Team.STRUCTURES_CAPTURED).toString(), x + 612, rowY + 45)
+            gameOverStat(team.getStatistic(cn.enaium.battalion.data.Team.STRUCTURES_LOST).toString(), x + 650, rowY + 45)
+        } else {
+            gameOverStat(trimStat(team.getStatistic(cn.enaium.battalion.data.Team.ORE_EXTRACTED)), x + 612, rowY + 45)
         }
+    }
+
+    /** One centred statistic on the results row (white 15px with the SWF's drop shadow). */
+    private fun gameOverStat(value: String, cx: Int, y: Int) {
+        shadowedText(value, cx, y, 15, centered = true)
+        gameOverText(value, cx, y, 15, centered = true)
+    }
+
+    private fun gameOverText(s: String, x: Int, y: Int, size: Int, centered: Boolean = false) {
+        if (centered) text.drawCentered(s, x, y, size, SDLColor(255, 255, 255))
+        else text.draw(s, x, y, size, SDLColor(255, 255, 255))
+    }
+
+    /** The DropShadowFilter(2) the original puts on every results-screen text field. */
+    private fun shadowedText(s: String, x: Int, y: Int, size: Int, centered: Boolean = false) {
+        val c = SDLColor(0, 0, 0)
+        if (centered) text.drawCentered(s, x + 2, y + 2, size, c) else text.draw(s, x + 2, y + 2, size, c)
+    }
+
+    /** SWF GameOverMenuPlayerBox.trimStat: 4+ digit values are shortened to "12k". */
+    private fun trimStat(value: Int): String {
+        val s = value.toString()
+        return if (s.length >= 4) s.substring(0, s.length - 3) + "k" else s
     }
 
     /** True when the mouse is inside the given rect (used by hover states). */
@@ -2401,16 +2558,15 @@ class BattalionRenderer(
             val texH = size?.second ?: TileManager.TILE_HEIGHT
             val w = minOf(texW, TileManager.TILE_WIDTH)
             val h = texH
-            // Team tint over the structure.
-            val color = if (owner >= 0) teamColor(owner) else SDLColor(255, 255, 255)
-            tex.colorMod = color
-            // Anchored to the bottom of the tile so taller buildings overflow upward.
+            // No team tint: the original palettizes the structure art with the owner's palette,
+            // which is a no-op for the neutral structure art (it carries no palette colours).
+            // Multiplying by the team colour instead turned a red owner's buildings dark maroon
+            // with pink highlights. Ownership shows on the minimap and in the recon strip.
             renderer.renderTexture(
                 tex,
                 src = SDLFRect(0f, 0f, w.toFloat(), h.toFloat()),
                 dst = SDLFRect(px.toFloat(), (py + TileManager.TILE_HEIGHT - h).toFloat(), w.toFloat(), h.toFloat()),
             )
-            tex.colorMod = SDLColor(255, 255, 255)
             return
         }
 
@@ -2432,7 +2588,7 @@ class BattalionRenderer(
         val walk = unitRenderTileH(unit)
         val px = (MAP_X + walk.visX * TileManager.TILE_WIDTH - camPosX).toInt()
         val py = (MAP_Y + walk.visY * TileManager.TILE_HEIGHT - camPosY).toInt()
-        val color = unitColor(unit)
+        val color = rawTeamColor(unit.controller?.team)
 
         val cx = px + TileManager.TILE_WIDTH / 2
         val cy = py + TileManager.TILE_HEIGHT / 2
@@ -2860,12 +3016,29 @@ class BattalionRenderer(
     /** Panel layout constants (SIDE_W = 240). */
     private object Panel {
         const val PAD = 14
-        const val BUTTONS_Y = 184
+
+        // The panel buttons sit where the original puts them (GameManager.as: y=170, x=580/618/
+        // 657), inside the flat green band under the map-name banner.
+        const val BUTTONS_Y = 170
+        const val UNDO_OFFSET = 24
+        const val BUTTON_GAP1 = 10      // 580 + 28 → 618
+        const val BUTTON_GAP2 = 6       // 618 + 33 → 657
         const val BUTTON_W = 66
         const val BUTTON_H = 40
         const val PORTRAIT_OFFSET_X = 6      // right shift of the portrait window
         const val PORTRAIT_OFFSET_Y = -12    // up shift of the portrait window
-        const val END_TURN_Y = 504
+        // GameManager.as: y = BattalionMain.HEIGHT - height - 14 = 600 - 71 - 14 = 515 in the
+        // 600px frame, i.e. the button's bottom edge lands on the frame's gold bottom border.
+        const val END_TURN_Y = 517
+
+        // PlayerPanel.as: 151×27 nameplate, player rows 30px apart starting at stage y=390.
+        // The team fill (from the plate's x=10, 24 tall from y+2) is drawn UNDER the plate so
+        // the material's hollow bar and its 50%-white top strip blend over the faction colour.
+        const val PLAYER_X0 = 27      // name field inside the nameplate
+        const val PLAYER_FILL_X0 = 10 // team fill start (PlayerPanel.as drawRect(10, 2, ...))
+        const val PLAYER_Y0 = 390
+        const val PLAYER_STRIDE = 30
+        const val PLAYER_FILL_H = 24  // PlayerPanel.HEIGHT - 6, drawn from y+2
 
         // The mainframe sprite's hollow minimap window, in source coords (154×600 sheet):
         // the transparent interior spans x≈27..141, y≈25..115.
@@ -2958,8 +3131,12 @@ class BattalionRenderer(
         val x0 = (winX + (winW - mmW) / 2f).toInt()
         val y0 = (winY + (winH - mmH) / 2f).toInt()
 
-        // No solid backdrop: the minimap sits directly on the (hollow) mainframe background,
-        // matching the portrait. Only a thin outline separates it.
+        // Black backdrop inside the hollow (MiniMap.as draws beginFill(0) over its whole
+        // 136×184 sprite before the map bitmap). The frame is painted after this, so only the
+        // transparent interior of the window shows the fill; a map smaller than the window gets
+        // black letterboxing instead of showing the map/game behind the panel.
+        renderer.drawColor = SDLColor(0, 0, 0)
+        renderer.fillRect(SDLRect(winX.toInt(), winY.toInt(), winW.toInt(), winH.toInt()))
 
         for (row in 0 until map.height) {
             for (col in 0 until map.width) {
@@ -2980,12 +3157,23 @@ class BattalionRenderer(
                 }
             }
         }
-        // Units as team-coloured dots.
+        // Units as dots in their faction's own colour (the raw team colour, like the original's
+        // team fills — the lightened display tint used for structure tints would wash a red
+        // faction out to pink).
         for (unit in game.units) {
             if (!unit.isDeployed()) continue
-            renderer.drawColor = unitColor(unit)
+            renderer.drawColor = rawTeamColor(unit.controller?.team)
             renderer.fillRect(SDLRect(
                 x0 + (unit.x * cell).toInt(), y0 + (unit.y * cell).toInt(),
+                kotlin.math.ceil(cell).toInt(), kotlin.math.ceil(cell).toInt()))
+        }
+        // Owned structures in the same colours — the original palettizes its minimap icons per
+        // team, which is how a captured refinery or factory reads as yours.
+        for (structure in game.structures) {
+            val controller = structure.controller ?: continue
+            renderer.drawColor = rawTeamColor(controller.team)
+            renderer.fillRect(SDLRect(
+                x0 + (structure.x * cell).toInt(), y0 + (structure.y * cell).toInt(),
                 kotlin.math.ceil(cell).toInt(), kotlin.math.ceil(cell).toInt()))
         }
         // Viewport box + frame.
@@ -3000,22 +3188,23 @@ class BattalionRenderer(
     /** The three small action buttons in a row (undo move / next unit / options). */
     private fun drawPanelButtons() {
         // Buttons render at their native sprite frame size (28/33×40) so the metal texture
-        // is never distorted; the row is centered in the panel.
+        // is never distorted. Positions are the original's (GameManager.as): the row sits at
+        // y=170 in the 600px frame — the flat green band between the banner and the golden
+        // ornament (rows ≈162..216) — at x = 580 / 618 / 657 of the 700px stage, which this
+        // panel shows from its left edge (stage 556 ↔ SIDE_X), so 24 / 62 / 101 in panel x.
         val h = Panel.BUTTON_H
         val widths = listOf(28, 33, 28)
-        val gap = 10
-        val totalW = widths.sum() + gap * 2
         val y = Panel.BUTTONS_Y
-        // Centred, then shifted right a little so the row reads against the frame's right edge.
-        var x = SIDE_X + (SIDE_W - totalW) / 2 + 6
+        var x = SIDE_X + Panel.UNDO_OFFSET
+
         val human = game.activeController as? HumanController
 
         drawPanelButton(PanelButton.UNDO_MOVE, "undo_move_button", widths[0], h,
             SDLRect(x, y, widths[0], h), disabled = human?.undoAction == null)
-        x += widths[0] + gap
+        x += widths[0] + Panel.BUTTON_GAP1
         drawPanelButton(PanelButton.NEXT_UNIT, "nextUnitButton", widths[1], h,
             SDLRect(x, y, widths[1], h), disabled = !hasSelectableUnit())
-        x += widths[1] + gap
+        x += widths[1] + Panel.BUTTON_GAP2
         drawPanelButton(PanelButton.OPTIONS, "optionsButton", widths[2], h,
             SDLRect(x, y, widths[2], h), disabled = false)
     }
@@ -3086,13 +3275,10 @@ class BattalionRenderer(
             renderer.fillRect(SDLRect(win.x, win.y, win.width, win.height))
         }
 
-        // Turn status under the portrait (over the panel below the window).
-        val name = team.teamName.ifEmpty { team.name }
-        text.drawCentered(name, win.x + win.width / 2, win.y + win.height + 4, 14,
-            teamColor(game.activeController?.team))
-        val status = if (game.activeController is HALController) "AI thinking..." else "Your turn"
-        text.drawCentered(status, win.x + win.width / 2, win.y + win.height + 24, 12,
-            SDLColor(180, 180, 195))
+        // No name/status text under the window: the original has none there (the name lives in
+        // the player list's nameplate), and the strip below the portrait is the mainframe's
+        // transparent hollow, where the label read as see-through and was covered by the
+        // first player row.
     }
 
     /**
@@ -3454,29 +3640,32 @@ class BattalionRenderer(
         val players = game.controllers.filterNotNull().filter { it.team.active }
         val mr = mainframeRect()
         val mfScale = (WINDOW_H - SIDE_Y).toFloat() / 600f
-        val slotsTop = (mr.y + 390 * mfScale).toInt()
-        // Per-item height 24px with a 4px inter-slot gap → 28px stride.
-        val gap = 4
-        val fillH = 24
-        val slotH = fillH + gap
-        // The slot runs to the screen's right edge (WINDOW_W), inset 16px on the left.
-        val slotX = mr.x + mfScale.toInt() + 8
-        val slotRight = WINDOW_W
-        val slotW = slotRight - slotX
+        // AllPlayerPanel.as: panels are PlayerPanel.HEIGHT = 30px apart, the nameplate is
+        // 151×27, and the whole panel starts at stage (549, 390) — the frame's 154px sprite
+        // starts at stage 546, so the plate ends exactly at the panel's right edge.
+        val slotX = WINDOW_W - 151
+        val plate = textures.texture("nameplate")
         players.forEachIndexed { i, c ->
-            val y = slotsTop + i * slotH
+            val y = (mr.y + (Panel.PLAYER_Y0 + i * Panel.PLAYER_STRIDE) * mfScale).toInt()
             val faction = rawTeamColor(c.team)
             val isCurrent = c === game.activeController
-            // Faction-coloured slot background (metal shows through).
-            renderer.drawColor = SDLColor(faction.r, faction.g, faction.b, if (isCurrent) 150 else 110)
-            renderer.fillRect(SDLRect(slotX, y + gap / 2, slotW, fillH))
+            // Faction colour UNDER the nameplate: the plate's bar is a hollow frame (its middle
+            // is fully transparent, its top strip 50% white), so the colour shows through and
+            // blends with the material, medallion included, exactly like the original's fill
+            // beneath it. The fill starts at the plate's x=10 like PlayerPanel.as.
+            val fillX = slotX + Panel.PLAYER_FILL_X0
+            renderer.drawColor = SDLColor(faction.r, faction.g, faction.b)
+            renderer.fillRect(SDLRect(fillX, y + 2, WINDOW_W - fillX, Panel.PLAYER_FILL_H))
+            if (plate != null) {
+                renderer.renderTexture(plate, dst = SDLFRect(slotX.toFloat(), y.toFloat(), 151f, 27f))
+            }
             if (isCurrent) {
                 renderer.drawColor = SDLColor(255, 255, 255)
-                renderer.drawRect(SDLRect(slotX, y + gap / 2, slotW, fillH))
+                renderer.drawRect(SDLRect(fillX, y + 2, WINDOW_W - fillX, Panel.PLAYER_FILL_H))
             }
             val luma = 0.299 * faction.r + 0.587 * faction.g + 0.114 * faction.b
             val fg = if (luma > 150) SDLColor(25, 25, 25) else SDLColor(245, 245, 245)
-            text.draw(c.team.name, slotX + 4, y + (slotH - 13) / 2, 13, fg)
+            text.draw(c.team.name, slotX + Panel.PLAYER_X0 + 3, y + 6, 13, fg)
         }
     }
 

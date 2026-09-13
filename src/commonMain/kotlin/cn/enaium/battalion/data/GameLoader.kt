@@ -58,6 +58,8 @@ object GameLoader {
         val headerBackground: String,
         /** Portrait sheet in `sprites.json` (`"avatars"` = the Vengeance/Ghosts sheet). */
         val avatarSheet: String,
+        /** Final-victory artwork key shown after the last level is won (`""` = none). */
+        val victoryImage: String = "",
     )
 
     /**
@@ -106,15 +108,23 @@ object GameLoader {
             missions = parseCampaign(cfg),
             headerBackground = cfg.headerBackground,
             avatarSheet = cfg.avatarSheet,
+            victoryImage = cfg.victoryImage,
         )
     }
 
-    /** Loads a single-player campaign mission of [campaignId], 0-based. */
+    /**
+     * Loads a single-player campaign mission of [campaignId], 0-based.
+     *
+     * [playerTeam] is the index of the team the player commands (the mission select's faction
+     * picker); when given, that team becomes the human one and the others are AI — the side the
+     * mission author assigned to the player is used otherwise.
+     */
     fun loadCampaignMission(
         assetsDir: String,
         missionIndex: Int,
         campaignId: String = DEFAULT_CAMPAIGN,
         difficultyOverride: Int? = null,
+        playerTeam: Int? = null,
     ): GameManager {
         loadAssets(assetsDir)
         val campaign = findCampaign(assetsDir, campaignId)
@@ -125,10 +135,37 @@ object GameLoader {
         val mission = campaign.missions[missionIndex]
         val mapCfg = findMap(assetsDir, mission.mapId)
             ?: error("GameLoader: could not find map for '${mission.mapId}'")
-        return buildGame(mapCfg, mission.settings,
+        val settings = withPlayerTeam(mission.settings, playerTeam)
+        return buildGame(mapCfg, settings,
             difficultyOverride = difficultyOverride,
             mapUrl = "maps/${mission.mapId}", mapName = mission.mapId.substringAfterLast("/"))
-            .also { it.setCampaignContext("maps/${mission.mapId}", campaign.avatarSheet) }
+            .also {
+                val last = missionIndex == campaign.missions.lastIndex
+                it.setCampaignContext(
+                    "maps/${mission.mapId}", campaign.avatarSheet,
+                    levelName = mission.name,
+                    victoryImage = if (last) campaign.victoryImage else "",
+                    isFinalMission = last,
+                )
+            }
+    }
+
+    /**
+     * The mission settings with [playerTeam] (an index into `settings.teams`) as the only human
+     * team. Used by the mission select's faction picker so either side of a mission can be
+     * played; the mission's own Human/AI assignment is kept when [playerTeam] is null or out of
+     * range.
+     */
+    fun withPlayerTeam(settings: MissionSettingsConfig, playerTeam: Int?): MissionSettingsConfig {
+        if (playerTeam == null || playerTeam !in settings.teams.indices) return settings
+        if (settings.teams[playerTeam].controllerType == "Human") return settings
+        return settings.copy(
+            teams = settings.teams.mapIndexed { index, team ->
+                if (index == playerTeam) team.copy(controllerType = "Human")
+                else if (team.controllerType == "Human") team.copy(controllerType = "AI")
+                else team
+            },
+        )
     }
 
     /** True when a campaign [MissionInfo]'s map file is actually present and loadable. */
@@ -150,7 +187,14 @@ object GameLoader {
         return buildGame(mapCfg, save.settings, save.script,
             mapUrl = "maps/${save.mapId}",
             mapName = save.mapName.ifEmpty { save.mapId.substringAfterLast('/') })
-            .also { it.setCampaignContext("maps/${save.mapId}", save.avatarSheet) }
+            .also {
+                it.setCampaignContext(
+                    "maps/${save.mapId}", save.avatarSheet,
+                    levelName = save.campaignLevelName,
+                    victoryImage = save.campaignVictoryImage,
+                    isFinalMission = save.campaignFinalMission,
+                )
+            }
     }
 
     /** Public access to the parsed [MapConfig] for a mission (used by the menu minimap). */

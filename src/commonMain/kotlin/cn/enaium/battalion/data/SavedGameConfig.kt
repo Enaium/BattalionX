@@ -16,4 +16,10 @@ data class SavedGameConfig(
     val script: MapScriptConfig,
     /** `sprites.json` portrait sheet of the campaign the save was made in. */
     val avatarSheet: String = "avatars",
+    /** Campaign level name shown by the results screen's chapter panel ("" outside campaigns). */
+    val campaignLevelName: String = "",
+    /** Campaign final-victory artwork shown when the last level is won ("" = none). */
+    val campaignVictoryImage: String = "",
+    /** Whether the saved game is the campaign's last level. */
+    val campaignFinalMission: Boolean = false,
 )

@@ -75,6 +75,17 @@ class KillUnitTrigger(val unitX: Int, val unitY: Int, val unit: Unit) : Trigger(
     }
 }
 
+/**
+ * A pure visual explosion at a tile. The original's `GameManager.addExplosion(type, sprite|x, y)`
+ * is called directly (e.g. SurrenderAction blasts every unit and structure of the surrendering
+ * player) and does not imply a kill, so it must not fire kill-unit script conditions.
+ */
+class ExplosionTrigger(val tileX: Int, val tileY: Int, val big: Boolean) : Trigger(NAME) {
+    companion object {
+        const val NAME = "explosion"
+    }
+}
+
 /** A unit was built by a constructor. */
 class BuildUnitTrigger(val unit: Unit) : Trigger(NAME) {
     companion object {

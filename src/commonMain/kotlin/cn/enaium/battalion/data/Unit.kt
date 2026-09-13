@@ -92,8 +92,12 @@ class Unit(
     companion object {
         const val ANIM_DURATION_MS = 650L
 
-        /** How long one tile step of the walk takes (readable, not rushed). */
-        const val MOVE_STEP_MS = 180L
+        /**
+         * How long one tile step of the walk takes. The original tweens a step over 400ms (the
+         * first and last) down to 200ms (the ones in between) — ~250-400ms per tile — so a
+         * vehicle glides rather than darts across the map.
+         */
+        const val MOVE_STEP_MS = 300L
 
         /** Monotonic counter assigning each unit a stable [Unit.walkId]. */
         private var nextWalkId: Int = 0

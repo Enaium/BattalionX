@@ -4,7 +4,7 @@ A Kotlin Multiplatform reimplementation (port) of the Flash game **Battalion Ven
 
 All game logic (rules engine, AI, turn system, data model) lives in `commonMain`; each desktop platform (JVM / macOS / Linux) only provides an entry point and asset loading. Graphics, audio and fonts are SDL3-based (via KMP bindings).
 
-![](https://img.cdn1.vip/i/6a8b1cb818e19_1787501752.webp)
+![](https://img.cdn1.vip/i/6aa6b3928e8df_1789309842.webp)
 
 ## Assets
 
@@ -59,6 +59,12 @@ that generation's own tilesheet:
 The main menu carries the original's button row (Continue / Single Player / Multiplayer /
 Options / **Level Editor**, the editor not being ported), the Bonus Map button top-left and the
 Credits button top-right — the latter opens the scrolling `CreditsMenu` overlay.
+
+Each level can be played from either side: the mission select's faction buttons (the team
+colours flanking the mission arrows) pick which of the mission's teams the player commands —
+left of the left arrow lists the teams (the player's side is boxed, defaulting to the side the
+mission assigns to the player), right of the right arrow lists the opponents. The match always
+opens with the player's turn, whichever side was picked (`GameLoader.withPlayerTeam`).
 
 ### Per-unit configuration (`units/warmachine.json`)
 

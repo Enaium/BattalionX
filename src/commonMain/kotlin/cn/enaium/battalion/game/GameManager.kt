@@ -99,10 +99,31 @@ class GameManager(
     }
 
     /** Records the match's medal key and the portrait sheet of the campaign it belongs to. */
-    fun setCampaignContext(url: String, avatarSheet: String = "avatars") {
+    fun setCampaignContext(
+        url: String,
+        avatarSheet: String = "avatars",
+        levelName: String = "",
+        victoryImage: String = "",
+        isFinalMission: Boolean = false,
+    ) {
         mapUrl = url
         this.avatarSheet = avatarSheet.ifEmpty { "avatars" }
+        campaignLevelName = levelName
+        campaignVictoryImage = victoryImage
+        campaignIsFinalMission = isFinalMission
     }
+
+    /** The campaign level's display name ("Chapter 1: Honor"); empty outside campaigns. */
+    var campaignLevelName: String = ""
+        private set
+
+    /** The campaign's final-victory artwork, shown on the results screen of the last level. */
+    var campaignVictoryImage: String = ""
+        private set
+
+    /** Whether this game is the campaign's last level (SWF `campaign + 1 >= cm.numLevels()`). */
+    var campaignIsFinalMission: Boolean = false
+        private set
 
     val map: GameMap = mapSettings.map!!
     var tileMap: Array<Array<Tile>> = map.generateTileMap()
@@ -114,6 +135,14 @@ class GameManager(
 
     /** True when this game was reconstructed from a saved-game `<script>` snapshot. */
     var wasLoadedFromSavedGame: Boolean = false
+        private set
+
+    /**
+     * The controller whose turn the match opens with: the player's team — team 0 in the
+     * campaigns (their missions list the human first), or the team the faction picker chose.
+     * [cn.enaium.battalion.game.actions.StartGameAction] resets the turn order to this.
+     */
+    var startingController: Int = 0
         private set
 
     /** Total game time elapsed in ms, accumulated in [update]. Used to drive animations. */
@@ -167,6 +196,15 @@ class GameManager(
             controllers.add(c)
         }
         if (numHumans > 1) isSoloGame = false
+
+        // The match opens with the PLAYER's turn (the original's missions always list the human
+        // team first, so this is team 0 unless the faction picker chose another side — the map's
+        // team numbering is tied to the campaign's team order, so the controller order itself
+        // cannot be rearranged; the rotation simply starts at the player).
+        startingController = controllers.indexOfFirst {
+            it?.team?.controllerType.equals("Human", ignoreCase = true)
+        }.coerceAtLeast(0)
+        currentController = startingController
 
         // A saved game supplies its own snapshot: the constructor's `script` carries the
         // rehydration state (turn/round/controller, resources, units, structures), so fresh
@@ -661,6 +699,32 @@ class GameManager(
         return result
     }
 
+    /**
+     * Where [unit] strikes [target] from: its own tile when the target is already in range,
+     * otherwise the nearest reachable tile from which the weapon can fire (empty, or the unit's
+     * own tile). The hover path preview and the click both go through this, so the previewed
+     * walk *is* the walk the click performs (SWF `HumanController.chooseMove` attack branch).
+     */
+    fun attackPositionFor(unit: Unit, target: Unit): Tile? {
+        if (canAttack(unit, target)) return tileAt(unit.x, unit.y)
+        val targetTile = tileAt(target.x, target.y) ?: return null
+        val start = tileAt(unit.x, unit.y) ?: return null
+        // Reachable, free tiles CONNECTED to the target, nearest first — the same rule
+        // unitsAttackableThisTurn applies, and the original's scan of Astar.search(tile,null,unit)
+        // for a node connected to the target. (A weapon-range ring around the target would miss
+        // legal shots, e.g. a shore tile next to an enemy ship.)
+        val candidates = (tilesInMoveRange(unit) + listOfNotNull(start))
+            .distinct()
+            .filter { it.unit == null || it.unit === unit }
+            .sortedBy { kotlin.math.abs(it.x - unit.x) + kotlin.math.abs(it.y - unit.y) }
+        for (t in candidates) {
+            if (!t.isConnected(targetTile)) continue
+            val path = Astar.path(start, t, unit) ?: continue
+            if (canMove(unit, path) && canWeaponsFireAtTarget(unit, target, true, t.x, t.y)) return t
+        }
+        return null
+    }
+
     fun unitsInMoveRange(unit: Unit, startX: Int = -1, startY: Int = -1): List<Unit> {
         val nodes = tilesInMoveRange(unit, startX, startY)
         val result = mutableListOf<Unit>()
@@ -734,6 +798,20 @@ class GameManager(
     // Surrender
     // -----------------------------------------------------------------------
 
+    /**
+     * Surrenders the local (human) player — the SWF's `GameManager.surrenderLocalPlayer`, used by
+     * the in-game menu's "Quit (without saving)". The quit forfeits the mission: the player's
+     * units are destroyed, their structures released, and once one alliance remains the match
+     * ends with [isPlayerWinner] false, so the results screen shows a defeat.
+     */
+    fun surrenderLocalPlayer() {
+        val index = controllers.indexOfFirst { it is HumanController }
+        if (index < 0) return
+        val surrender = SurrenderAction(index)
+        surrender.isNetworked = false
+        ActionManager.add(surrender, toFront = true)
+    }
+
     fun surrender(player: Int) {
         val controller = getController(player) ?: return
         controller.team.active = false
@@ -798,6 +876,12 @@ class GameManager(
     }
     var gameOver: Boolean = false
         private set
+
+    /** Capture/diagnostic hook: forces the results state without ending the match. */
+    fun forceGameOverForCapture(won: Boolean) {
+        playerWon = won
+        gameOver = true
+    }
 
     /**
      * True if the game ended and the human (allied) side won. Set by [endGame].
@@ -873,6 +957,9 @@ class GameManager(
                 events = events,
             ),
             avatarSheet = avatarSheet,
+            campaignLevelName = campaignLevelName,
+            campaignVictoryImage = campaignVictoryImage,
+            campaignFinalMission = campaignIsFinalMission,
         )
     }
     /** Resumes a game that was loaded from a save (mirrors the original's saved-game resume). */

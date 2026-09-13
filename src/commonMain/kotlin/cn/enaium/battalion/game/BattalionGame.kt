@@ -35,6 +35,8 @@ class BattalionGame(
     private val skirmishMap: String? = null,
     /** Campaign generation of [missionIndex] (see [GameLoader.CAMPAIGN_IDS]). */
     private val campaignId: String = GameLoader.DEFAULT_CAMPAIGN,
+    /** Team (index into the mission's teams) the player commands, or null for the mission's own. */
+    private val playerTeamIndex: Int? = null,
 ) {
     private lateinit var window: SDLWindow
     private lateinit var renderer: SDLRenderer
@@ -76,6 +78,7 @@ class BattalionGame(
     /** The previous match's spec, kept so "Restart" re-runs it without the menu. */
     private var lastCampaign: String = GameLoader.DEFAULT_CAMPAIGN
     private var lastMission: Int? = null
+    private var lastPlayerTeam: Int? = null
     private var lastSkirmish: String? = null
     private var lastResume = false
 
@@ -141,6 +144,7 @@ class BattalionGame(
             // Hold the current match spec so "Restart" can re-run it without the menu.
             var campaign = campaignId
             var mission = missionIndex
+            var playerTeam = playerTeamIndex
             var skirmish = skirmishMap
             var resumeSave = false
 
@@ -150,6 +154,7 @@ class BattalionGame(
                 resumeSave = lastResume
                 campaign = lastCampaign
                 mission = lastMission
+                playerTeam = lastPlayerTeam
                 skirmish = lastSkirmish
             } else if (!menuExplicit) {
                 // The mission-select pages reproduce the original SWF's 700×600 CampaignMenu
@@ -170,6 +175,7 @@ class BattalionGame(
                 resumeSave = selection.resume
                 campaign = selection.campaignId ?: campaign
                 mission = selection.missionIndex
+                playerTeam = selection.playerTeam ?: playerTeam
                 skirmish = selection.skirmishMap
             }
 
@@ -186,10 +192,13 @@ class BattalionGame(
                 resumeSave && SaveManager.hasSavedGame() ->
                     GameLoader.loadSavedGame(assetsDir, SaveManager.savedGame!!)
                 skirmish != null -> GameLoader.loadSkirmish(assetsDir, skirmish)
-                else -> GameLoader.loadCampaignMission(assetsDir, mission ?: 0, campaign, difficulty)
+                else -> GameLoader.loadCampaignMission(
+                    assetsDir, mission ?: 0, campaign, difficulty, playerTeam = playerTeam,
+                )
             }
             lastCampaign = campaign
             lastMission = mission
+            lastPlayerTeam = playerTeam
             lastSkirmish = skirmish
             lastResume = resumeSave
 
@@ -676,7 +685,10 @@ class BattalionGame(
                 "quitYes" -> {
                     render.setQuitConfirm(false)
                     render.setInGameMenuOpen(false)
-                    inMatch = false        // abandon match without saving (no defeat screen)
+                    // SWF IngameOptionsMenu.quitAndNoSaveHandler → quit() →
+                    // GameManager.surrenderLocalPlayer(): quitting forfeits the mission (no save),
+                    // so the match ends as a defeat and the results screen shows it.
+                    game?.surrenderLocalPlayer()
                 }
                 "quitNo" -> render.setQuitConfirm(false)
             }
@@ -754,21 +766,8 @@ class BattalionGame(
         target: cn.enaium.battalion.data.Unit,
     ): Pair<Int, Int>? {
         val g = game ?: return null
-        if (g.canAttack(unit, target)) return unit.x to unit.y
-        // Prefer the nearest reachable tile adjacent to / in range of the target.
-        val targetTile = g.tileAt(target.x, target.y) ?: return null
-        val candidates = g.tilesInRange(unit, target.x, target.y)
-            .filter { it.unit == null || it.unit === unit || it.x == unit.x && it.y == unit.y }
-        // rank by distance from the attacker
-        val sorted = candidates.sortedBy { kotlin.math.abs(it.x - unit.x) + kotlin.math.abs(it.y - unit.y) }
-        for (t in sorted) {
-            val path = Astar.path(g.tileAt(unit.x, unit.y)!!, t, unit) ?: continue
-            if (g.canMove(unit, path)) {
-                // Verify from this tile the target is attackable.
-                if (g.canWeaponsFireAtTarget(unit, target, true, t.x, t.y)) return t.x to t.y
-            }
-        }
-        return null
+        val tile = g.attackPositionFor(unit, target) ?: return null
+        return tile.x to tile.y
     }
 
     /** Computes a valid move path from [unit] to tile (tx, ty), or null. */

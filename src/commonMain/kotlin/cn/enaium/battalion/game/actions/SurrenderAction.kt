@@ -4,6 +4,7 @@ import cn.enaium.battalion.game.Action
 import cn.enaium.battalion.game.ActionManager
 import cn.enaium.battalion.game.GameManager
 import cn.enaium.battalion.game.TriggerManager
+import cn.enaium.battalion.game.triggers.ExplosionTrigger
 import cn.enaium.battalion.game.triggers.PlayerTrigger
 
 /**
@@ -60,15 +61,18 @@ class SurrenderAction(private val player: Int) : Action() {
         controller.surrender()
         gameManager.addControllerToSurrenderedList(controller)
 
-        // Destroy all the player's units.
+        // Blast then destroy all the player's units (SWF destroyAllUnits: addExplosion on every
+        // unit before removing it, so a surrender is not a silent disappearance).
         val units = controller.units.toList()
         for (unit in units.reversed()) {
+            TriggerManager.add(ExplosionTrigger(unit.x, unit.y, big = true))
             gameManager.removeUnit(unit)
         }
 
-        // Release the player's structures.
+        // Release the player's structures, with the same explosion at each one.
         val structures = controller.structures.toList()
         for (structure in structures.reversed()) {
+            TriggerManager.add(ExplosionTrigger(structure.x, structure.y, big = true))
             if (structure.terrain.hasModifier("Mission Critical")) {
                 gameManager.removeStructure(structure)
             } else {
