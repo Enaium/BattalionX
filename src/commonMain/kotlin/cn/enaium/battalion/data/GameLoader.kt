@@ -36,7 +36,7 @@ object GameLoader {
     class MissionInfo(
         val number: Int,
         val name: String,
-        /** Map base name resolved under `maps/` (e.g. "Mission_1", "bootcamp/batut_basics"). */
+        /** Map id under `maps/` (e.g. "ep3/Mission_1", "bootcamp/batut_basics"). */
         val mapId: String,
         val settings: MissionSettingsConfig,
         val brief: String = "",
@@ -201,7 +201,7 @@ object GameLoader {
     fun findMapPublic(assetsDir: String, mapId: String): MapConfig? = findMap(assetsDir, mapId)
 
     /**
-     * Loads a skirmish / multiplayer map. [mapFile] is a map base name (e.g. `Mission_1`),
+     * Loads a skirmish / multiplayer map. [mapFile] is a map id (e.g. `ep3/Mission_1`),
      * resolved to `maps/<base>.json`. Player 1 is Human, every other team is AI.
      */
     fun loadSkirmish(assetsDir: String, mapFile: String): GameManager {
@@ -243,7 +243,7 @@ object GameLoader {
         return GameManager(mapSettings, script)
     }
 
-    /** Resolves a map id like `Mission_1` or `bootcamp/batut_basics` to its document. */
+    /** Resolves a map id like `ep3/Mission_1` or `bootcamp/batut_basics` to its document. */
     private fun findMap(assetsDir: String, mapId: String): MapConfig? =
         AssetLoader.map(assetsDir, "$mapId.json")
 }

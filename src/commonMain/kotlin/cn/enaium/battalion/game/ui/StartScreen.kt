@@ -711,8 +711,8 @@ class StartScreen(
 
     /** The main-menu bonus map button: plays the Kongregate bonus map as a skirmish. */
     private fun loadBonusMap() {
-        if (GameLoader.findMapPublic(assetsDir, "Kongregate_Bonus_Map") != null) {
-            chosenSkirmish = "Kongregate_Bonus_Map"
+        if (GameLoader.findMapPublic(assetsDir, "ep3/Kongregate_Bonus_Map") != null) {
+            chosenSkirmish = "ep3/Kongregate_Bonus_Map"
             running = false
         }
     }

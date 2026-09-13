@@ -66,6 +66,35 @@ class SaveManagerTest {
         assertEquals("silver", SaveManager.medalFor("m"))
     }
 
+    /**
+     * Vendetta's maps moved from `maps/` into `maps/ep3/`: a save written before the move must
+     * keep its medals and its saved game, without touching custom maps or other generations.
+     */
+    @Test
+    fun `legacy root map ids migrate into the generation folder`() {
+        // SaveManager.bind expects the ASSETS directory; the store sits beside it.
+        val dir = createTempDir("battalionx-save-migrate")
+        val assets = File(dir, "assets").apply { mkdirs() }
+        File(dir, "battalionx_save.json").writeText(
+            """{"maps/Mission_1_medal":"gold","maps/bootcamp/batut_basics_medal":"silver",""" +
+            """"maps/ep1/Mission_2_medal":"bronze","maps/mymap_medal":"gold",""" +
+            """"saveGame":{"mapId":"Kongregate_Bonus_Map","settings":{},"script":{}}}""",
+        )
+        SaveManager.bind(assets.absolutePath)
+
+        assertEquals("gold", SaveManager.medalFor("maps/ep3/Mission_1"), "legacy medal migrated")
+        assertEquals("none", SaveManager.medalFor("maps/Mission_1"), "legacy key dropped")
+        assertEquals("silver", SaveManager.medalFor("maps/bootcamp/batut_basics"), "bootcamp kept")
+        assertEquals("bronze", SaveManager.medalFor("maps/ep1/Mission_2"), "ep1 kept")
+        assertEquals("gold", SaveManager.medalFor("maps/mymap"), "custom map untouched")
+        assertEquals("ep3/Kongregate_Bonus_Map", SaveManager.savedGame?.mapId, "saved game migrated")
+
+        // The migration is written back, so the next load sees the new keys only.
+        val text = File(dir, "battalionx_save.json").readText()
+        assertTrue(text.contains("maps/ep3/Mission_1_medal"), "new key persisted")
+        assertFalse(text.contains("maps/Mission_1_medal"), "old key gone")
+    }
+
     private fun createTempDir(prefix: String): File {
         val dir = File(System.getProperty("java.io.tmpdir"), prefix)
         dir.mkdirs()

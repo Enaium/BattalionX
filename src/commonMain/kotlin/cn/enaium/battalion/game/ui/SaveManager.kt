@@ -67,6 +67,35 @@ object SaveManager {
         } catch (t: Throwable) {
             null
         }
+        migrateLegacyMapIds()
+    }
+
+    /**
+     * Asset-layout migration: Vengeance's mission documents used to live at the root of `maps/`
+     * (`Mission_N`, `Kongregate_Bonus_Map`) and now sit in `maps/ep3/`. Rewrites those legacy ids
+     * in stored medal keys (`maps/<id>_medal`) and in the saved game, so an existing save keeps
+     * its medals and Continue still resolves the map. Only the known legacy ids are touched —
+     * custom maps and the other generations' folders are left alone.
+     */
+    private fun migrateLegacyMapIds() {
+        fun isLegacy(id: String): Boolean =
+            id == "Kongregate_Bonus_Map" || (id.startsWith("Mission_") &&
+                id.removePrefix("Mission_").toIntOrNull() != null)
+        fun migrateKey(key: String): String {
+            if (!key.startsWith("maps/")) return key
+            val id = key.removePrefix("maps/").removeSuffix("_medal")
+            return if (isLegacy(id)) "maps/ep3/${id}_medal" else key
+        }
+
+        val oldKeys = store.keys.filter { migrateKey(it) != it }
+        for (key in oldKeys) {
+            val newKey = migrateKey(key)
+            if (newKey !in store) store[newKey] = store[key]
+            store.remove(key)
+        }
+        val save = savedGame
+        if (save != null && isLegacy(save.mapId)) savedGame = save.copy(mapId = "ep3/${save.mapId}")
+        if (oldKeys.isNotEmpty()) flush()
     }
 
     /** Writes the whole store to disk (best-effort; a read-only dir disables saving). */

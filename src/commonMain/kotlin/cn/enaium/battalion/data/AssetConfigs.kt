@@ -212,7 +212,7 @@ data class TeamConfig(
 data class CampaignLevelConfig(
     val number: Int,
     val name: String,
-    /** Map base name resolved under `maps/` (e.g. `"Mission_1"`, `"bootcamp/batut_basics"`). */
+    /** Map id under `maps/` (e.g. `"ep3/Mission_1"`, `"bootcamp/batut_basics"`). */
     val map: String,
     val brief: String = "",
     val objective: String = "",

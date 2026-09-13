@@ -24,7 +24,7 @@ assets/
 │   │   ├── nemesis.json         # Battalion Nemesis: 10 missions (maps/ep1/)
 │   │   ├── skirmish.json        # Battalion Skirmish: 1 mission (maps/sk1/)
 │   │   ├── ghosts.json          # Battalion Ghosts: 10 missions (maps/ep2/)
-│   │   ├── vengeance.json       # Battalion Vengeance: 10 missions (maps/Mission_N)
+│   │   ├── vengeance.json       # Battalion Vengeance: 10 missions (maps/ep3/)
 │   │   └── bootcamp.json        # tutorial campaign
 │   └── maps/                    # mission documents, one directory per generation
 ├── images/                      # sprite files, named by key (scorpion.png, sea_0_nw.png)
@@ -118,7 +118,7 @@ entries may override it per entry.
 #   --campaign id   campaign generation for --mission (nemesis | skirmish | ghosts |
 #                   vengeance | bootcamp; default vengeance)
 #   --mission N     mission N of --campaign (0-based, default 0), e.g. "--campaign nemesis --mission 3"
-#   --skirmish x    free-for-all skirmish on assets/data/maps/x.json (name only, e.g. Mission_1)
+#   --skirmish x    free-for-all skirmish on assets/data/maps/x.json (e.g. ep3/Mission_1)
 #   --selftest      load the mission and tick the game loop without a window (startup self-check)
 #   --menushot      capture the main menu and every generation's mission select to PNGs
 ```

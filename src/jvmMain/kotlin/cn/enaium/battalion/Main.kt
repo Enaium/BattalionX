@@ -23,7 +23,7 @@ import io.github.vinceglb.filekit.FileKit
  *                     vengeance | bootcamp; default vengeance).
  *   --mission N       play mission N of `--campaign` (0-based, default 0).
  *   --skirmish file   play a free-for-all skirmish on the map `maps/<file>.json` (name only,
- *                     e.g. `Mission_1`).
+ *                     e.g. `ep3/Mission_1`).
  *   --selftest        load the mission, print diagnostics and tick the game loop without
  *                     opening a window (used to verify data loading / startup).
  *   --unit name       (with `--shot`) select that unit type before capturing, e.g.
@@ -584,7 +584,7 @@ private fun assetreport(dir: String) {
             exercise { GameLoader.loadCampaignMission(dir, m, campaign.id) }
         }
     }
-    exercise { GameLoader.loadSkirmish(dir, "Kongregate_Bonus_Map") }
+    exercise { GameLoader.loadSkirmish(dir, "ep3/Kongregate_Bonus_Map") }
 
     val files = cn.enaium.battalion.util.Fio.listDir("$dir/images").orEmpty()
         .filter { it.endsWith(".png") || it.endsWith(".jpg") || it.endsWith(".jpeg") }

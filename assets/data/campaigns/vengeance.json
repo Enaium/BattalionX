@@ -3,7 +3,7 @@
     {
       "number": 0,
       "name": "Chapter 1: Honor",
-      "map": "Mission_1",
+      "map": "ep3/Mission_1",
       "brief": "The final campaign begins. Commander Yurik leads the proud Dragoon warriors in an invasion of the Akadian homeland to stop General Durand once and for all. For now, the soldiers must contend with the remnants of Durand's fleeing troops.",
       "objective": "Destroy the enemy units.",
       "settings": {
@@ -43,7 +43,7 @@
     {
       "number": 1,
       "name": "Chapter 2: Arm's Length",
-      "map": "Mission_2",
+      "map": "ep3/Mission_2",
       "brief": "The Dragoons occupy a fortified position with the awesome power of their long-range weaponry. Knowing their chances are slim, Durand sends his forces rushing into to assault the Dragoon position while he continues his own retreat.",
       "objective": "Do the stuff the brief told you to do... quick... smart...",
       "settings": {
@@ -83,7 +83,7 @@
     {
       "number": 2,
       "name": "Chapter 3: Air to the Throne",
-      "map": "Mission_3",
+      "map": "ep3/Mission_3",
       "brief": "It appears that the Akadians are finally ready to present Command Yurik with the challenge he has been seeking. A squad of aerial and long-range units confront the Dragoons.",
       "objective": "Do the stuff the brief told you to do... quick... smart...",
       "settings": {
@@ -123,7 +123,7 @@
     {
       "number": 3,
       "name": "Chapter 4: Arachnaphobia",
-      "map": "Mission_4",
+      "map": "ep3/Mission_4",
       "brief": "The Dragoon Army is now firmly within Akadian territory. Trying to make their way through a mountain pass, the Dragoons are met with a series of Akadian barricades meant to slow their progress. A sure sign that an ambush is coming.",
       "objective": "Do the stuff the brief told you to do... quick... smart...",
       "settings": {
@@ -163,7 +163,7 @@
     {
       "number": 4,
       "name": "Chapter 5: Bull Horns",
-      "map": "Mission_5",
+      "map": "ep3/Mission_5",
       "brief": "Captain Tucker and the Dragoons have come across an Akadian War Machine outpost entrenched in the mountains. They'll have to contend with the War Machines or face constant attacks agains their rear flank as they advance. Supported by rocket trucks, scorpions and spider tanks... these War Machines aren't going to go down easy.",
       "objective": "Do the stuff the brief told you to do... quick... smart...",
       "settings": {
@@ -205,7 +205,7 @@
     {
       "number": 5,
       "name": "Chapter 6: Ghosts",
-      "map": "Mission_6",
+      "map": "ep3/Mission_6",
       "brief": "After scouts report that a large radar signature is moving towards the Dragoons via the nearby Khandar River, naval units scramble to deal with a potential assault from the river. What they find is an Akadian assault, but not the kind expected.",
       "objective": "Do the stuff the brief told you to do... quick... smart...",
       "settings": {
@@ -245,7 +245,7 @@
     {
       "number": 6,
       "name": "Chapter 7: Welcoming Committee",
-      "map": "Mission_7",
+      "map": "ep3/Mission_7",
       "brief": "The Dragoon forces will have to ford the Khandar River, which bends to block their advance. Circumventing the river would require crossing the mountains, which the Dragoons cannot do without abandoning all their motorized units. Durand is clearly aware of this barrier and has a contingent of War Machines waiting for the Dragoons on the other side of the the river.",
       "objective": "Do the stuff the brief told you to do... quick... smart...",
       "settings": {
@@ -285,7 +285,7 @@
     {
       "number": 7,
       "name": "Chapter 8: Argent's Return",
-      "map": "Mission_8",
+      "map": "ep3/Mission_8",
       "brief": "True to his word, Durand has another obstacle in store for the Dragoons. As the army advances into a clearing, they are met by a sizable Akadian ambush. Mountains and barricades protect a wide array of Akadian units, presenting a formidable challenge. Unfortunately for Captain Argent, this is exactly when he manages to catch up to his allies.",
       "objective": "Do the stuff the brief told you to do... quick... smart...",
       "settings": {
@@ -325,7 +325,7 @@
     {
       "number": 8,
       "name": "Chapter 9: The Pass",
-      "map": "Mission_9",
+      "map": "ep3/Mission_9",
       "brief": "The main Dragoon force is nearing Durand's central fortress. The assault looks to be nearly impossible, with seemingly endless Akadian forces defending all routes to approach the fortress. Commander Yurik, ever stoic, is ready to advance in the face of insurmountable odds. Lieutenant Hayne, only slightly less unhinged, returns with an alternative for the Dragoon force.",
       "objective": "Do the stuff the brief told you to do... quick... smart...",
       "settings": {
@@ -365,7 +365,7 @@
     {
       "number": 9,
       "name": "Chapter 10: Vengeance",
-      "map": "Mission_10",
+      "map": "ep3/Mission_10",
       "brief": "Tucker, Yurik and Hayne prepare to assault the last stronghold of General Durand. The General's position is defended with all the units he could muster. It's an impressive force, and the battle looks to be a difficult one, especially since Durand has somehow gotten his hands on a key bit of Dragoon technology.",
       "objective": "Do the stuff the brief told you to do... quick... smart...",
       "settings": {
