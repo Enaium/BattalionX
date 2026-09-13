@@ -321,8 +321,8 @@
       }
     }
   ],
-  "levelKey": "bootcamp_level",
-  "completeKey": "bootcamp_complete",
   "victoryImage": "",
-  "headerBackground": "default_header"
+  "headerBackground": "default_header",
+  "displayName": "Boot Camp",
+  "avatarSheet": "avatars"
 }

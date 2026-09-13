@@ -14,4 +14,6 @@ data class SavedGameConfig(
     val settings: MissionSettingsConfig,
     /** Rehydration state: turn/round/controller, resources, units, structures, events. */
     val script: MapScriptConfig,
+    /** `sprites.json` portrait sheet of the campaign the save was made in. */
+    val avatarSheet: String = "avatars",
 )

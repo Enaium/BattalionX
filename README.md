@@ -21,9 +21,12 @@ assets/
 │   ├── ballistics.json          # weapon-type x armor-type damage multipliers
 │   ├── sprites.json             # sheet slicing: regions/grids for avatars, explosions, cursor
 │   ├── campaigns/
-│   │   ├── campaign.json        # Ep3 campaign: mission list, briefs, medals, teams
+│   │   ├── nemesis.json         # Battalion Nemesis: 10 missions (maps/ep1/)
+│   │   ├── skirmish.json        # Battalion Skirmish: 1 mission (maps/sk1/)
+│   │   ├── ghosts.json          # Battalion Ghosts: 10 missions (maps/ep2/)
+│   │   ├── vengeance.json       # Battalion Vengeance: 10 missions (maps/Mission_N)
 │   │   └── bootcamp.json        # tutorial campaign
-│   └── maps/                    # mission documents: Mission_1..10, bootcamp/, Kongregate_Bonus_Map
+│   └── maps/                    # mission documents, one directory per generation
 ├── images/                      # sprite files, named by key (scorpion.png, sea_0_nw.png)
 └── sounds/                      # sound effects + BGM, named by event name (ExplosionSound.mp3)
 ```
@@ -31,6 +34,31 @@ assets/
 Every document is parsed with kotlinx.serialization against the `@Serializable` config models
 in `data/AssetConfigs.kt` — there is no XML or XML-shaped JSON anywhere in the pipeline.
 Unknown fields are ignored, so mods can annotate configs freely.
+
+### Game generations
+
+The mission select lists every game generation as one button per campaign document, in release
+order: **Nemesis** (Battalion 1), **Skirmish** (Battalion Skirmish at Daul), **Ghosts**
+(Battalion Ep2), **Vengeance** (Battalion Ep3) and the **Boot Camp** tutorial. Any level is
+playable directly — there is no unlock gate; the medal row only shows the medals already earned.
+
+Levels are the generations' own maps (converted 1:1 from the original `.yimf` documents: terrain
+grid, structures, starting units, scripted events and dialogue). Their vehicles, troops and
+structures are drawn with Vengeance's art, while generation-exclusive art — the portraits used
+by dialogue, the side panel and the results screen, plus the mission-select header — comes from
+that generation's own tilesheet:
+
+| Campaign (`campaigns/<id>.json`) | Header art | Portrait sheet (`sprites.json`) |
+| --- | --- | --- |
+| `nemesis` | `campaign_header_jungle` | `avatars_nemesis` (150×150 cells) |
+| `skirmish` | `skirmish_campaign_header` | `avatars_skirmish` (130×150 cells) |
+| `ghosts` | `ep2_campaign_header` | `avatars` (shared with Vengeance) |
+| `vengeance` | `ep3_campaign_header` | `avatars` |
+| `bootcamp` | `default_header` | `avatars` |
+
+The main menu carries the original's button row (Continue / Single Player / Multiplayer /
+Options / **Level Editor**, the editor not being ported), the Bonus Map button top-left and the
+Credits button top-right — the latter opens the scrolling `CreditsMenu` overlay.
 
 ### Per-unit configuration (`units/warmachine.json`)
 
@@ -67,8 +95,11 @@ entries may override it per entry.
   a map palette entry.
 - **New terrain / modifier / sound**: same — one file per item.
 - **New map**: drop `maps/mymap.json`; add it to a campaign's `levels` to make it playable.
-- `./gradlew jvmRun --args="assets --assetreport"` lists every sprite the game requests and
-  every image that was never used (a mod checklist).
+- **New generation / level list**: drop `campaigns/mygame.json` (+ its maps) and add its id to
+  `GameLoader.CAMPAIGN_IDS` to give it a button in the mission select.
+- `./gradlew jvmRun --args="assets --assetreport"` drives every campaign, missions select page
+  and menu, then lists every sprite the game requests and every image that was never used
+  (a mod checklist).
 
 ## Running
 
@@ -78,9 +109,12 @@ entries may override it per entry.
 
 # Arguments
 #   <assetsDir>     the asset directory (default: assets)
-#   --mission N     campaign mission N (0-based, default 0)
+#   --campaign id   campaign generation for --mission (nemesis | skirmish | ghosts |
+#                   vengeance | bootcamp; default vengeance)
+#   --mission N     mission N of --campaign (0-based, default 0), e.g. "--campaign nemesis --mission 3"
 #   --skirmish x    free-for-all skirmish on assets/data/maps/x.json (name only, e.g. Mission_1)
 #   --selftest      load the mission and tick the game loop without a window (startup self-check)
+#   --menushot      capture the main menu and every generation's mission select to PNGs
 ```
 
 Other targets:
@@ -106,6 +140,10 @@ src/
 
 ## Notes
 
+- The Mission select loads one campaign document per game generation (`campaigns/nemesis.json`,
+  `skirmish.json`, `ghosts.json`, `vengeance.json`, `bootcamp.json`); each level list is switched
+  with the buttons above the action row. Every level is selectable from the start — winning one
+  no longer unlocks the next, it only records its medal.
 - The unpacked assets include **decompiled ActionScript sources** under `scripts/com/gamedozer/battalion/`
   (the original game logic: `GameManager`, controllers, HAL/AI, actions, triggers, UI), plus third-party
   libraries (flintparticles, Tweener, ElectroServer). The top-level `scripts/*.as` files are mostly

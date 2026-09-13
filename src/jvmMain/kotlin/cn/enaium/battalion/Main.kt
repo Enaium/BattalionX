@@ -13,17 +13,21 @@ import io.github.vinceglb.filekit.FileKit
  * JVM entry point.
  *
  * Usage:
- *   ./gradlew jvmRun --args="<assetsDir> [--mission N] [--skirmish map] [--selftest]"
+ *   ./gradlew jvmRun --args="<assetsDir> [--campaign id] [--mission N] [--skirmish map] [--selftest]"
  *
  *   <assetsDir>       the project's asset directory (default `assets`): JSON data under
  *                     `data/` (terrain/units/modifiers/ballistics/campaigns/maps), sprites
  *                     under `images/`, sounds under `sounds/`. Mods drop files into these
  *                     folders; see GameLoader for the data formats.
- *   --mission N       play campaign mission N (0-based, default 0).
+ *   --campaign id     campaign generation for `--mission` (nemesis | skirmish | ghosts |
+ *                     vengeance | bootcamp; default vengeance).
+ *   --mission N       play mission N of `--campaign` (0-based, default 0).
  *   --skirmish file   play a free-for-all skirmish on the map `maps/<file>.json` (name only,
  *                     e.g. `Mission_1`).
  *   --selftest        load the mission, print diagnostics and tick the game loop without
  *                     opening a window (used to verify data loading / startup).
+ *   --unit name       (with `--shot`) select that unit type before capturing, e.g.
+ *                     `--shot --unit Warmachine`.
  *   --assetreport     drive every mission/menu and report which requested sprites have no
  *                     backing file under `assets/images/` (verifies the asset set is complete).
  */
@@ -32,6 +36,9 @@ fun main(args: Array<String>) {
 
     val dir = args.firstOrNull { !it.startsWith("--") } ?: "assets"
     val selftest = args.contains("--selftest")
+    val campaignArg = args.indexOf("--campaign")
+    val campaign = if (campaignArg >= 0 && campaignArg + 1 < args.size) args[campaignArg + 1]
+    else GameLoader.DEFAULT_CAMPAIGN
     val missionArg = args.indexOf("--mission")
     val mission = if (missionArg >= 0 && missionArg + 1 < args.size) args[missionArg + 1].toIntOrNull() ?: 0 else 0
     val skirmishArg = args.indexOf("--skirmish")
@@ -42,19 +49,19 @@ fun main(args: Array<String>) {
         return
     }
     if (args.contains("--diag")) {
-        diag(dir, mission, skirmish)
+        diag(dir, mission, skirmish, campaign)
         return
     }
     if (args.contains("--movetest")) {
-        movetest(dir, mission, skirmish)
+        movetest(dir, mission, skirmish, campaign)
         return
     }
     if (args.contains("--facetest")) {
-        facetest(dir, mission, skirmish)
+        facetest(dir, mission, skirmish, campaign)
         return
     }
     if (args.contains("--texcheck")) {
-        texcheck(dir, mission, skirmish)
+        texcheck(dir, mission, skirmish, campaign)
         return
     }
     if (args.contains("--imgcheck")) {
@@ -66,7 +73,9 @@ fun main(args: Array<String>) {
         return
     }
     if (args.contains("--shot")) {
-        shot(dir, mission, skirmish)
+        val unitArg = args.indexOf("--unit")
+        val unitName = if (unitArg >= 0 && unitArg + 1 < args.size) args[unitArg + 1] else null
+        shot(dir, mission, skirmish, campaign, unitName)
         return
     }
     if (args.contains("--menushot")) {
@@ -77,25 +86,32 @@ fun main(args: Array<String>) {
         carddiag(dir)
         return
     }
-    val bootcampArg = args.indexOf("--bootselftest")
-    val bootMission = if (bootcampArg >= 0) args[bootcampArg + 1].toIntOrNull() ?: 0 else -1
-    if (bootMission >= 0) {
-        bootselftest(dir, bootMission)
-        return
-    }
     if (selftest) {
-        selftest(dir, mission, skirmish)
+        selftest(dir, mission, skirmish, campaign)
         return
     }
     // The game shows the start menu by default; only a real --mission/--skirmish flag pins a
     // specific mission (passing a non-null default would skip the menu and jump into mission 0).
     val playMission = if (missionArg >= 0) mission else null
-    BattalionGame(dir, playMission, skirmish).run()
+    BattalionGame(dir, playMission, skirmish, campaign).run()
 }
 
 /**
- * Diagnostic: renders one frame of each StartScreen menu (main / campaign / bootcamp) and
- * saves PNGs so the menu presentation can be verified headlessly.
+ * Directory the `--shot` / `--menushot` / `--carddiag` diagnostics write their PNGs to.
+ */
+private val SHOT_DIR: String = System.getProperty("java.io.tmpdir").trimEnd('/') + "/battalionx-shots"
+
+/** Saves a diagnostic capture to [SHOT_DIR]. */
+private fun saveShot(surf: cn.enaium.sdl.SDLSurface, name: String) {
+    java.io.File(SHOT_DIR).mkdirs()
+    val path = "$SHOT_DIR/$name.png"
+    cn.enaium.sdl.image.SDLImage.savePNG(surf, path)
+    println("saved $path")
+}
+
+/**
+ * Diagnostic: renders one frame of each StartScreen menu (main, every campaign generation's,
+ * boot camp and options) and saves PNGs so the menu presentation can be verified headlessly.
  */
 private fun menushot(dir: String) {
     SDL.setMainReady()
@@ -105,23 +121,48 @@ private fun menushot(dir: String) {
     val text = cn.enaium.battalion.game.ui.TextRenderer(r); text.load()
     val tm = cn.enaium.battalion.game.ui.TextureManager(dir, r); tm.load()
 
-    fun snap(screen: String, name: String) {
+    fun snap(
+        screen: String,
+        name: String,
+        prep: (cn.enaium.battalion.game.ui.StartScreen) -> Unit = {},
+    ) {
         val start = cn.enaium.battalion.game.ui.StartScreen(dir, r, text, tm)
         start.setScreenForCapture(screen)
+        prep(start)
         // Draw several frames with present() + a delay so the backbuffer delivers the current
         // frame (renderReadPixels lags one present otherwise).
         for (i in 1..4) { start.renderFrameForCapture(); SDL.delay(20) }
         val surf = r.renderReadPixels(null)
         if (surf != null) {
-            cn.enaium.sdl.image.SDLImage.savePNG(surf, "/Users/enaium/.claude/jobs/19cccc80/tmp/$name.png")
-            println("saved /Users/enaium/.claude/jobs/19cccc80/tmp/$name.png")
+            saveShot(surf, name)
             surf.close()
         } else println("capture failed for $name")
     }
 
     snap("main", "menu_main")
-    snap("campaign", "menu_campaign")
-    snap("bootcamp", "menu_bootcamp")
+    snap("credits", "menu_credits")
+    // The credits roll starts below the panel; capture it mid-scroll too.
+    snap("credits", "menu_credits_roll") { it.setCreditsScrollForCapture(150f) }
+    snap("credits", "menu_credits_port") { it.setCreditsScrollForCapture(850f) }
+    snap("options", "menu_options")
+    snap("options", "menu_options_confirm") { it.setConfirmingClearForCapture(true) }
+    for (id in GameLoader.CAMPAIGN_IDS + GameLoader.BOOTCAMP_CAMPAIGN) {
+        snap("campaign:$id", "menu_$id")
+    }
+    // Switch generations through the real click path: park the pointer on the "Nemesis"
+    // button of the Vengeance page and click it, then capture the resulting list.
+    val start = cn.enaium.battalion.game.ui.StartScreen(dir, r, text, tm)
+    start.setScreenForCapture("campaign:vengeance")
+    for (i in 1..4) { start.renderFrameForCapture(); SDL.delay(20) }
+    val clickX = cn.enaium.battalion.game.ui.StartScreen.SWITCH_ROW_MARGIN + 40
+    val clickY = cn.enaium.battalion.game.ui.StartScreen.SWITCH_ROW_Y + 17
+    start.clickForCapture(clickX, clickY)
+    for (i in 1..4) { start.renderFrameForCapture(); SDL.delay(20) }
+    val afterClick = r.renderReadPixels(null)
+    if (afterClick != null) {
+        saveShot(afterClick, "menu_click_switch")
+        afterClick.close()
+    } else println("capture failed for menu_click_switch")
 
     tm.close(); text.close(); r.close(); win.close(); SDL.quit()
 }
@@ -150,11 +191,11 @@ private fun eventsDiag() {
  * Diagnostic: loads the game, resolves terrain textures, and reports which terrain swatches
  * failed to resolve to an image. Exits without opening a window.
  */
-private fun diag(dir: String, mission: Int, skirmish: String?) {
+private fun diag(dir: String, mission: Int, skirmish: String?, campaign: String) {
     val game = if (skirmish != null) {
         GameLoader.loadSkirmish(dir, skirmish)
     } else {
-        GameLoader.loadCampaignMission(dir, mission)
+        GameLoader.loadCampaignMission(dir, mission, campaign)
     }
     SDL.setMainReady()
     SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)
@@ -202,11 +243,11 @@ private fun diag(dir: String, mission: Int, skirmish: String?) {
  * select a unit, then try to path it to each of its four orthogonal neighbours. Prints the
  * result so we can see exactly where the click-to-move path fails (Astar vs canMove vs action).
  */
-private fun movetest(dir: String, mission: Int, skirmish: String?) {
+private fun movetest(dir: String, mission: Int, skirmish: String?, campaign: String) {
     val game = if (skirmish != null) {
         GameLoader.loadSkirmish(dir, skirmish)
     } else {
-        GameLoader.loadCampaignMission(dir, mission)
+        GameLoader.loadCampaignMission(dir, mission, campaign)
     }
     game.startGame()
     for (i in 1..30) game.update(16)
@@ -234,11 +275,11 @@ private fun movetest(dir: String, mission: Int, skirmish: String?) {
  * orthogonal neighbours (restoring the unit afterwards) and prints the facing that movement
  * produced, so we can verify units turn to face the direction they move.
  */
-private fun facetest(dir: String, mission: Int, skirmish: String?) {
+private fun facetest(dir: String, mission: Int, skirmish: String?, campaign: String) {
     val game = if (skirmish != null) {
         GameLoader.loadSkirmish(dir, skirmish)
     } else {
-        GameLoader.loadCampaignMission(dir, mission)
+        GameLoader.loadCampaignMission(dir, mission, campaign)
     }
     game.startGame()
     for (i in 1..30) game.update(16)
@@ -293,9 +334,9 @@ private fun facetest(dir: String, mission: Int, skirmish: String?) {
  * Diagnostic: for every deployed unit, resolve its sprite texture and report whether it loaded.
  * Verifies the unit sprites actually render (vs. the colored-square fallback).
  */
-private fun texcheck(dir: String, mission: Int, skirmish: String?) {
+private fun texcheck(dir: String, mission: Int, skirmish: String?, campaign: String) {
     val game = if (skirmish != null) GameLoader.loadSkirmish(dir, skirmish)
-               else GameLoader.loadCampaignMission(dir, mission)
+               else GameLoader.loadCampaignMission(dir, mission, campaign)
     SDL.setMainReady()
     SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)
     val win = SDL.createWindow("texcheck", 800, 590)
@@ -391,7 +432,9 @@ private fun assetreport(dir: String) {
         if (confirm) start.setConfirmingClearForCapture(true)
         for (i in 1..4) { start.renderFrameForCapture(); SDL.delay(10) }
     }
-    snap("main"); snap("campaign"); snap("bootcamp")
+    snap("main")
+    snap("credits")
+    for (id in GameLoader.CAMPAIGN_IDS + GameLoader.BOOTCAMP_CAMPAIGN) snap("campaign:$id")
     snap("options"); snap("options", confirm = true)
 
     fun exercise(load: () -> cn.enaium.battalion.game.GameManager) {
@@ -513,11 +556,12 @@ private fun assetreport(dir: String) {
         render.render()
     }
 
-    for (m in 0 until (GameLoader.findCampaign(dir)?.size ?: 0)) {
-        exercise { GameLoader.loadCampaignMission(dir, m) }
-    }
-    for (m in 0 until (GameLoader.findBootcamp(dir)?.size ?: 0)) {
-        exercise { GameLoader.loadBootcampMission(dir, m) }
+    // Every campaign generation's missions, plus the boot camp tutorial and the bonus map.
+    for (campaign in GameLoader.findCampaigns(dir) +
+        listOfNotNull(GameLoader.findCampaign(dir, GameLoader.BOOTCAMP_CAMPAIGN))) {
+        for (m in campaign.missions.indices) {
+            exercise { GameLoader.loadCampaignMission(dir, m, campaign.id) }
+        }
     }
     exercise { GameLoader.loadSkirmish(dir, "Kongregate_Bonus_Map") }
 
@@ -594,7 +638,7 @@ private fun carddiag(dir: String) {
     }
     val surf = r.renderReadPixels(null)
     if (surf != null) {
-        cn.enaium.sdl.image.SDLImage.savePNG(surf, "/Users/enaium/.claude/jobs/19cccc80/tmp/carddiag.png")
+        saveShot(surf, "carddiag")
         surf.close()
     }
     tm.close(); r.close(); win.close(); SDL.quit()
@@ -605,9 +649,9 @@ private fun carddiag(dir: String) {
  * (RGB/BGR, shore strips, unit facing) and simulates a click-to-move to verify movement.
  * Saves PNGs to the job tmp dir.
  */
-private fun shot(dir: String, mission: Int, skirmish: String?) {
+private fun shot(dir: String, mission: Int, skirmish: String?, campaign: String, unitName: String?) {
     val game = if (skirmish != null) GameLoader.loadSkirmish(dir, skirmish)
-                else GameLoader.loadCampaignMission(dir, mission)
+                else GameLoader.loadCampaignMission(dir, mission, campaign)
     SDL.setMainReady()
     SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)
     val win = SDL.createWindow("shot", 800, 602)
@@ -622,16 +666,18 @@ private fun shot(dir: String, mission: Int, skirmish: String?) {
     dia.play("startGame")
 
     fun snap(name: String) {
-        for (i in 1..3) {
+        // A few frames, not one: renderReadPixels returns the frame before the last present,
+        // so the extra frames keep each capture showing the state it was taken for.
+        for (i in 1..5) {
             game.update(16)
             try { renderer.render() } catch (t: Throwable) {
                 println("RENDER THREW during $name: $t"); t.printStackTrace(); break
             }
+            SDL.delay(16)
         }
         val surf = r.renderReadPixels(null)
         if (surf != null) {
-            cn.enaium.sdl.image.SDLImage.savePNG(surf, "/Users/enaium/.claude/jobs/19cccc80/tmp/$name.png")
-            println("saved /Users/enaium/.claude/jobs/19cccc80/tmp/$name.png")
+            saveShot(surf, name)
             surf.close()
         } else {
             println("capture failed for $name")
@@ -640,20 +686,41 @@ private fun shot(dir: String, mission: Int, skirmish: String?) {
 
     // Let the dialogue slide-in (500ms) complete so the panel is fully on-screen.
     for (i in 1..40) { game.update(16); renderer.render() }
+    println("STARTUP camera=${renderer.cameraX},${renderer.cameraY} target=${game.cameraTarget?.unitData?.name}@${game.cameraTarget?.x},${game.cameraTarget?.y}")
 
     // Shot 1: after startup, dialogue still active (fully slid in, typing).
     snap("shot1_startup")
 
     // Dismiss dialogue.
     while (dia.isActive()) dia.advance()
+    // The game routes the script's highlight / scroll responses to the camera while the brief
+    // plays (BattalionGame's script-feedback hook) and re-focuses the player's force once it is
+    // dismissed. Simulate that pair here to check the ordering: a scripted "look over there"
+    // must not leave the player staring at the wrong side of the map when they gain control.
+    renderer.centerCameraOn(10, 6)
+    println("SCRIPT SNAP camera=${renderer.cameraX},${renderer.cameraY}")
+    game.focusActiveForce()
+    // The opening pan must be free of frame hitches (textures are prewarmed by setupTextures).
+    var worstFrameMs = 0L
+    for (i in 1..120) {
+        val t0 = System.nanoTime()
+        game.update(16); renderer.render()
+        val ms = (System.nanoTime() - t0) / 1_000_000
+        if (ms > worstFrameMs) worstFrameMs = ms
+    }
+    println("STARTUP PAN worst frame ${worstFrameMs}ms")
+    println("AFTER BRIEF camera=${renderer.cameraX},${renderer.cameraY} target=${game.cameraTarget?.unitData?.name}@${game.cameraTarget?.x},${game.cameraTarget?.y}")
 
     // Shot 2: map rendered, no selection.
     snap("shot2_map")
 
-    // Simulate click-to-move: select the human's first unit, move it to its right neighbour.
+    // Simulate click-to-move: select the human's first unit (or the one named by --unit),
+    // move it to its right neighbour.
     val human = game.activeController as? cn.enaium.battalion.game.controllers.HumanController
     if (human != null) {
-        val unit = game.units.firstOrNull { it.controller === human && it.isDeployed() }
+        val unit = game.units.firstOrNull {
+            it.controller === human && it.isDeployed() && (unitName == null || it.unitData.name == unitName)
+        }
         if (unit != null) {
             human.selectUnit(unit)
             snap("shot3_selected")
@@ -739,6 +806,64 @@ private fun shot(dir: String, mission: Int, skirmish: String?) {
             println("no Constructor unit type in roster for build-page verification")
         }
     }
+    // Camera pan check: aim the view at the furthest unit with a hold that expires almost
+    // immediately — the pan must still glide all the way there (never stranded halfway).
+    val farUnit = game.units.filter { it.isDeployed() && it.isAlive() }
+        .maxByOrNull { kotlin.math.abs(it.x - renderer.cameraX) + kotlin.math.abs(it.y - renderer.cameraY) }
+    if (farUnit != null) {
+        val before = "${renderer.cameraX},${renderer.cameraY}"
+        game.setCameraTarget(farUnit, 30)
+        for (i in 1..200) { game.update(16); renderer.render() }
+        println(
+            "PAN CHECK ${farUnit.unitData.name}@${farUnit.x},${farUnit.y} camera $before -> " +
+                "${renderer.cameraX},${renderer.cameraY} (target ${game.cameraTarget?.unitData?.name ?: "released"})",
+        )
+    }
+
+    // AI turn: the view must follow the AI's units as they move (the camera eases toward the
+    // moving unit while its hold time runs). Ends the player's turn and watches the AI play.
+    val aiHuman = game.activeController as? cn.enaium.battalion.game.controllers.HumanController
+    if (aiHuman != null && !game.gameOver) {
+        val camBefore = renderer.cameraX to renderer.cameraY
+        aiHuman.dispatchEndTurn()
+        var ticks = 0
+        var following: cn.enaium.battalion.data.Unit? = null
+        while (ticks++ < 6000 && !game.gameOver) {
+            game.update(16)
+            renderer.render()
+            val target = game.cameraTarget
+            if (target != null && target.isMoving) {
+                following = target
+                break
+            }
+        }
+        if (following != null) {
+            for (i in 1..12) { game.update(16); renderer.render() }
+            val midPan = "${renderer.cameraX},${renderer.cameraY}"
+            snap("shot11_ai_turn")
+            // Let the pan settle (the hold may expire; the view still finishes moving to the
+            // unit it was following).
+            for (i in 1..240) { game.update(16); renderer.render() }
+            println(
+                "AI camera follow: ${following.unitData.name} at ${following.x},${following.y} " +
+                    "camera ${camBefore.first},${camBefore.second} -> $midPan -> " +
+                    "${renderer.cameraX},${renderer.cameraY}",
+            )
+        } else {
+            println("AI camera follow: no AI unit movement observed in $ticks ticks")
+        }
+    }
+
+    // Recon strip on a plain terrain tile (the `recon_terrain` layout, no unit).
+    val plainTile = game.map.generateTileMap().firstNotNullOfOrNull { row ->
+        row.firstOrNull { it.unit == null && !it.isStructure() && it.terrain.name.isNotEmpty() }
+    }
+    if (plainTile != null) {
+        renderer.setFocusTile(plainTile)
+        snap("shot10_recon_terrain")
+        renderer.setFocusTile(null)
+    }
+
     // In-game options menu with the four Vista buttons (mouse parked over Quit for hover).
     renderer.setInGameMenuOpen(true)
     SDL.warpMouseInWindow(win.id, 459f, 313f)
@@ -752,30 +877,14 @@ private fun shot(dir: String, mission: Int, skirmish: String?) {
 }
 
 /**
- * Loads a bootcamp mission (headless) and ticks the loop to confirm the bootcamp campaign
- * loads and the turn loop runs, like [selftest] does for the main campaign.
- */
-private fun bootselftest(dir: String, mission: Int) {
-    val game = GameLoader.loadBootcampMission(dir, mission)
-    println("Map: ${game.map.name} (${game.map.width}x${game.map.height})")
-    println("Controllers: " + game.controllers.mapIndexed { i, c ->
-        "${i}=${c?.team?.name ?: "?"}(${c?.team?.controllerType ?: "?"})"
-    }.joinToString(", "))
-    game.startGame()
-    for (i in 1..30) game.update(16)
-    println("After 30 ticks: turn=${game.turn} round=${game.round} active=${game.activeController?.team?.name}")
-    println("BOOTSELFTEST OK")
-}
-
-/**
  * Loads the game and exercises the startup path without SDL, printing diagnostics. Also plays
  * a few full rounds (auto-ending the human's turn) to confirm the AI and the turn loop work.
  */
-private fun selftest(dir: String, mission: Int, skirmish: String?) {
+private fun selftest(dir: String, mission: Int, skirmish: String?, campaign: String) {
     val game = if (skirmish != null) {
         GameLoader.loadSkirmish(dir, skirmish)
     } else {
-        GameLoader.loadCampaignMission(dir, mission)
+        GameLoader.loadCampaignMission(dir, mission, campaign)
     }
     println("Map: ${game.map.name} (${game.map.width}x${game.map.height})")
     println("Controllers: " + game.controllers.mapIndexed { i, c -> "$i=${c?.team?.name}(${c?.team?.controllerType})" }.joinToString(", "))

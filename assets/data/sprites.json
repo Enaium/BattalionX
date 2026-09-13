@@ -179,6 +179,196 @@
           "height": 150
         }
       }
+    },
+    "avatars_nemesis": {
+      "image": "avatars_nemesis",
+      "columns": 6,
+      "cellWidth": 150,
+      "cellHeight": 150,
+      "regions": {
+        "durand": {
+          "x": 0,
+          "y": 0,
+          "width": 150,
+          "height": 150
+        },
+        "mullen": {
+          "x": 150,
+          "y": 0,
+          "width": 150,
+          "height": 150
+        },
+        "pearl": {
+          "x": 300,
+          "y": 0,
+          "width": 150,
+          "height": 150
+        },
+        "tucker": {
+          "x": 450,
+          "y": 0,
+          "width": 150,
+          "height": 150
+        },
+        "argent": {
+          "x": 600,
+          "y": 0,
+          "width": 150,
+          "height": 150
+        },
+        "general": {
+          "x": 750,
+          "y": 0,
+          "width": 150,
+          "height": 150
+        },
+        "evil_durand": {
+          "x": 0,
+          "y": 150,
+          "width": 150,
+          "height": 150
+        },
+        "akadian_2": {
+          "x": 150,
+          "y": 150,
+          "width": 150,
+          "height": 150
+        },
+        "akadian_3": {
+          "x": 300,
+          "y": 150,
+          "width": 150,
+          "height": 150
+        },
+        "evil_durand_dark": {
+          "x": 450,
+          "y": 150,
+          "width": 150,
+          "height": 150
+        },
+        "akadian_5": {
+          "x": 600,
+          "y": 150,
+          "width": 150,
+          "height": 150
+        }
+      }
+    },
+    "avatars_skirmish": {
+      "image": "avatars_skirmish",
+      "columns": 6,
+      "cellWidth": 130,
+      "cellHeight": 150,
+      "regions": {
+        "durand": {
+          "x": 0,
+          "y": 0,
+          "width": 130,
+          "height": 150
+        },
+        "mullen": {
+          "x": 130,
+          "y": 0,
+          "width": 130,
+          "height": 150
+        },
+        "pearl": {
+          "x": 260,
+          "y": 0,
+          "width": 130,
+          "height": 150
+        },
+        "tucker": {
+          "x": 390,
+          "y": 0,
+          "width": 130,
+          "height": 150
+        },
+        "argent": {
+          "x": 520,
+          "y": 0,
+          "width": 130,
+          "height": 150
+        },
+        "general": {
+          "x": 650,
+          "y": 0,
+          "width": 130,
+          "height": 150
+        },
+        "evil_durand": {
+          "x": 0,
+          "y": 150,
+          "width": 130,
+          "height": 150
+        },
+        "mayjor": {
+          "x": 130,
+          "y": 150,
+          "width": 130,
+          "height": 150
+        },
+        "akadian_3": {
+          "x": 260,
+          "y": 150,
+          "width": 130,
+          "height": 150
+        },
+        "evil_durand_dark": {
+          "x": 390,
+          "y": 150,
+          "width": 130,
+          "height": 150
+        },
+        "hayne": {
+          "x": 520,
+          "y": 150,
+          "width": 130,
+          "height": 150
+        },
+        "blank": {
+          "x": 650,
+          "y": 150,
+          "width": 130,
+          "height": 150
+        },
+        "usul": {
+          "x": 0,
+          "y": 300,
+          "width": 130,
+          "height": 150
+        },
+        "drag_2": {
+          "x": 130,
+          "y": 300,
+          "width": 130,
+          "height": 150
+        },
+        "drag_3": {
+          "x": 260,
+          "y": 300,
+          "width": 130,
+          "height": 150
+        },
+        "blank_asdasddd": {
+          "x": 390,
+          "y": 300,
+          "width": 130,
+          "height": 150
+        },
+        "blank_asdzxc": {
+          "x": 520,
+          "y": 300,
+          "width": 130,
+          "height": 150
+        },
+        "blank_asd": {
+          "x": 650,
+          "y": 300,
+          "width": 130,
+          "height": 150
+        }
+      }
     }
   }
 }

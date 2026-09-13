@@ -99,31 +99,57 @@ class BattalionRenderer(
     /** BattalionPanel alpha (0.65): the wood backing is drawn translucent so the map shows through. */
     private val DIALOGUE_PANEL_ALPHA = 0.65f
 
-    // Avatar sheet: regions come from `data/sprites.json` (the "avatars" sheet names every
-    // portrait cell; the indices are the original tilesheet's animation entries, NOT a
-    // visual-inspection ordering).
+    // Avatar sheet: regions come from `data/sprites.json` (each generation's sheet names its
+    // portrait cells; the indices are the original tilesheet's animation entries, NOT a
+    // visual-inspection ordering). A match uses the sheet of the campaign it belongs to —
+    // Nemesis and Skirmish have their own portrait art, Ghosts and Vengeance share one.
 
-    // Avatar texture, loaded once.
+    /** Portrait sheet used when a match does not name one (Vengeance / Ghosts art). */
+    private val defaultAvatarSheet = "avatars"
+
+    /** Portrait shown when a team/line names one no sheet has (e.g. generic skirmish teams). */
+    private val fallbackAvatar = "tucker"
+
+    /** Avatar texture cache for [avatarTextureSheet], loaded on first use. */
     private var avatarTexture: SDLTexture? = null
+    private var avatarTextureSheet: String = ""
 
-    /**
-     * Returns the source rectangle for the avatar with the given [name], or null if unknown.
-     */
-    private fun avatarFrame(name: String): SDLFRect? {
-        val region = textures.region("avatars", name.lowercase()) ?: return null
-        return SDLFRect(
-            region.x.toFloat(),
-            region.y.toFloat(),
-            region.width.toFloat(),
-            region.height.toFloat()
-        )
+    /** A portrait: which sheet it lives in plus its source rect in that sheet. */
+    private data class AvatarCell(val sheet: String, val rect: SDLFRect)
+
+    private fun avatarCell(name: String): AvatarCell? =
+        portraitCell(name.lowercase()) ?: portraitCell(fallbackAvatar)
+
+    /** Looks [name] up in the match's generation sheet first, then in the shared one. */
+    private fun portraitCell(name: String): AvatarCell? {
+        for (sheet in listOf(game.avatarSheet, defaultAvatarSheet)) {
+            val region = textures.region(sheet, name) ?: continue
+            return AvatarCell(
+                sheet,
+                SDLFRect(
+                    region.x.toFloat(),
+                    region.y.toFloat(),
+                    region.width.toFloat(),
+                    region.height.toFloat(),
+                ),
+            )
+        }
+        return null
     }
 
-    /**
-     * Loads the avatar sprite sheet texture if not already loaded.
-     */
-    private fun loadAvatarTexture() {
-        avatarTexture = textures.texture(textures.sheetImage("avatars") ?: "avatars")
+    /** Loads (and caches) the portrait sheet texture for [sheet]. */
+    private fun avatarTextureFor(sheet: String): SDLTexture? {
+        if (avatarTexture != null && avatarTextureSheet == sheet) return avatarTexture
+        val tex = textures.texture(textures.sheetImage(sheet) ?: sheet)
+        avatarTexture = tex
+        avatarTextureSheet = sheet
+        return tex
+    }
+
+    /** Draws a portrait [cell] (from [avatarCell]) into [dst]. */
+    private fun drawAvatarCell(cell: AvatarCell, dst: SDLFRect) {
+        val tex = avatarTextureFor(cell.sheet) ?: return
+        renderer.renderTexture(tex, src = cell.rect, dst = dst)
     }
 
     /**
@@ -221,6 +247,24 @@ class BattalionRenderer(
             }
         }
 
+        // Prewarm the rest of what the opening frames draw. The camera pans at the start of a
+        // mission and whenever a unit acts, and creating a texture on first use — the unit
+        // sheets go through the CPU palette swap — shows up as a mid-pan hitch.
+        for (unit in game.units) {
+            val key = unit.unitData.spriteKey
+            if (key.sheet.isNotEmpty()) {
+                textures.textureForTeam(key.sheet, rawTeamColor(unit.controller?.team))
+            }
+            if (key.firingSheet.isNotEmpty()) {
+                textures.textureForTeam(key.firingSheet, rawTeamColor(unit.controller?.team))
+            }
+        }
+        for (structure in game.structures) {
+            val sprite = structure.terrain.sprite
+            if (sprite.isNotEmpty()) textures.textureOrFallback(sprite)
+        }
+        for (key in PANEL_SPRITES) textures.textureOrFallback(key)
+
         // Attack impact (small puff on the target) and destruction (big blast) effects.
         TriggerManager.addListener(AttackUnitTrigger.NAME) { trigger ->
             val t = trigger as? AttackUnitTrigger ?: return@addListener
@@ -269,8 +313,8 @@ class BattalionRenderer(
         // Hovered tile from the cursor (a float offset the mouse is inside the map area).
         val mouse = SDL.mouseState
         if (mouse.x < MAP_X || mouse.y < MAP_Y) return
-        val tx = ((mouse.x - MAP_X) / TileManager.TILE_WIDTH).toInt() + cameraX
-        val ty = ((mouse.y - MAP_Y) / TileManager.TILE_HEIGHT).toInt() + cameraY
+        val tx = mapColAt(mouse.x)
+        val ty = mapRowAt(mouse.y)
         val g = game
         if (tx < 0 || ty < 0 || tx >= g.map.width || ty >= g.map.height) return
         if (tx == unit.x && ty == unit.y) return
@@ -326,8 +370,8 @@ class BattalionRenderer(
         // Hovered tile under the cursor.
         val mouse = SDL.mouseState
         if (mouse.x < MAP_X || mouse.y < MAP_Y) return
-        val tx = ((mouse.x - MAP_X) / TileManager.TILE_WIDTH).toInt() + cameraX
-        val ty = ((mouse.y - MAP_Y) / TileManager.TILE_HEIGHT).toInt() + cameraY
+        val tx = mapColAt(mouse.x)
+        val ty = mapRowAt(mouse.y)
         if (tx < 0 || ty < 0 || tx >= g.map.width || ty >= g.map.height) return
 
         // Which cell to show: attack takes priority over move.
@@ -549,13 +593,82 @@ class BattalionRenderer(
         /** Number of map tiles visible in the viewport (the map area is 10×10 tiles). */
         val VIEW_COLS = MAP_W / TileManager.TILE_WIDTH
         val VIEW_ROWS = MAP_H / TileManager.TILE_HEIGHT
+
+        // ------------------------------------------------------------------
+        // Bottom recon strip (`ReconPanel`): 565×42, drawn at its native size at (0, H-42)
+        // — never stretched, so the text cells below line up with the art's dividers.
+        // ------------------------------------------------------------------
+
+        /** The strip art's size (its baked cells end at these bounds). */
+        const val RECON_W = 565
+        const val RECON_H = 42
+
+        /** The unit/terrain thumbnail cell (28×28) inset into the strip's left end. */
+        const val RECON_ICON_X = 4
+        const val RECON_ICON_Y = 11
+        const val RECON_ICON_SIZE = 28
+
+        /** Title (bold) and description start x (`ReconPanel.title.x` / `descriptionPadding`). */
+        const val RECON_TEXT_X = 40
+
+        /** Stat cells: armor/health, weapon/damage, movement, modifiers. */
+        const val RECON_COL_HEALTH = 272
+        const val RECON_COL_DAMAGE = 350
+        const val RECON_COL_MOVE = 428
+        const val RECON_COL_MODS = 476
+
+        /** Info-icon stride in the modifiers cell (icon width + 1) and the strip's right edge. */
+        const val RECON_MOD_STRIDE = 21
+        const val RECON_RIGHT_EDGE = 562
+
+        /** Description box width: units 206px, terrain 425px (`ReconPanel`). */
+        const val RECON_DESC_W_UNIT = 206
+        const val RECON_DESC_W_TILE = 425
+
+        /** Panel / recon art drawn from the first frame, warmed in [setupTextures]. */
+        private val PANEL_SPRITES = listOf(
+            "mainframe", "info_icons", "cursor", "selectedArrow", "unitOptionsButton",
+            "movement_start", "movement_straight", "movement_turn", "movement_end",
+            "recon_unit", "recon_terrain", "recon_none",
+            "reconHealth_black", "reconHealth_green", "reconHealth_yellow",
+            "reconHealth_orange", "reconHealth_red", "reconHealth_overlay",
+            "ai_thinking", "attackTargets", "dangerIndicator",
+        )
     }
 
-    // Camera: the top-left map tile currently visible. Larger maps scroll within these bounds.
-    var cameraX = 0
-        private set
-    var cameraY = 0
-        private set
+    // Camera: the top-left VISIBLE MAP PIXEL (fractional, so the follow glides sub-tile instead
+    // of snapping). [cameraX]/[cameraY] are the tile the viewport starts in, used for culling
+    // and hit-testing.
+    private var camPosX = 0f
+    private var camPosY = 0f
+
+    /** Camera pan speed while following a target, in pixels per millisecond (~420 px/s). */
+    private val CAMERA_PAN_PX_PER_MS = 0.44
+
+    /** Distance (px) within which the pan eases down, so it settles smoothly into place. */
+    private val CAMERA_SLOW_RADIUS = 56.0
+
+    /**
+     * Frames of fast easing when the follow switches to a NEW unit: the view first closes in on
+     * the unit (half the remaining distance per frame, like the original's forced target), then
+     * settles into the steady pan that tracks it while it walks.
+     */
+    private val CAMERA_CATCH_UP_FRAMES = 6
+
+    /** The unit the current pan belongs to; a different one restarts the catch-up. */
+    private var followedUnit: Unit? = null
+    private var catchUpFrames = 0
+
+    /** Game-clock ms of the last camera update (for a frame-rate independent pan). */
+    private var lastCameraMs = -1L
+
+    /** The position the current follow aims at, kept so an expiring hold still finishes the pan. */
+    private var followTargetX = 0.0
+    private var followTargetY = 0.0
+    private var followActive = false
+
+    val cameraX: Int get() = (camPosX / TileManager.TILE_WIDTH).toInt()
+    val cameraY: Int get() = (camPosY / TileManager.TILE_HEIGHT).toInt()
 
     /**
      * A monotonically increasing frame index used to drive terrain animations (animated sea /
@@ -568,29 +681,141 @@ class BattalionRenderer(
     /** Clamps the camera so the viewport stays inside the map. */
     fun clampCamera() {
         val map = game.map
-        cameraX = cameraX.coerceIn(0, maxOf(0, map.width - VIEW_COLS))
-        cameraY = cameraY.coerceIn(0, maxOf(0, map.height - VIEW_ROWS))
+        val maxX = maxOf(0, map.width - VIEW_COLS) * TileManager.TILE_WIDTH
+        val maxY = maxOf(0, map.height - VIEW_ROWS) * TileManager.TILE_HEIGHT
+        camPosX = camPosX.coerceIn(0f, maxX.toFloat())
+        camPosY = camPosY.coerceIn(0f, maxY.toFloat())
     }
 
-    /** Scrolls the camera by [dx]/[dy] tiles and clamps it to the map. */
+    /**
+     * Scrolls the camera by [dx]/[dy] tiles and clamps it to the map. Manual scrolling also
+     * stops the view from following a unit (the original: manual input resets the follow
+     * timer).
+     */
     fun scrollCamera(dx: Int, dy: Int) {
-        cameraX += dx
-        cameraY += dy
+        game.clearCameraTarget()
+        camPosX += dx * TileManager.TILE_WIDTH
+        camPosY += dy * TileManager.TILE_HEIGHT
         clampCamera()
     }
 
     /** Centres the camera viewport on tile ([tileX], [tileY]) and clamps it to the map. */
     fun centerCameraOn(tileX: Int, tileY: Int) {
-        cameraX = tileX - VIEW_COLS / 2
-        cameraY = tileY - VIEW_ROWS / 2
+        camPosX = (tileX - VIEW_COLS / 2) * TileManager.TILE_WIDTH.toFloat()
+        camPosY = (tileY - VIEW_ROWS / 2) * TileManager.TILE_HEIGHT.toFloat()
         clampCamera()
     }
 
+    /**
+     * Glides the camera toward the unit the game asked the view to follow (`GameManager.
+     * cameraTarget`, armed by moves and by a turn's start) until its hold time runs out.
+     *
+     * The desired position is recomputed from the target's LIVE position every frame (so the
+     * view tracks a unit while it walks — the renderer's walk interpolation is used, not the
+     * logical tile). A NEW target is closed in on quickly ([CAMERA_CATCH_UP_FRAMES] frames of
+     * halving, the original's forced-target behaviour) and the steady pan
+     * ([CAMERA_PAN_PX_PER_MS], frame-rate independent via the game clock) then tracks it and
+     * eases into the last tile — the original's plain `x += (dx - x) / 2` would instead jump
+     * half the distance on every frame, which reads as a snap rather than a pan.
+     *
+     * When the hold expires the pan still finishes (the target's last position is kept), so a
+     * slow pan never leaves the view stranded halfway to the unit it was following.
+     */
+    private fun updateCameraFollow() {
+        val target = game.cameraTarget
+        if (target == null) {
+            followActive = false
+            followedUnit = null
+            return
+        }
+        val dt = if (lastCameraMs < 0) 16L else (game.elapsedMs - lastCameraMs).coerceIn(0L, 50L)
+        lastCameraMs = game.elapsedMs
+        if (target !== followedUnit) {
+            // A new unit: close in on it first, then track it smoothly.
+            followedUnit = target
+            catchUpFrames = CAMERA_CATCH_UP_FRAMES
+        }
+        if (game.isCameraTargetActive) {
+            val walk = unitRenderTileH(target)
+            followTargetX = (walk.visX + 0.5) * TileManager.TILE_WIDTH -
+                (VIEW_COLS * TileManager.TILE_WIDTH) / 2.0
+            followTargetY = (walk.visY + 0.5) * TileManager.TILE_HEIGHT -
+                (VIEW_ROWS * TileManager.TILE_HEIGHT) / 2.0
+            followActive = true
+        } else if (!followActive) {
+            game.clearCameraTarget()
+            return
+        }
+        val wantX = clampCameraX(followTargetX)
+        val wantY = clampCameraY(followTargetY)
+        if (catchUpFrames > 0) {
+            catchUpFrames--
+            // Fast approach (the original's forced target halves the distance each frame).
+            camPosX += ((wantX - camPosX) / 2.0).toFloat()
+            camPosY += ((wantY - camPosY) / 2.0).toFloat()
+        } else {
+            camPosX += cameraStep(wantX - camPosX, dt).toFloat()
+            camPosY += cameraStep(wantY - camPosY, dt).toFloat()
+        }
+        if (!game.isCameraTargetActive &&
+            kotlin.math.abs(wantX - camPosX) < 1f && kotlin.math.abs(wantY - camPosY) < 1f
+        ) {
+            game.clearCameraTarget()
+            followActive = false
+        }
+    }
+
+    /** The camera position clamped to the map for [value] (`clampCamera` for one axis). */
+    private fun clampCameraX(value: Double): Double {
+        val maxX = maxOf(0, game.map.width - VIEW_COLS) * TileManager.TILE_WIDTH
+        return value.coerceIn(0.0, maxX.toDouble())
+    }
+
+    private fun clampCameraY(value: Double): Double {
+        val maxY = maxOf(0, game.map.height - VIEW_ROWS) * TileManager.TILE_HEIGHT
+        return value.coerceIn(0.0, maxY.toDouble())
+    }
+
+    /**
+     * One frame's camera movement toward [delta] (pixels): a steady [CAMERA_PAN_PX] while the
+     * target is further away than [CAMERA_SLOW_RADIUS], scaled down inside it so the pan settles
+     * smoothly instead of stopping dead. Anything left under half a pixel snaps, so the camera
+     * always reaches its target exactly.
+     */
+    private fun cameraStep(delta: Double, dtMs: Long): Double {
+        val distance = kotlin.math.abs(delta)
+        if (distance < 0.5) return delta
+        val full = CAMERA_PAN_PX_PER_MS * dtMs
+        val speed = if (distance >= CAMERA_SLOW_RADIUS) full
+        else full * (distance / CAMERA_SLOW_RADIUS)
+        return delta.coerceIn(-speed, speed)
+    }
+
     /** Screen x for a map column, accounting for the camera offset. */
-    private fun screenX(col: Int): Int = MAP_X + (col - cameraX) * TileManager.TILE_WIDTH
+    private fun screenX(col: Int): Int = MAP_X + col * TileManager.TILE_WIDTH - camPosX.toInt()
 
     /** Screen y for a map row, accounting for the camera offset. */
-    private fun screenY(row: Int): Int = MAP_Y + (row - cameraY) * TileManager.TILE_HEIGHT
+    private fun screenY(row: Int): Int = MAP_Y + row * TileManager.TILE_HEIGHT - camPosY.toInt()
+
+    /** The map column under a screen x (used for hover / click hit-testing). */
+    private fun mapColAt(sx: Float): Int =
+        ((sx - MAP_X + camPosX) / TileManager.TILE_WIDTH).toInt()
+
+    /** The map row under a screen y. */
+    private fun mapRowAt(sy: Float): Int =
+        ((sy - MAP_Y + camPosY) / TileManager.TILE_HEIGHT).toInt()
+
+    /**
+     * The map tile under a screen point, or null when the point is outside the map. Uses the
+     * camera's exact (fractional) position, so clicks land on the right tile even while the
+     * view is easing toward a followed unit.
+     */
+    fun mapTileAt(sx: Int, sy: Int): Pair<Int, Int>? {
+        val col = mapColAt(sx.toFloat())
+        val row = mapRowAt(sy.toFloat())
+        if (col < 0 || row < 0 || col >= game.map.width || row >= game.map.height) return null
+        return col to row
+    }
 
     // Terrain -> base colour. Unknown terrain falls back to a neutral grey.
     private fun terrainColor(name: String): SDLColor = when (name) {
@@ -832,6 +1057,7 @@ class BattalionRenderer(
     /** Renders one frame. */
     fun render() {
         terrainAnimMs += 16
+        updateCameraFollow()
         firingOverlays.clear()
         renderer.drawColor = SDLColor(30, 30, 35)
         renderer.clear()
@@ -1324,14 +1550,12 @@ class BattalionRenderer(
         text.draw(team.name, x + 10, y + 6, 14, SDLColor(255, 255, 255))
 
         // Avatar (65×65) at the left under the name bar.
-        val avatarTex = avatarTexture ?: run { loadAvatarTexture(); avatarTexture }
-        val avatarSrc = avatarFrame(team.avatarString.lowercase()) ?: avatarFrame("tucker")
-        if (avatarTex != null && avatarSrc != null) {
-            renderer.renderTexture(
-                avatarTex,
-                src = avatarSrc,
-                dst = SDLFRect((x + 3).toFloat(), (y + 26).toFloat(), 65f, 65f),
-            )
+        val avatar = avatarCell(team.avatarString.lowercase())
+        if (avatar != null) {
+            drawAvatarCell(avatar, SDLFRect((x + 3).toFloat(), (y + 26).toFloat(), 65f, 65f))
+        } else {
+            renderer.drawColor = SDLColor(60, 60, 70)
+            renderer.fillRect(SDLRect(x + 3, y + 26, 65, 65))
         }
 
         // Score with medal badge (SWF: medal sheet animation to the right of the score).
@@ -1391,10 +1615,12 @@ class BattalionRenderer(
         val map = game.map
 
         // Terrain grid — only the tiles visible in the viewport, offset by the camera.
-        val fromCol = cameraX
-        val fromRow = cameraY
-        val toCol = minOf(cameraX + VIEW_COLS, map.width)
-        val toRow = minOf(cameraY + VIEW_ROWS, map.height)
+        // The camera can sit mid-tile while following a unit, so the drawn window is one tile
+        // wider on each side than the viewport (the extra tile is clipped by the map bounds).
+        val fromCol = maxOf(0, cameraX - 1)
+        val fromRow = maxOf(0, cameraY - 1)
+        val toCol = minOf(cameraX + VIEW_COLS + 2, map.width)
+        val toRow = minOf(cameraY + VIEW_ROWS + 2, map.height)
         for (row in fromRow until toRow) {
             for (col in fromCol until toCol) {
                 val tile = game.tileAt(col, row) ?: continue
@@ -1421,8 +1647,8 @@ class BattalionRenderer(
         if (rangeSource != null && rangeSource.isAvailable() && activeMode) {
             // Green "select" markers on every tile the unit can walk to this turn.
             for (tile in game.tilesInMoveRange(rangeSource)) {
-                if (tile.x < cameraX || tile.x >= cameraX + VIEW_COLS) continue
-                if (tile.y < cameraY || tile.y >= cameraY + VIEW_ROWS) continue
+                if (tile.x < cameraX - 1 || tile.x >= cameraX + VIEW_COLS + 2) continue
+                if (tile.y < cameraY - 1 || tile.y >= cameraY + VIEW_ROWS + 2) continue
                 val t = textureMarker("select")
                 if (t != null) {
                     renderer.renderTexture(t, dst = SDLFRect(screenX(tile.x).toFloat(), screenY(tile.y).toFloat(),
@@ -1452,8 +1678,8 @@ class BattalionRenderer(
         // not hidden behind the vehicle's art.
         if (rangeSource != null && rangeSource.isAvailable() && activeMode) {
             for (target in game.unitsAttackableThisTurn(rangeSource)) {
-                if (target.x < cameraX || target.x >= cameraX + VIEW_COLS) continue
-                if (target.y < cameraY || target.y >= cameraY + VIEW_ROWS) continue
+                if (target.x < cameraX - 1 || target.x >= cameraX + VIEW_COLS + 2) continue
+                if (target.y < cameraY - 1 || target.y >= cameraY + VIEW_ROWS + 2) continue
                 val px = screenX(target.x)
                 val py = screenY(target.y)
                 textureMarker("selectRed")?.let { t ->
@@ -1539,8 +1765,8 @@ class BattalionRenderer(
         if (unit.isMoving) return
 
         // Skip if off the visible viewport (no on-screen marker).
-        if (unit.x < cameraX || unit.x >= cameraX + VIEW_COLS) return
-        if (unit.y < cameraY || unit.y >= cameraY + VIEW_ROWS) return
+        if (unit.x < cameraX - 1 || unit.x >= cameraX + VIEW_COLS + 2) return
+        if (unit.y < cameraY - 1 || unit.y >= cameraY + VIEW_ROWS + 2) return
 
         val px = screenX(unit.x)
         val py = screenY(unit.y)
@@ -2105,8 +2331,8 @@ class BattalionRenderer(
             if (enemy.cloaked) continue
             if (enemy.controller?.isAllied(human) == true) continue
             if (!enemy.isDeployed()) continue
-            if (enemy.x < cameraX || enemy.x >= cameraX + VIEW_COLS) continue
-            if (enemy.y < cameraY || enemy.y >= cameraY + VIEW_ROWS) continue
+            if (enemy.x < cameraX - 1 || enemy.x >= cameraX + VIEW_COLS + 2) continue
+            if (enemy.y < cameraY - 1 || enemy.y >= cameraY + VIEW_ROWS + 2) continue
             if (!game.canWeaponsFireAtTarget(enemy, fake, strict = true,
                     enemy.x, enemy.y, gx, gy)) continue
             val resources = game.resolveAttackCycleInResources(enemy, fake)
@@ -2131,8 +2357,8 @@ class BattalionRenderer(
             if (enemy.cloaked) continue
             if (enemy.controller?.isAllied(unit.controller) == true) continue
             if (!enemy.isDeployed()) continue
-            if (enemy.x < cameraX || enemy.x >= cameraX + VIEW_COLS) continue
-            if (enemy.y < cameraY || enemy.y >= cameraY + VIEW_ROWS) continue
+            if (enemy.x < cameraX - 1 || enemy.x >= cameraX + VIEW_COLS + 2) continue
+            if (enemy.y < cameraY - 1 || enemy.y >= cameraY + VIEW_ROWS + 2) continue
             if (!game.canWeaponsFireAtTarget(enemy, unit, strict = true,
                     enemy.x, enemy.y, unit.x, unit.y)) continue
 
@@ -2204,8 +2430,8 @@ class BattalionRenderer(
         // the integer-tile screenX/screenY) so the unit glides between tiles instead of snapping
         // tile-to-tile.
         val walk = unitRenderTileH(unit)
-        val px = (MAP_X + (walk.visX - cameraX) * TileManager.TILE_WIDTH).toInt()
-        val py = (MAP_Y + (walk.visY - cameraY) * TileManager.TILE_HEIGHT).toInt()
+        val px = (MAP_X + walk.visX * TileManager.TILE_WIDTH - camPosX).toInt()
+        val py = (MAP_Y + walk.visY * TileManager.TILE_HEIGHT - camPosY).toInt()
         val color = unitColor(unit)
 
         val cx = px + TileManager.TILE_WIDTH / 2
@@ -2352,8 +2578,8 @@ class BattalionRenderer(
      */
     private fun drawUnitHealthBar(unit: Unit) {
         val walk = unitRenderTileH(unit)
-        val px = (MAP_X + (walk.visX - cameraX) * TileManager.TILE_WIDTH).toInt()
-        val py = (MAP_Y + (walk.visY - cameraY) * TileManager.TILE_HEIGHT).toInt()
+        val px = (MAP_X + walk.visX * TileManager.TILE_WIDTH - camPosX).toInt()
+        val py = (MAP_Y + walk.visY * TileManager.TILE_HEIGHT - camPosY).toInt()
 
         val health = unit.getHealth()
         val maxHealth = unit.baseUnitData.health
@@ -2833,27 +3059,31 @@ class BattalionRenderer(
     /** The current player's portrait inside the mainframe's baked-in portrait window. */
     private fun drawPortrait() {
         val team = game.activeController?.team ?: return
-        val tex = avatarTexture ?: run { loadAvatarTexture(); avatarTexture }
-        val frame = avatarFrame(team.avatarString.lowercase()) ?: avatarFrame("tucker")
 
-        // The portrait window baked into mainframe (transparent); the 130×150 avatar is
-        // scaled up to fill the window (slightly larger than a strict fit so it visibly
-        // fills the frame) and centred on the window's centre.
+        // The portrait window baked into mainframe (transparent); the portrait is scaled up to
+        // fill the window (slightly larger than a strict fit so it visibly fills the frame)
+        // and centred on the window's centre. Cell sizes differ per generation (130×150 for
+        // Vengeance/Ghosts/Skirmish, 150×150 for Nemesis), so the scale uses the cell's own.
         val win = portraitWindow()
-        val scale = maxOf(win.width.toFloat() / 130f, win.height.toFloat() / 150f)
-        val fitW = (130 * scale).toInt()
-        val fitH = (150 * scale).toInt()
-        val fitX = win.x + (win.width - fitW) / 2
-        val fitY = win.y + (win.height - fitH) / 2
-        if (tex != null && frame != null) {
-            renderer.renderTexture(
-                tex,
-                src = frame,
-                dst = SDLFRect(fitX.toFloat(), fitY.toFloat(), fitW.toFloat(), fitH.toFloat()),
+        val portrait = avatarCell(team.avatarString.lowercase())
+        if (portrait != null) {
+            val cellW = portrait.rect.width
+            val cellH = portrait.rect.height
+            val scale = maxOf(win.width.toFloat() / cellW, win.height.toFloat() / cellH)
+            val fitW = (cellW * scale).toInt()
+            val fitH = (cellH * scale).toInt()
+            drawAvatarCell(
+                portrait,
+                SDLFRect(
+                    (win.x + (win.width - fitW) / 2).toFloat(),
+                    (win.y + (win.height - fitH) / 2).toFloat(),
+                    fitW.toFloat(),
+                    fitH.toFloat(),
+                ),
             )
         } else {
             renderer.drawColor = SDLColor(60, 60, 70)
-            renderer.fillRect(SDLRect(fitX, fitY, fitW, fitH))
+            renderer.fillRect(SDLRect(win.x, win.y, win.width, win.height))
         }
 
         // Turn status under the portrait (over the panel below the window).
@@ -2866,9 +3096,9 @@ class BattalionRenderer(
     }
 
     /**
-     * Reproduces the original SWF `ReconPanel`: a full-width strip along the bottom of the map
-     * that shows info for whichever tile is under the cursor. The strip is the baked
-     * `recon_unit` / `recon_terrain` / `recon_none` sprite (565×42).
+     * Reproduces the original SWF `ReconPanel`: the 565×42 info strip along the bottom-left of
+     * the stage (`ReconPanel.y = HEIGHT - 42`, `x = 0`), showing whichever tile the player
+     * clicked — the strip is NOT stretched, so its baked cells line up with the text below.
      *
      *  - A tile with a visible unit uses `recon_unit`: the unit's name, its sprite, a colour
      *    health bar (reconHealth_*), and its HP / damage / move values.
@@ -2891,47 +3121,45 @@ class BattalionRenderer(
 
         val barH = bg.size.y.toInt()   // 42
         val barY = WINDOW_H - barH
-        renderer.renderTexture(bg, dst = SDLFRect(0f, barY.toFloat(), WINDOW_W.toFloat(), barH.toFloat()))
+        renderer.renderTexture(bg, dst = SDLFRect(0f, barY.toFloat(), RECON_W.toFloat(), barH.toFloat()))
 
         if (infoTile == null) {
             if (buildMessage.isNotEmpty()) {
-                text.draw(buildMessage, 8, barY + (barH - 13) / 2 + 2, 13, SDLColor(245, 245, 245))
+                text.draw(buildMessage, RECON_TEXT_X, barY + (barH - 12) / 2, 12, SDLColor(245, 245, 245))
             }
             return
         }
 
         // Left icon cell shows the tile's material (terrain / structure / unit sprite).
-        drawReconIcon(infoTile)
+        drawReconIcon(infoTile, barY)
 
         val unit = infoTile.unit
         if (unit != null) {
-            drawReconUnit(unit, barY, barH)
+            drawReconUnit(unit, barY)
         } else {
-            drawReconTile(infoTile, barY, barH)
+            drawReconTile(infoTile, barY)
         }
     }
 
     /**
-     * Draws the tile's unit / terrain material in the strip's left icon cell. The cell is a
-     * SQUARE with a black backdrop; the material is scaled PROPORTIONALLY (contain) inside it,
-     * never stretched — a non-square sprite gets letterboxed onto the black square.
+     * Draws the tile's unit / terrain material in the strip's left icon cell — the dark inset at
+     * (4, 11) in the `recon_unit` art, 28×28 (the original scales a 56px sprite by 0.5 and draws
+     * it there). The material is scaled proportionally so the WHOLE sprite fits (contain): a tall
+     * vehicle cell (56×112, e.g. the Warmachine) is scaled down rather than cropped.
      */
-    private fun drawReconIcon(tile: Tile) {
-        val size = 40
-        val x = 6
-        val y = barYOf(size) + 1
-
-        // Black square backdrop (always drawn so non-square materials letterbox cleanly).
-        renderer.drawColor = SDLColor(0, 0, 0)
-        renderer.fillRect(SDLRect(x, y, size, size))
+    private fun drawReconIcon(tile: Tile, barY: Int) {
+        val x = RECON_ICON_X
+        val y = barY + RECON_ICON_Y
+        val size = RECON_ICON_SIZE
 
         // A unit on the tile takes priority: show the VEHICLE's sprite, not the terrain
         // (cloaked included — clicking the tile reveals it).
         val unit = tile.unit
         if (unit != null) {
             val key = unit.unitData.spriteKey
-            val rawTeam = rawTeamColor(unit.controller?.team)
-            val tex = if (key.sheet.isNotEmpty()) textures.textureForTeam(key.sheet, rawTeam) else null
+            val tex = if (key.sheet.isNotEmpty()) {
+                textures.textureForTeam(key.sheet, rawTeamColor(unit.controller?.team))
+            } else null
             if (tex != null) {
                 drawReconIconTexture(tex, x, y, size)
                 return
@@ -2951,39 +3179,35 @@ class BattalionRenderer(
     }
 
     /**
-     * The source crop for [tex]'s first 56-wide cell. All base unit sheets are 336 wide
-     * (6 columns of 56). The cell height is height/4: a 224-tall sheet has a 56×56 cell (the
-     * unit fills it — crop the whole cell); a 448-tall sheet has a 56×112 cell whose body sits
-     * in the bottom half, so crop the bottom 56px. Cropping to the body keeps every unit roughly
-     * the same icon size instead of letterboxing tall 56×112 cells into tiny stamps.
+     * The source cell of a sprite sheet: unit sheets are 336 wide (6 columns) with `rows` frames,
+     * so the cell is 56 × height/rows (112 for the tall vehicles, 56 for the standard ones);
+     * terrain/structure art is a single cell.
      */
-    private fun reconBody(tex: cn.enaium.sdl.SDLTexture): SDLRect {
+    private fun reconCell(tex: cn.enaium.sdl.SDLTexture): SDLFRect {
         val tw = tex.size.x.toInt()
         val th = tex.size.y.toInt()
-        val cellH = if (tw == 336) th / 4 else th
-        if (tw == 336 && cellH > 56) {
-            return SDLRect(0, 56, 56, 56)  // 112-tall cell: bottom half
-        }
-        return SDLRect(0, 0, minOf(tw, 56), minOf(cellH, 56))
+        val cellW = minOf(tw, 56)
+        val cellH = if (tw == 336 && th % 4 == 0) th / 4 else th
+        return SDLFRect(0f, 0f, cellW.toFloat(), cellH.toFloat())
     }
 
-    /** Draws [tex] inside the square icon cell at (x,y), scaled proportionally (contain). */
+    /** Draws [tex]'s cell inside the square icon cell at (x,y), scaled proportionally (contain). */
     private fun drawReconIconTexture(tex: cn.enaium.sdl.SDLTexture, x: Int, y: Int, size: Int) {
-        val body = reconBody(tex)
-        val scale = minOf(size.toFloat() / body.width, size.toFloat() / body.height)
-        val dw = (body.width * scale).toInt()
-        val dh = (body.height * scale).toInt()
-        val dx = x + (size - dw) / 2
-        val dy = y + (size - dh) / 2
+        val cell = reconCell(tex)
+        val scale = minOf(size.toFloat() / cell.width, size.toFloat() / cell.height)
+        val dw = maxOf(1, (cell.width * scale).toInt())
+        val dh = maxOf(1, (cell.height * scale).toInt())
         renderer.renderTexture(
             tex,
-            src = SDLFRect(body.x.toFloat(), body.y.toFloat(), body.width.toFloat(), body.height.toFloat()),
-            dst = SDLFRect(dx.toFloat(), dy.toFloat(), dw.toFloat(), dh.toFloat()),
+            src = cell,
+            dst = SDLFRect(
+                (x + (size - dw) / 2).toFloat(),
+                (y + (size - dh) / 2).toFloat(),
+                dw.toFloat(),
+                dh.toFloat(),
+            ),
         )
     }
-
-    /** The strip's top y (the strip is 42px tall at the window bottom). */
-    private fun barYOf(h: Int): Int = WINDOW_H - h
 
     /** Draws a 20×20 cell of the `info_icons` sheet (400×80 = 20 cols × 4 rows). */
     private fun drawInfoIcon(frame: Int, x: Int, y: Int) {
@@ -3086,51 +3310,34 @@ class BattalionRenderer(
     }
 
     /**
-     * Draws the `recon_unit` panel for [unit], mirroring the SWF ReconPanel.setUnit:
-     * the vehicle sprite in the left icon cell, name + description, then a stats block whose
-     * LABELS (Health: / Damage: / Move: / Modifiers:) sit on one top line and whose VALUES
-     * (icon + number) sit in the line below. The block is shifted left by half a cell and down
-     * a little from the earlier layout.
+     * Draws the `recon_unit` panel for [unit], mirroring `ReconPanel.setUnit`:
+     * the vehicle sprite in the left icon cell, the name at the title bar and the description
+     * below it (both starting at x=40), then four stat cells whose headers sit on the strip's
+     * top line and whose icons + values sit on the line below (`ReconPanel.drawIcon`: header at
+     * y=0, icon at y=20, value at iconX + iconWidth + 2, y=26).
      */
-    private fun drawReconUnit(unit: Unit, barY: Int, barH: Int) {
-        val textX = 72  // right of the left icon cell
-
-        // Unit name (bold, like the SWF title) + description below.
-        text.draw(unit.unitData.name, textX, barY + 1, 15, SDLColor(20, 20, 20))
-        val desc = unit.unitData.description
+    private fun drawReconUnit(unit: Unit, barY: Int) {
+        // Title (black, bold in the original) and description (white, 206px wide box).
+        text.draw(unit.unitData.name, RECON_TEXT_X, barY, 12, SDLColor(0, 0, 0))
         var dy = barY + 16
-        for (wrapped in wrapRecon(desc, 210, 11)) {
-            if (dy > barY + barH - 8) break
-            text.draw(wrapped, textX, dy, 11, SDLColor(230, 230, 230))
-            dy += 13
+        for (wrapped in wrapRecon(unit.unitData.description, RECON_DESC_W_UNIT, 10)) {
+            if (dy > barY + RECON_H - 10) break
+            text.draw(wrapped, RECON_TEXT_X, dy, 10, SDLColor(255, 255, 255))
+            dy += 12
         }
 
-        // Stats block: labels on one top line, values on the line below with a clear gap.
-        // Damage and Move titles are shifted left of the previous layout, and the Modifiers
-        // title sits at the position the Move column used before this change.
-        val labelY = barY + 2
-        val valueY = barY + 18
+        val labelY = barY + 1
+        val iconY = barY + 20
+        val valueY = barY + 26
 
-        // Column x-offsets for Health / Damage / Move / Modifiers. The whole block sits right
-        // of the previous (over-shifted) position by ~two health-icon widths.
-        val col0 = textX + 260
-        val col1 = col0 + 95
-        val col2 = col1 + 95
-        val col3 = col2 + 95
-
-        // Labels (one top line).
-        text.draw("Health:", col0, labelY, 11, SDLColor(15, 15, 15))
-        text.draw("Damage:", col1, labelY, 11, SDLColor(15, 15, 15))
-        text.draw("Move:", col2, labelY, 11, SDLColor(15, 15, 15))
-        text.draw("Modifiers:", col3, labelY, 11, SDLColor(15, 15, 15))
-
-        // 1. Health value: armor icon + HP bar + HP number.
+        // 1. Health: armor icon, HP bar and the "hp/max" value.
+        text.draw("Health:", RECON_COL_HEALTH, labelY, 10, SDLColor(0, 0, 0))
         val armorFrame = when (unit.unitData.armorType) {
             1 -> 51  // light
             2 -> 52  // medium
             else -> 53 // heavy
         }
-        drawInfoIcon(armorFrame, col0, valueY)
+        drawInfoIcon(armorFrame, RECON_COL_HEALTH, iconY)
         val healthPct = unit.getHealthPercentage().coerceIn(0.0, 1.0)
         val healthColor = when {
             healthPct >= 0.75 -> "reconHealth_green"
@@ -3138,28 +3345,29 @@ class BattalionRenderer(
             healthPct >= 0.25 -> "reconHealth_orange"
             else -> "reconHealth_red"
         }
-        val hx = col0 + 22
-        val hy = valueY + 5
-        textures.texture("reconHealth_black")?.let { renderer.renderTexture(it, dst = SDLFRect(hx.toFloat(), hy.toFloat(), 39f, 8f)) }
-        textures.texture(healthColor)?.let { renderer.renderTexture(it, dst = SDLFRect(hx.toFloat(), hy.toFloat(), (39 * healthPct).toFloat(), 8f)) }
-        textures.texture("reconHealth_overlay")?.let { renderer.renderTexture(it, dst = SDLFRect(hx.toFloat(), hy.toFloat(), 39f, 8f)) }
-        text.draw("${unit.getHealth()}/${unit.baseUnitData.health}", hx + 42, valueY, 11, SDLColor(15, 15, 15))
+        val hx = RECON_COL_HEALTH + 22
+        textures.texture("reconHealth_black")?.let { renderer.renderTexture(it, dst = SDLFRect(hx.toFloat(), iconY.toFloat(), 39f, 8f)) }
+        textures.texture(healthColor)?.let { renderer.renderTexture(it, dst = SDLFRect(hx.toFloat(), iconY.toFloat(), (39 * healthPct).toFloat(), 8f)) }
+        textures.texture("reconHealth_overlay")?.let { renderer.renderTexture(it, dst = SDLFRect(hx.toFloat(), iconY.toFloat(), 39f, 8f)) }
+        text.draw("${unit.getHealth()}/${unit.baseUnitData.health}", hx, valueY, 10, SDLColor(255, 255, 255))
 
-        // 2. Damage value: weapon icon + damage number.
+        // 2. Damage: weapon icon + "damage min-max" value.
+        text.draw("Damage:", RECON_COL_DAMAGE, labelY, 10, SDLColor(0, 0, 0))
         val weaponFrame = when (unit.unitData.weaponType) {
             1 -> 60  // light
             2 -> 61  // medium
             else -> 62 // heavy
         }
-        drawInfoIcon(weaponFrame, col1, valueY)
+        drawInfoIcon(weaponFrame, RECON_COL_DAMAGE, iconY)
         val dmg = if (unit.unitData.damage > 0) {
             val rng = if (unit.unitData.weaponRangeMin == 1 && unit.unitData.weaponRangeMax == 1) ""
-            else " ${unit.unitData.weaponRangeMin}-${unit.unitData.weaponRangeMax}"
+            else " [${unit.unitData.weaponRangeMin}-${unit.unitData.weaponRangeMax}]"
             "${unit.unitData.damage}$rng"
         } else "N/A"
-        text.draw(dmg, col1 + 22, valueY, 11, SDLColor(15, 15, 15))
+        text.draw(dmg, RECON_COL_DAMAGE + 22, valueY, 10, SDLColor(255, 255, 255))
 
-        // 3. Move value: movement icon + range number.
+        // 3. Move: movement icon + range value.
+        text.draw("Move:", RECON_COL_MOVE, labelY, 10, SDLColor(0, 0, 0))
         val moveFrame = when (unit.unitData.movementType) {
             1 -> 59  // feet
             2 -> 54  // wheeled
@@ -3167,48 +3375,53 @@ class BattalionRenderer(
             4 -> 58  // rudder
             else -> 56 // wings
         }
-        drawInfoIcon(moveFrame, col2, valueY)
-        text.draw("${unit.unitData.range}", col2 + 22, valueY, 11, SDLColor(15, 15, 15))
+        drawInfoIcon(moveFrame, RECON_COL_MOVE, iconY)
+        text.draw("${unit.unitData.range}", RECON_COL_MOVE + 22, valueY, 10, SDLColor(255, 255, 255))
 
-        // 4. Modifiers: visible unit modifiers as info icons.
-        val mods = unit.unitData.getAllModifiers().filter { it.visible }
-        var modx = col3
-        for (mod in mods) {
-            val frame = modifierIconFrame(mod.name)
-            if (frame != null) drawInfoIcon(frame, modx, valueY)
-            modx += 21
-        }
+        // 4. Modifiers: one info icon per visible modifier, inside the strip's last cell.
+        text.draw("Modifiers:", RECON_COL_MODS, labelY, 10, SDLColor(0, 0, 0))
+        drawModifierIcons(unit.unitData.getAllModifiers(), barY)
     }
 
-    /** Draws the `recon_terrain` panel for [tile]: terrain name, description, modifiers. */
-    private fun drawReconTile(tile: Tile, barY: Int, barH: Int) {
-        val textX = 72  // right of the left icon cell
+    /**
+     * Draws the `recon_terrain` panel for [tile], mirroring `ReconPanel.setTile`: the terrain
+     * (or structure) sprite in the icon cell, the name at the title bar, the description in a
+     * 425px-wide white box below it, and the terrain's visible modifiers in the last cell.
+     */
+    private fun drawReconTile(tile: Tile, barY: Int) {
         var name = tile.terrain.name
         if (name == "Factory") name = "Warfactory"
-        text.draw(name, textX, barY + 2, 15, SDLColor(20, 20, 20))
+        text.draw(name, RECON_TEXT_X, barY, 12, SDLColor(0, 0, 0))
 
-        // Description wraps in the bar's main area.
         val desc = tile.terrain.description
-        var dy = barY + 16
         if (desc.isNotEmpty()) {
-            for (wrapped in wrapRecon(desc, 300, 12)) {
-                if (dy > barY + barH - 10) break
-                text.draw(wrapped, textX, dy, 12, SDLColor(230, 230, 230))
-                dy += 15
+            var dy = barY + 16
+            for (wrapped in wrapRecon(desc, RECON_DESC_W_TILE, 10)) {
+                if (dy > barY + RECON_H - 10) break
+                text.draw(wrapped, RECON_TEXT_X, dy, 10, SDLColor(255, 255, 255))
+                dy += 12
             }
         }
 
-        // Visible modifiers (e.g. Def +1, Canopy, Shielded...) as small tags.
-        val visible = tile.terrain.modifiers.filter { it.visible }
-        if (visible.isNotEmpty()) {
-            text.draw("Modifiers:", textX + 380, barY + 2, 12, SDLColor(15, 15, 15))
-            var mx = textX + 380
-            var my = barY + 17
-            for (mod in visible) {
-                val tag = mod.image?.ifEmpty { mod.name } ?: mod.name
-                text.draw(tag, mx, my, 11, SDLColor(15, 15, 15))
-                mx += text.measure(tag, 11) + 8
-            }
+        // Visible terrain modifiers (e.g. Cover, Canopy, Shielded) as info icons.
+        text.draw("Modifiers:", RECON_COL_MODS, barY + 1, 10, SDLColor(0, 0, 0))
+        drawModifierIcons(tile.terrain.modifiers, barY)
+    }
+
+    /**
+     * Draws one 20×20 info icon per visible modifier, starting at the modifiers cell
+     * (`ReconPanel.drawModifiers`: `icon.x = 476 + drawn * (icon.width + 1)`, `icon.y = 20`).
+     * Icons never cross the strip's right frame edge — the cell ends there, so anything that
+     * would not fit is left out instead of spilling over the border.
+     */
+    private fun drawModifierIcons(modifiers: List<cn.enaium.battalion.data.Modifier>, barY: Int) {
+        var x = RECON_COL_MODS
+        for (mod in modifiers) {
+            if (!mod.visible) continue
+            val frame = modifierIconFrame(mod.name) ?: continue
+            if (x + 20 > RECON_RIGHT_EDGE) break
+            drawInfoIcon(frame, x, barY + 20)
+            x += RECON_MOD_STRIDE
         }
     }
 
@@ -3335,14 +3548,13 @@ class BattalionRenderer(
         drawFrameBorder(boxX, boxY, boxW, boxH)
 
         // Avatar (speaker) natural size at top-left, like ChatWindow avatar at (2,2).
-        val avatarW = 130
-        val avatarH = 150
         val avatarX = boxX + 2
         val avatarY = boxY + 2
-        val avatarTex = avatarTexture ?: run { loadAvatarTexture(); avatarTexture }
-        val frame = avatarFrame(line.avatar)
-        if (avatarTex != null && frame != null) {
-            renderer.renderTexture(avatarTex, src = frame, dst = SDLFRect(avatarX.toFloat(), avatarY.toFloat(), avatarW.toFloat(), avatarH.toFloat()))
+        val portrait = avatarCell(line.avatar)
+        val avatarW = portrait?.rect?.width?.toInt() ?: 130
+        val avatarH = portrait?.rect?.height?.toInt() ?: 150
+        if (portrait != null) {
+            drawAvatarCell(portrait, SDLFRect(avatarX.toFloat(), avatarY.toFloat(), avatarW.toFloat(), avatarH.toFloat()))
         }
 
         // Colour bar (colorBarLong, 5×150) tinted to the speaker's colour, right of the avatar.

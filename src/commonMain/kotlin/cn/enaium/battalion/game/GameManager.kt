@@ -42,23 +42,66 @@ class GameManager(
             private set
     }
 
-    /** This mission's 0-based index within its campaign, or -1 for skirmish/bonus maps. */
-    var missionIndex: Int = -1
-        private set
-
-    /** True when [missionIndex] refers to the Bootcamp campaign (vs the main campaign). */
-    var isBootcamp: Boolean = false
-        private set
-
-    /** The mission's map URL (used as the medal / loadable key, mirrors SWF `<mapURL>_medal`). */
+    /**
+     * The mission's map URL (used as the medal key, mirrors SWF `<mapURL>_medal`), or empty
+     * for map-editor skirmishes.
+     */
     var mapUrl: String = ""
         private set
 
-    /** Records which campaign mission this game is, so [endGame] can unlock the next level. */
-    fun setCampaignContext(index: Int, bootcamp: Boolean, url: String) {
-        missionIndex = index
-        isBootcamp = bootcamp
+    /** Portrait sheet in `sprites.json` for this match (`"avatars"` = the Vengeance sheet). */
+    var avatarSheet: String = "avatars"
+        private set
+
+    /**
+     * The unit the view follows right now (mirrors the original `GameCamera.setTarget`), or
+     * null when nothing is followed. Movement arms it so the camera keeps the acting unit — the
+     * AI's units in particular — in view; the view eases toward it and drops it once the hold
+     * time runs out (or the player scrolls away).
+     */
+    var cameraTarget: Unit? = null
+        private set
+
+    /** Game-clock time after which [cameraTarget] stops being followed. */
+    private var cameraTargetUntilMs: Long = 0
+
+    /** True while [cameraTarget] should still be followed. */
+    val isCameraTargetActive: Boolean
+        get() = cameraTarget != null && elapsedMs <= cameraTargetUntilMs
+
+    /**
+     * Follows [unit] for [holdMs] (`GameCamera.setTarget(sprite, timer, force)`); passing null
+     * stops the follow immediately.
+     */
+    fun setCameraTarget(unit: Unit?, holdMs: Int = 1500) {
+        cameraTarget = unit
+        cameraTargetUntilMs = elapsedMs + holdMs
+    }
+
+    /** Stops following the current camera target (e.g. when the player scrolls manually). */
+    fun clearCameraTarget() {
+        cameraTarget = null
+    }
+
+    /**
+     * Centres the view on the active controller's force — the original's turn-start behaviour
+     * (`StartTurnAction` targets each visible unit of the controller whose turn just began, so
+     * a turn opens on that side of the map). Does nothing when the controller has no visible
+     * deployed unit.
+     */
+    fun focusActiveForce(holdMs: Int = 1500) {
+        val controller = activeController ?: return
+        val unit = controller.units.firstOrNull {
+            it.isDeployed() && it.isAlive() &&
+                (!it.isCloaked() || isAlliedToThePlayer(it.controller ?: return@firstOrNull false))
+        } ?: return
+        setCameraTarget(unit, holdMs)
+    }
+
+    /** Records the match's medal key and the portrait sheet of the campaign it belongs to. */
+    fun setCampaignContext(url: String, avatarSheet: String = "avatars") {
         mapUrl = url
+        this.avatarSheet = avatarSheet.ifEmpty { "avatars" }
     }
 
     val map: GameMap = mapSettings.map!!
@@ -729,21 +772,7 @@ class GameManager(
         // The port signals game-over via a flag; the renderer reads this and shows the score.
         playerWon = isPlayerWinner()
         gameOver = true
-        if (playerWon && missionIndex >= 0) {
-            // Mirror GameOverMenu.pushed: a win advances {campaign,bootcamp}_complete to the
-            // highest UNLOCKED level index (beat level N -> complete = N+1) and sets the current
-            // level key. The mission-select page unlocks level i while i <= complete.
-            if (isBootcamp) {
-                if (missionIndex + 1 > SaveManager.bootcampComplete) {
-                    SaveManager.bootcampComplete = missionIndex + 1
-                }
-                SaveManager.bootcampLevel = missionIndex + 1
-            } else {
-                if (missionIndex + 1 > SaveManager.campaignComplete) {
-                    SaveManager.campaignComplete = missionIndex + 1
-                }
-                SaveManager.campaignLevel = missionIndex + 1
-            }
+        if (playerWon && mapUrl.isNotEmpty()) {
             // Medal thresholds come from the mission's <mapsettings>; only medal when the
             // mission defines both (mirrors GameOverMenu.pushed hasMedals).
             val silver = mapSettings.silverMedalThreshold
@@ -755,7 +784,7 @@ class GameManager(
                 val playerTeam = controllers.filterNotNull()
                     .firstOrNull { it.team.controllerType.contains("Human", ignoreCase = true) }
                     ?.team
-                if (playerTeam != null && mapUrl.isNotEmpty()) {
+                if (playerTeam != null) {
                     val score = playerTeam.getStatistic(cn.enaium.battalion.data.Team.FINAL_SCORE)
                     val medal = when {
                         score > gold -> "gold"
@@ -843,6 +872,7 @@ class GameManager(
                 structures = structuresOut,
                 events = events,
             ),
+            avatarSheet = avatarSheet,
         )
     }
     /** Resumes a game that was loaded from a save (mirrors the original's saved-game resume). */

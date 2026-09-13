@@ -10,8 +10,8 @@ import kotlin.test.assertTrue
 
 /**
  * Guards the options / save persistence ([SaveManager]): every toggle (sound / music / dialog),
- * the AI difficulty, campaign progress, medals and the saved game XML survive a write + reload,
- * and Clear Data wipes them back to defaults.
+ * the AI difficulty, medals and the saved game survive a write + reload, and Clear Data wipes
+ * them back to defaults.
  */
 class SaveManagerTest {
 
@@ -31,7 +31,6 @@ class SaveManagerTest {
         SaveManager.music = false
         SaveManager.dialog = false
         SaveManager.aiDifficulty = 2
-        SaveManager.campaignComplete = 4
         SaveManager.setMedal("maps/ep3/Mission_1.yimf", "gold")
         SaveManager.savedGame = cn.enaium.battalion.data.SavedGameConfig(
             mapId = "x",
@@ -45,7 +44,6 @@ class SaveManagerTest {
         assertFalse(SaveManager.music)
         assertFalse(SaveManager.dialog)
         assertEquals(2, SaveManager.aiDifficulty)
-        assertEquals(4, SaveManager.campaignComplete)
         assertEquals("gold", SaveManager.medalFor("maps/ep3/Mission_1.yimf"))
         assertEquals("x", SaveManager.savedGame?.mapId)
 

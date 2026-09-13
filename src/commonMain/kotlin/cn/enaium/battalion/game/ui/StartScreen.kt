@@ -2,7 +2,6 @@ package cn.enaium.battalion.game.ui
 
 import cn.enaium.battalion.data.GameLoader
 import cn.enaium.battalion.data.GameLoader.MissionInfo
-import cn.enaium.battalion.util.Fio
 import cn.enaium.sdl.SDL
 import cn.enaium.sdl.SDLBlendMode
 import cn.enaium.sdl.SDLColor
@@ -38,10 +37,14 @@ class StartScreen(
     private val onOptionsChanged: () -> Unit = {},
 ) {
 
-    /** The player's choice: a campaign mission, a bootcamp mission, a skirmish map, resume a save, or quit. */
+    /**
+     * The player's choice: a mission of a named campaign generation, a skirmish map, resume a
+     * save, or quit.
+     */
     data class Selection(
+        /** Campaign document name (e.g. `"vengeance"`, `"nemesis"`, `"bootcamp"`). */
+        val campaignId: String? = null,
         val missionIndex: Int? = null,
-        val bootcampIndex: Int? = null,
         val skirmishMap: String? = null,
         /** True when the player chose "Continue" on the main menu to resume a saved game. */
         val resume: Boolean = false,
@@ -53,14 +56,76 @@ class StartScreen(
         }
     }
 
-    private enum class Screen { MAIN, CAMPAIGN, BOOTCAMP, OPTIONS }
+    private enum class Screen { MAIN, MISSIONS, CREDITS, OPTIONS }
+
+    companion object {
+        /** Campaign generation switch row (mission select): y, height, side margin, gap. */
+        const val SWITCH_ROW_Y = 505
+        const val SWITCH_ROW_H = 34
+        const val SWITCH_ROW_MARGIN = 18
+        const val SWITCH_ROW_GAP = 6
+
+        /** Height of a BattalionPanel title band (the heading's height + 5 in the original). */
+        private const val TITLE_BAND_H = 21
+
+        /**
+         * The credits roll (`CreditsMenu`): the episode name, the Urbansquall team, then the
+         * Kotlin Multiplatform port. Blank entries are the original's spacing lines.
+         */
+        private val CREDITS_LINES = listOf(
+            "Battalion: Vengeance", "",
+            "", "An Urbansquall production", "",
+            "", "", "",
+            "Game Design:", "Panayoti Haritatos", "Andrew Pellerano", "",
+            "", "Art:", "Tim Wendorf", "",
+            "", "Writing:", "Michael Scarpelli", "",
+            "", "Sound & Music:", "Matt Sayre", "Zack Parrish", "",
+            "", "Programming:", "Christopher Rhodes", "Panayoti Haritatos",
+            "Andrew Pellerano", "Marshall Powers", "",
+            "", "", "",
+            "Thank you for supporting", "independent developers!", "",
+            "", "", "",
+            "Kotlin Multiplatform port:", "Enaium",
+            "github.com/Enaium/BattalionX", "",
+            "Kotlin · SDL3 · kotlinx.serialization",
+        )
+
+        /**
+         * Credits roll speed (pixels per drawn frame). The original moved the text 0.2px per
+         * frame at ~30fps; the port's frame rate is higher, and the roll reads better faster.
+         */
+        private const val CREDITS_SCROLL_PER_FRAME = 0.5f
+
+        /** Mission-select minimap size (`CampaignMenu.MINIMAP_WIDTH`/`HEIGHT`). */
+        private const val MM_WIDTH = 140
+        private const val MM_HEIGHT = 184
+
+        /**
+         * The difficulty marker colours and alphas (`DifficultyPanel.colors`): Easy green,
+         * Normal a translucent dark yellow, Hard red.
+         */
+        private val DIFFICULTY_COLORS = arrayOf(
+            DifficultyColor(SDLColor(0x00, 0xFF, 0x00), 0xFF),
+            DifficultyColor(SDLColor(0xCC, 0xCC, 0x00), 0xCC),
+            DifficultyColor(SDLColor(0xFF, 0x00, 0x00), 0xFF),
+        )
+    }
+
+    /** A difficulty's marker colour and alpha (`DifficultyPanel` colours[]). */
+    private class DifficultyColor(val color: SDLColor, val alpha: Int)
 
     /** True while the "Clear data?" confirmation dialog is open (over the Options panel). */
     private var confirmingClear = false
 
     private var screen = Screen.MAIN
-    private var campaignMissions: List<MissionInfo> = emptyList()
-    private var bootcampMissions: List<MissionInfo> = emptyList()
+
+    /**
+     * Every level list the mission select offers, in display order: the four game generations
+     * (Nemesis, Skirmish, Ghosts, Vengeance) followed by the Boot Camp tutorial. The switch row
+     * draws one button per entry; the chapter panel, brief and medal row follow the active one.
+     */
+    private var campaigns: List<GameLoader.Campaign> = emptyList()
+    private var campaignIndex = 0
     private var selected = 0
     private var running = true
     private var mouseX = 0
@@ -83,14 +148,16 @@ class StartScreen(
     )
 
     private var preview: MapPreview? = null
-    private var previewKey: Pair<Screen, Int>? = null
+    private var previewKey: Pair<String, Int>? = null
+
+    /** How far the credits text has scrolled up, in pixels (CreditsMenu's rolling message). */
+    private var creditsScroll = 0f
 
     /** Runs the menu loop and returns the player's selection. */
     fun run(): Selection {
-        campaignMissions = GameLoader.findCampaign(assetsDir).orEmpty()
-        bootcampMissions = GameLoader.findBootcamp(assetsDir).orEmpty()
-        if (campaignMissions.isEmpty() && bootcampMissions.isEmpty()) {
-            return Selection(missionIndex = 0)
+        reloadCampaigns()
+        if (campaigns.isEmpty()) {
+            return Selection(campaignId = GameLoader.DEFAULT_CAMPAIGN, missionIndex = 0)
         }
 
         running = true
@@ -103,10 +170,24 @@ class StartScreen(
         }
         if (resumeRequested) return Selection.RESUME
         if (chosenSkirmish != null) return Selection(skirmishMap = chosenSkirmish)
+        val campaign = campaigns.getOrNull(campaignIndex)
         return when (screen) {
-            Screen.MAIN, Screen.OPTIONS -> Selection.QUIT
-            Screen.CAMPAIGN -> Selection(missionIndex = selected.coerceIn(0, campaignMissions.lastIndex))
-            Screen.BOOTCAMP -> Selection(bootcampIndex = selected.coerceIn(0, bootcampMissions.lastIndex))
+            Screen.MAIN, Screen.CREDITS, Screen.OPTIONS -> Selection.QUIT
+            Screen.MISSIONS -> Selection(
+                campaignId = campaign?.id,
+                missionIndex = selected.coerceIn(0, maxOf(0, (campaign?.missions?.size ?: 1) - 1)),
+            )
+        }
+    }
+
+    /** Loads every campaign document the mission select offers (generations + boot camp). */
+    private fun reloadCampaigns() {
+        campaigns = GameLoader.findCampaigns(assetsDir) +
+            listOfNotNull(GameLoader.findCampaign(assetsDir, GameLoader.BOOTCAMP_CAMPAIGN))
+        if (campaignIndex !in campaigns.indices) {
+            // Open on the port's original campaign (Vengeance) unless told otherwise.
+            campaignIndex = campaigns.indexOfFirst { it.id == GameLoader.DEFAULT_CAMPAIGN }
+                .coerceAtLeast(0)
         }
     }
 
@@ -142,59 +223,51 @@ class StartScreen(
         }
     }
 
-    private fun missionList(): List<MissionInfo> = missionListOf(screen)
+    /** The missions of the campaign currently shown (empty on the main/options screens). */
+    private fun missionList(): List<MissionInfo> = campaigns.getOrNull(campaignIndex)?.missions.orEmpty()
 
-    private fun isLoadable(i: Int): Boolean {
+    /** A mission is playable when its map file is present (every level is unlocked). */
+    private fun isPlayable(i: Int): Boolean {
         val list = missionList()
         if (i !in list.indices) return false
         return GameLoader.isMissionLoadable(assetsDir, list[i])
     }
 
-    /**
-     * A mission is playable when its map file exists AND it is unlocked. Mirrors the SWF
-     * CampaignMenu: `campaign_complete` / `bootcamp_complete` store the highest UNLOCKED level
-     * index, so level [i] is playable while `i <= complete`. The first level (0) is always
-     * unlocked (complete defaults to 0), and beating level N writes complete = N+1, which
-     * unlocks level N+1.
-     *
-     * The bootcamp (training) menu does NOT require beating the previous level: every level
-     * is selectable directly, just like the original Battalion training menu.
-     */
-    private fun isUnlocked(i: Int): Boolean {
-        val list = missionList()
-        if (i !in list.indices) return false
-        if (screen == Screen.BOOTCAMP) return true
-        return i == 0 || i <= SaveManager.campaignComplete
-    }
-
-    /** A mission can be selected AND started (map present + unlocked). */
-    private fun isSelectableMission(i: Int): Boolean = isLoadable(i) && isUnlocked(i)
-
-    /** Moves the selection, skipping missions that are locked or missing their map file. */
+    /** Moves the selection, skipping missions whose map file is missing. */
     private fun move(delta: Int) {
         val list = missionList()
         if (list.isEmpty()) return
         var i = selected
         repeat(list.size) {
             i = (i + delta + list.size) % list.size
-            if (isSelectableMission(i)) { selected = i; return }
+            if (isPlayable(i)) { selected = i; return }
         }
     }
 
-    /** Points the selection at the first playable mission on the current screen. */
+    /** Points the selection at the first playable mission of the current campaign. */
     private fun snapToLoadable() {
         val list = missionList()
         if (list.isEmpty()) return
-        val first = list.indices.firstOrNull { isSelectableMission(it) }
+        val first = list.indices.firstOrNull { isPlayable(it) }
         if (first != null) selected = first
+    }
+
+    /** Switches the mission select to the campaign at [index] (the generation switch row). */
+    private fun openCampaign(index: Int) {
+        if (index !in campaigns.indices) return
+        campaignIndex = index
+        selected = 0
+        snapToLoadable()
+        previewKey = null
     }
 
     private fun activateSelected() {
         when (screen) {
-            Screen.MAIN, Screen.OPTIONS -> { /* Enter not used on these screens; click buttons instead */ }
-            Screen.CAMPAIGN, Screen.BOOTCAMP ->
-                // Only start a mission whose map is present AND unlocked; otherwise give feedback.
-                if (isSelectableMission(selected)) running = false
+            Screen.MAIN, Screen.CREDITS, Screen.OPTIONS ->
+                { /* Enter not used on these screens; click buttons instead */ }
+            Screen.MISSIONS ->
+                // Only start a mission whose map is present; otherwise give feedback.
+                if (isPlayable(selected)) running = false
         }
     }
 
@@ -208,7 +281,7 @@ class StartScreen(
             }
         }
         // Medal-row clicks select a mission (medals sit at y=131, centred on the stage).
-        if (screen != Screen.MAIN) {
+        if (screen == Screen.MISSIONS) {
             val list = missionList()
             val medalW = 30
             val medalPadding = 8
@@ -218,7 +291,7 @@ class StartScreen(
                 for (i in list.indices) {
                     val mx = startX + i * (medalW + medalPadding)
                     if (x >= mx && x < mx + medalW) {
-                        if (isSelectableMission(i)) selected = i
+                        if (isPlayable(i)) selected = i
                         return
                     }
                 }
@@ -237,12 +310,15 @@ class StartScreen(
 
         // The main menu paints its full background+title image; the mission-select pages paint
         // the SWF CampaignMenu composition themselves (header + backdrop), so no shared backdrop
-        // is drawn for those. The Options overlay sits ON the main menu (see-through), so its
-        // backdrop stays visible behind the panel too.
-        if (screen == Screen.MAIN || screen == Screen.OPTIONS) drawMainBackdrop()
+        // is drawn for those. The Options and Credits overlays sit ON the main menu, so its
+        // backdrop stays visible behind them (CreditsMenu dims it with its own 60% overlay).
+        if (screen == Screen.MAIN || screen == Screen.OPTIONS || screen == Screen.CREDITS) {
+            drawMainBackdrop()
+        }
 
         when (screen) {
             Screen.MAIN -> drawMainMenu()
+            Screen.CREDITS -> drawCreditsMenu()
             Screen.OPTIONS -> drawOptionsMenu()
             else -> drawMissionSelect()
         }
@@ -258,8 +334,12 @@ class StartScreen(
      * BattalionPanel, the question text, and Yes / No buttons.
      */
     private fun drawClearConfirm() {
+        // Dimmed overlay. The renderer's fill needs BLEND for the alpha to apply.
+        val prevBlend = renderer.blendMode
+        renderer.blendMode = SDLBlendMode.BLEND
         renderer.drawColor = SDLColor(0, 0, 0, 150)
         renderer.fillRect(SDLRect(0, 0, 700, 600))
+        renderer.blendMode = prevBlend
 
         val w = 410
         val h = 200
@@ -297,16 +377,39 @@ class StartScreen(
         confirmingClear = value
     }
 
-    /** Sets the initial screen (e.g. straight to a mission list) for diagnostics. */
+    /**
+     * Sets the initial screen (e.g. straight to a mission list) for diagnostics. `"campaign"`
+     * shows the first generation, or the one named by `"campaign:<id>"` (e.g.
+     * `"campaign:nemesis"`); `"bootcamp"` shows the tutorial list.
+     */
     fun setScreenForCapture(s: String) {
-        screen = when (s) {
-            "bootcamp" -> Screen.BOOTCAMP
-            "campaign" -> Screen.CAMPAIGN
-            "options" -> Screen.OPTIONS
-            else -> Screen.MAIN
+        reloadCampaigns()
+        val target = when {
+            s.startsWith("campaign:") -> s.substringAfter(':')
+            s == "bootcamp" -> GameLoader.BOOTCAMP_CAMPAIGN
+            else -> null
         }
-        campaignMissions = GameLoader.findCampaign(assetsDir).orEmpty()
-        bootcampMissions = GameLoader.findBootcamp(assetsDir).orEmpty()
+        screen = when (s) {
+            "main" -> Screen.MAIN
+            "options" -> Screen.OPTIONS
+            "credits" -> Screen.CREDITS
+            else -> Screen.MISSIONS
+        }
+        if (target != null) {
+            val index = campaigns.indexOfFirst { it.id == target }
+            if (index >= 0) openCampaign(index)
+        }
+    }
+
+    /** Diagnostic: forwards a synthetic click at ([x], [y]) to the current screen. */
+    fun clickForCapture(x: Int, y: Int) {
+        draw()   // a frame must be drawn first: buttons register as they are painted
+        onMouseClick(x, y)
+    }
+
+    /** Diagnostic: positions the credits roll (the text starts below the panel and scrolls up). */
+    fun setCreditsScrollForCapture(value: Float) {
+        creditsScroll = value
     }
 
     /**
@@ -344,9 +447,12 @@ class StartScreen(
                 y += h
             }
         }
-        // Vignette.
+        // Vignette (BLEND so the 35% alpha darkens instead of covering the tiled wood).
+        val prevBlend = renderer.blendMode
+        renderer.blendMode = SDLBlendMode.BLEND
         renderer.drawColor = SDLColor(0, 0, 0, 90)
         renderer.fillRect(SDLRect(0, 0, winW, winH))
+        renderer.blendMode = prevBlend
     }
 
     /**
@@ -388,13 +494,25 @@ class StartScreen(
     }
 
     /**
-     * Draws a mission-select toggle (Bootcamp / Campaign) in the same VistaButton material as
-     * the in-game menu's four actions (Quick Help / Quit / ...): a btn_tile9 nine-slice body
-     * with the btn_overlay gloss, a black centred title and a hover brighten. Mirrors
+     * Draws a mission-select toggle (Boot Camp / generation buttons, and the bottom action
+     * row) in the same VistaButton material as the in-game menu's four actions (Quick Help /
+     * Quit / ...): a btn_tile9 nine-slice body with the btn_overlay gloss, a black centred
+     * title and a hover brighten. Mirrors
      * [cn.enaium.battalion.game.BattalionRenderer]'s drawVistaButton; the sprite-layer
      * bootCampButton/campaignButton art is NOT used here (it doesn't match that material).
+     *
+     * [active] marks the mission list currently shown: that button keeps a warm highlight so
+     * the generation row shows the current selection.
      */
-    private fun drawVistaToggleButton(x: Int, y: Int, w: Int, h: Int, title: String, action: () -> Unit) {
+    private fun drawVistaToggleButton(
+        x: Int,
+        y: Int,
+        w: Int,
+        h: Int,
+        title: String,
+        active: Boolean = false,
+        action: () -> Unit,
+    ) {
         val hover = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h
         // btn_tile9 nine-slice with Tile9Data rect (6,8,12,8): 24×24 sheet, corner 6 left/top,
         // 6 right/bottom (right = 12+6, bottom = 8+8) -> srcCols 0/6/18, srcRows 0/8/16.
@@ -409,14 +527,19 @@ class StartScreen(
         }
         // Black centred title (VistaButtonState HeadingTextField).
         text.drawCentered(title, x + w / 2, y + (h - 18) / 2, 16, SDLColor(20, 20, 20))
+        val prevBlend = renderer.blendMode
+        renderer.blendMode = SDLBlendMode.BLEND
+        // Active campaign: warm highlight (same tint as the difficulty panel's selected row).
+        if (active) {
+            renderer.drawColor = SDLColor(255, 220, 120, 90)
+            renderer.fillRect(SDLRect(x, y, w, h))
+        }
         // Hover brighten (SWF ColorTransform 1.1): blend-mode alpha wash, not opaque white.
         if (hover) {
-            val prevBlend = renderer.blendMode
-            renderer.blendMode = SDLBlendMode.BLEND
             renderer.drawColor = SDLColor(255, 255, 255, 45)
             renderer.fillRect(SDLRect(x, y, w, h))
-            renderer.blendMode = prevBlend
         }
+        renderer.blendMode = prevBlend
         buttons.add(Btn("toggle", w, h, x, y, action))
     }
 
@@ -424,33 +547,90 @@ class StartScreen(
         // Note: the title art is part of the full background image and is drawn by
         // drawMainBackdrop(); nothing extra is drawn here for the title.
 
-        // Button column (like the original main-menu tab row).
+        // Button row (the original MainMenu's tab row): Continue / Single Player / Multiplayer
+        // (Kongregate — disabled) / Options / Level Editor, spread evenly across the stage.
         val buttonsDef = listOf(
-            Triple("restoreButton", 126, 71),     // Continue
+            Triple("restoreButton", 126, 71),      // Continue
             Triple("singleplayerButton", 126, 71), // Single Player
-            Triple("multiplayerButton", 126, 71), // Multiplayer (Kongregate — disabled)
-            Triple("optionsMainButton", 126, 71), // Options
+            Triple("multiplayerButton", 126, 71),  // Multiplayer (Kongregate — disabled)
+            Triple("optionsMainButton", 126, 71),  // Options
+            Triple("levelEditorButton", 126, 71),  // Level Editor (not ported)
         )
         val btnW = 126
         val btnH = 71
-        val gap = 18
-        val totalW = btnW * buttonsDef.size + gap * (buttonsDef.size - 1)
-        var x = (800 - totalW) / 2
         val y = 380
+        // MainMenu: leftOver = WIDTH - n·buttonWidth; separation = leftOver / (n + 1).
+        val separation = (700 - buttonsDef.size * btnW) / (buttonsDef.size + 1)
+        var x = separation
 
         // Continue (restore): enabled only when a saved game exists.
         val hasSave = SaveManager.hasSavedGame()
-        drawButton("restoreButton", btnW, btnH, x, y, { if (hasSave) { resumeRequested = true; running = false } }, disabled = !hasSave); x += btnW + gap
-        drawButton("singleplayerButton", btnW, btnH, x, y, { openCampaign() }); x += btnW + gap
-        drawButton("multiplayerButton", btnW, btnH, x, y, { /* multiplayer exclude */ }, disabled = true); x += btnW + gap
-        drawButton("optionsMainButton", btnW, btnH, x, y, { screen = Screen.OPTIONS })
+        drawButton("restoreButton", btnW, btnH, x, y, { if (hasSave) { resumeRequested = true; running = false } }, disabled = !hasSave); x += separation + btnW
+        drawButton("singleplayerButton", btnW, btnH, x, y, { openMissionSelect() }); x += separation + btnW
+        drawButton("multiplayerButton", btnW, btnH, x, y, { /* multiplayer exclude */ }, disabled = true); x += separation + btnW
+        drawButton("optionsMainButton", btnW, btnH, x, y, { screen = Screen.OPTIONS }); x += separation + btnW
+        // Level Editor: the original opens the map editor, which this build does not port
+        // (the note below says so) — the button is drawn and clickable, but does nothing.
+        drawButton("levelEditorButton", btnW, btnH, x, y, { /* level editor not ported */ })
 
-        // Corner buttons.
-        drawButton("creditsButton", 132, 28, 800 - 132 - 8, 8, { /* credits: cosmetic, not ported */ })
+        // Corner buttons: credits top-right (MainMenu.x = WIDTH - width, y = 0) and the bonus
+        // map top-left, both 126×71 like every other main-menu button. Opening the credits
+        // restarts the roll (the original sets the text field's y in CreditsMenu.pushed).
+        drawButton("creditsButton", 126, 71, 700 - 126, 0, {
+            creditsScroll = 0f
+            screen = Screen.CREDITS
+        })
         drawButton("bonusMapButton", 126, 71, 8, 8, { loadBonusMap() })
 
-        text.drawCentered("Multiplayer / Level Editor excluded in this build", 400, 540, 14, SDLColor(150, 150, 165))
-        text.drawCentered("ESC: Quit", 400, 566, 14, SDLColor(140, 140, 160))
+        text.drawCentered("Multiplayer / Level Editor excluded in this build", 350, 540, 14, SDLColor(150, 150, 165))
+        text.drawCentered("ESC: Quit", 350, 566, 14, SDLColor(140, 140, 160))
+    }
+
+    /**
+     * Draws the Credits screen, reproducing the original `CreditsMenu`: a 60%-alpha black
+     * overlay, a wood BattalionPanel (400×300) at (150, 150) holding a 350×200 spotted panel
+     * with the credits text scrolling up, and the close button at the panel's top-right.
+     */
+    private fun drawCreditsMenu() {
+        // Dim the main menu behind the panel (CreditsMenu's 60% black overlay). The renderer's
+        // fill needs BLEND for the alpha to apply — otherwise the dim would be opaque.
+        val prevBlend = renderer.blendMode
+        renderer.blendMode = SDLBlendMode.BLEND
+        renderer.drawColor = SDLColor(0, 0, 0, 153)
+        renderer.fillRect(SDLRect(0, 0, 700, 600))
+        renderer.blendMode = prevBlend
+
+        val frameX = 150
+        val frameY = 150
+        val frameW = 400
+        val frameH = 300
+        drawPanel(frameX, frameY, frameW, frameH, "frame1", 16, "wood_texture")
+
+        val boxW = 350
+        val boxH = 200
+        val boxX = frameX + 25
+        val boxY = frameY + 75
+        drawPanel(boxX, boxY, boxW, boxH, "frame2", 32, "spotted_texture")
+
+        // Scrolling credits: the text starts below the box and rolls up, wrapping once it has
+        // fully left it (see CREDITS_SCROLL_PER_FRAME).
+        creditsScroll += CREDITS_SCROLL_PER_FRAME
+        val lines = CREDITS_LINES
+        val lineH = 18
+        val totalH = lines.size * lineH
+        if (creditsScroll > totalH + boxH) creditsScroll = 0f
+        val firstY = boxY + 5 + boxH - creditsScroll
+        for (i in lines.indices) {
+            val ly = firstY + i * lineH
+            // Cull the lines outside the box (the original clips them with a mask).
+            if (ly < boxY + 4 || ly > boxY + boxH - lineH) continue
+            text.drawCentered(lines[i], boxX + boxW / 2, ly.toInt(), 14, SDLColor(0, 0, 0))
+        }
+
+        // Close button at the frame's top-right (CreditsMenu: x = frame.x + WIDTH - w - 5,
+        // y = frame.y - h / 2 + 10).
+        drawButton("closeButton", 126, 71, frameX + frameW - 126 - 5, frameY - 71 / 2 + 10,
+            { screen = Screen.MAIN })
     }
 
     /**
@@ -465,7 +645,9 @@ class StartScreen(
         // added afterwards so onMouseClick's reversed iteration gives them priority.
         drawMainMenu()
         // (The main backdrop was already painted by draw() so the menu art shows through.)
-        drawPanel(55, 238, 590, 125, "frame1", 16, "spotted_texture", title = "Options")
+        // The original OptionsMenu's panel carries no heading (its toggles sit at the panel's
+        // top-left), so none is drawn here either.
+        drawPanel(55, 238, 590, 125, "frame1", 16, "spotted_texture")
 
         data class ToggleRow(val label: String, val offKey: String, val onKey: String, val toggle: () -> Unit)
         val rows = listOf(
@@ -502,15 +684,11 @@ class StartScreen(
         drawButton("closeButton", 126, 71, 55 + 590 - 126 - 4, 238 - 71 / 2, { screen = Screen.MAIN })
     }
 
-    /** "Single Player" from the main menu opens the campaign mission select. */
-    private fun openCampaign() {
-        if (campaignMissions.isNotEmpty()) {
-            screen = Screen.CAMPAIGN
-            snapToLoadable()
-        } else if (bootcampMissions.isNotEmpty()) {
-            screen = Screen.BOOTCAMP
-            snapToLoadable()
-        }
+    /** "Single Player" from the main menu opens the mission select (generations + boot camp). */
+    private fun openMissionSelect() {
+        reloadCampaigns()
+        screen = Screen.MISSIONS
+        snapToLoadable()
     }
 
     /** The main-menu bonus map button: plays the Kongregate bonus map as a skirmish. */
@@ -525,19 +703,21 @@ class StartScreen(
      * Draws the mission-select page, reproducing the original SWF `CampaignMenu` (a 700×600
      * stage):
      *
-     *  - Campaign / Bootcamp header image across the top 175px (ep3_campaign_header /
-     *    default_header), with the `bg_bootcamp` backdrop below it.
+     *  - Campaign header image across the top 175px (the generation's `headerBackground`,
+     *    `default_header` when it has none), with the `bg_bootcamp` backdrop below it.
      *  - A medal row near y=131 (medalBackground + medal sheet frames).
      *  - A chapter-title BattalionPanel (350×70, FRAME1) at y=200 with prev/next mission
      *    TileSheetButtons flanking it.
      *  - A "Mission Brief" BattalionPanel (330×200, FRAME2) at (188, 297).
      *  - A "Mission Preview" BattalionPanel with a terrain minimap at (24, 297).
-     *  - Difficulty options (campaign only) at the right.
-     *  - Bottom action buttons (Main Menu / Start, plus Go to Bootcamp|Campaign).
+     *  - Difficulty options (campaigns only, not boot camp) at the right.
+     *  - A generation switch row (one button per campaign) above the action row.
+     *  - Bottom action buttons (Main Menu left, Start right).
      */
     private fun drawMissionSelect() {
+        val campaign = campaigns.getOrNull(campaignIndex)
         val missions = missionList()
-        if (missions.isEmpty()) {
+        if (campaign == null || missions.isEmpty()) {
             text.drawCentered("No missions available", 350, 280, 24, SDLColor(200, 200, 200))
             drawButton("optionsMainButton", 126, 71, 8, 8, { screen = Screen.MAIN })
             return
@@ -546,37 +726,51 @@ class StartScreen(
         ensurePreview(m)
 
         // ---- Header + bottom backdrop (like CampaignMenu's header + bg). ----
-        val headerKey = if (screen == Screen.CAMPAIGN) "ep3_campaign_header" else "default_header"
-        drawFullWidth(headerKey, 0, 0, 175)
+        drawFullWidth(campaign.headerBackground.ifEmpty { "default_header" }, 0, 0, 175)
         drawFullWidth("bg_bootcamp", 0, 175, 600 - 175)
 
         drawMedalRow(missions)
-        drawChapterPanel(m)
+        drawChapterPanel(campaign, m)
         drawMissionBriefPanel(m)
         drawMissionPreviewPanel()
-        if (screen == Screen.CAMPAIGN) drawDifficultyPanel()
+        if (campaign.id != GameLoader.BOOTCAMP_CAMPAIGN) drawDifficultyPanel()
 
-        // ---- Bottom action buttons (SWF: Main Menu left, Start right, toggle centre). All
-        // three share the VistaButton material (btn_tile9 body + gloss + hover brighten). ----
+        // ---- Generation switch row: one button per level list, the active one highlighted. ----
+        drawCampaignSwitchRow()
+
+        // ---- Bottom action buttons (SWF: Main Menu left, Start right). Both share the
+        // VistaButton material (btn_tile9 body + gloss + hover brighten). ----
         val btnW = 200
-        val btnH = 60
+        val btnH = 44
         val bottomY = 600 - btnH - 8
         // Main Menu (Back).
-        drawVistaToggleButton(8, bottomY, btnW, btnH, "Main Menu", { screen = Screen.MAIN })
-        // Start Game (right). Locked / missing-map missions cannot be started.
-        drawVistaToggleButton(700 - btnW - 8, bottomY, btnW, btnH, "Start Game",
-            { if (isSelectableMission(selected)) running = false })
-        // Go to Bootcamp / Campaign toggle (centre).
-        val toggleW = 164
-        val toggleH = 52
-        val toggleX = (700 - toggleW) / 2
-        val toggleY = 590 - toggleH
-        val other = if (screen == Screen.CAMPAIGN) Screen.BOOTCAMP else Screen.CAMPAIGN
-        val title = if (screen == Screen.CAMPAIGN) "Bootcamp" else "Campaign"
-        drawVistaToggleButton(toggleX, toggleY, toggleW, toggleH, title, {
-            screen = other
-            snapToLoadable()
-        })
+        drawVistaToggleButton(8, bottomY, btnW, btnH, "Main Menu") { screen = Screen.MAIN }
+        // Start Game (right). Missions whose map file is missing cannot be started.
+        drawVistaToggleButton(700 - btnW - 8, bottomY, btnW, btnH, "Start Game") {
+            if (isPlayable(selected)) running = false
+        }
+    }
+
+    /**
+     * Draws the row of generation buttons (Nemesis / Skirmish / Ghosts / Vengeance / Boot Camp)
+     * that switches the mission list. The active campaign's button stays highlighted, so the
+     * row doubles as the current-selection indicator.
+     */
+    private fun drawCampaignSwitchRow() {
+        if (campaigns.isEmpty()) return
+        var x = SWITCH_ROW_MARGIN
+        for (i in campaigns.indices) {
+            val active = i == campaignIndex
+            drawVistaToggleButton(x, SWITCH_ROW_Y, switchButtonWidth(), SWITCH_ROW_H,
+                campaigns[i].displayName, active = active, action = { openCampaign(i) })
+            x += switchButtonWidth() + SWITCH_ROW_GAP
+        }
+    }
+
+    /** Width of one generation button: the row spans the stage minus its margins. */
+    private fun switchButtonWidth(): Int {
+        val totalW = 700 - 2 * SWITCH_ROW_MARGIN
+        return (totalW - SWITCH_ROW_GAP * (campaigns.size - 1)) / maxOf(1, campaigns.size)
     }
 
     /** Draws a texture stretched across the full window width at [y]..[y+h]. */
@@ -636,21 +830,77 @@ class StartScreen(
             renderer.drawRect(SDLRect(x, y, w, h))
         }
 
-        // Centred heading (BattalionPanel title).
+        // BattalionPanel title: a white 16px heading centred at the panel's top edge, drawn on
+        // a black 50%-alpha band spanning the panel width (the original's `bgBorder`:
+        // lineStyle(1,0,0) + beginFill(0,0.5), sized rWidth × headingHeight+5). The fill needs
+        // BLEND for the alpha to apply — without it the band would hide the panel texture.
         if (title != null) {
-            val headingY = y - 10
-            text.drawCentered(title, x + w / 2, headingY, 16, SDLColor(20, 20, 20))
+            val bandH = TITLE_BAND_H
+            val prevBlend = renderer.blendMode
+            renderer.blendMode = SDLBlendMode.BLEND
+            renderer.drawColor = SDLColor(0, 0, 0, 128)
+            renderer.fillRect(SDLRect(x, y, w, bandH))
+            renderer.blendMode = prevBlend
+            renderer.drawColor = SDLColor(0, 0, 0)
+            renderer.drawRect(SDLRect(x, y, w, bandH))
+            text.drawCentered(title, x + w / 2, y + 2, 16, SDLColor(255, 255, 255))
         }
     }
 
+    /**
+     * Draws only a [FrameMaker.createFrame] frame (no fill) into the exact rect
+     * ([x], [y], [w], [h]): [cornerW]×[cornerH] corners copied, edges and centre tiled. Used by
+     * the mission select's standalone frames (minimap, difficulty panel).
+     */
+    private fun drawNineSliceFrame(frameKey: String, x: Int, y: Int, w: Int, h: Int, cornerW: Int, cornerH: Int) {
+        val tex = textures.texture(frameKey) ?: return
+        val fw = tex.size.x.toInt()
+        val fh = tex.size.y.toInt()
+        if (fw < cornerW * 2 + 1 || fh < cornerH * 2 + 1) return
+
+        fun tile(sx: Int, sy: Int, sw: Int, sh: Int, dx: Int, dy: Int, dw: Int, dh: Int) {
+            if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return
+            var oy = 0
+            while (oy < dh) {
+                var ox = 0
+                while (ox < dw) {
+                    val cw = minOf(sw, dw - ox)
+                    val ch = minOf(sh, dh - oy)
+                    renderer.renderTexture(
+                        tex,
+                        src = SDLFRect(sx.toFloat(), sy.toFloat(), cw.toFloat(), ch.toFloat()),
+                        dst = SDLFRect((dx + ox).toFloat(), (dy + oy).toFloat(), cw.toFloat(), ch.toFloat()),
+                    )
+                    ox += sw
+                }
+                oy += sh
+            }
+        }
+
+        val midW = fw - cornerW * 2
+        val midH = fh - cornerH * 2
+        // Edges + centre (corners are copied last so they always win).
+        tile(cornerW, 0, midW, cornerH, x + cornerW, y, w - cornerW * 2, cornerH)
+        tile(cornerW, fh - cornerH, midW, cornerH, x + cornerW, y + h - cornerH, w - cornerW * 2, cornerH)
+        tile(0, cornerH, cornerW, midH, x, y + cornerH, cornerW, h - cornerH * 2)
+        tile(fw - cornerW, cornerH, cornerW, midH, x + w - cornerW, y + cornerH, cornerW, h - cornerH * 2)
+        tile(cornerW, cornerH, midW, midH, x + cornerW, y + cornerH, w - cornerW * 2, h - cornerH * 2)
+        // Corners.
+        renderer.renderTexture(tex, src = SDLFRect(0f, 0f, cornerW.toFloat(), cornerH.toFloat()), dst = SDLFRect(x.toFloat(), y.toFloat(), cornerW.toFloat(), cornerH.toFloat()))
+        renderer.renderTexture(tex, src = SDLFRect((fw - cornerW).toFloat(), 0f, cornerW.toFloat(), cornerH.toFloat()), dst = SDLFRect((x + w - cornerW).toFloat(), y.toFloat(), cornerW.toFloat(), cornerH.toFloat()))
+        renderer.renderTexture(tex, src = SDLFRect(0f, (fh - cornerH).toFloat(), cornerW.toFloat(), cornerH.toFloat()), dst = SDLFRect(x.toFloat(), (y + h - cornerH).toFloat(), cornerW.toFloat(), cornerH.toFloat()))
+        renderer.renderTexture(tex, src = SDLFRect((fw - cornerW).toFloat(), (fh - cornerH).toFloat(), cornerW.toFloat(), cornerH.toFloat()), dst = SDLFRect((x + w - cornerW).toFloat(), (y + h - cornerH).toFloat(), cornerW.toFloat(), cornerH.toFloat()))
+    }
+
     /** Draws the chapter-title panel with prev/next mission TileSheetButtons (SWF: top at y=200). */
-    private fun drawChapterPanel(m: MissionInfo) {
+    private fun drawChapterPanel(campaign: GameLoader.Campaign, m: MissionInfo) {
         val x = 350 - 175
         val y = 200
         drawPanel(x, y, 350, 70, "frame1", 16, "spotted_texture")
         // Text on the light spotted panel reads better in black (SWF panel text is dark).
         text.drawCentered(m.name, 350, y + 18, 22, SDLColor(20, 20, 20))
-        if (screen == Screen.CAMPAIGN) text.drawCentered("Campaign   •   Mission ${m.number + 1}", 350, y + 44, 14, SDLColor(60, 60, 70))
+        text.drawCentered("${campaign.displayName}   •   Mission ${m.number + 1}", 350, y + 44, 14,
+            SDLColor(60, 60, 70))
 
         // Prev / next tilesheet buttons flank the chapter panel.
         drawButton("previousMissionButton", 33, 46, x - 33 - 4, y + (70 - 46) / 2, { move(-1) })
@@ -661,18 +911,20 @@ class StartScreen(
     private fun drawMissionBriefPanel(m: MissionInfo) {
         val x = 188
         val y = 297
-        drawPanel(x, y, 330, 200, "frame2", 32, "spotted_texture", title = "Mission Brief")
+        val w = 330
+        drawPanel(x, y, w, 200, "frame2", 32, "spotted_texture", title = "Mission Brief")
         val brief = m.brief
         val (silver, gold) = medalThresholds(assetsDir, m)
-        var ty = y + 14
-        for (wrapped in wrapText(brief, 300, 13)) {
-            if (ty > y + 130) break
-            // Dark text on the light spotted panel for legibility.
-            text.draw(wrapped, x + 12, ty, 13, SDLColor(20, 20, 20))
+        // CustomTextField at (panel.x + 5, panel.y + 24), width rWidth - 10, black 12px text.
+        val textW = w - 10
+        var ty = y + 24
+        for (wrapped in wrapText(brief, textW, 13)) {
+            if (ty > y + 140) break
+            text.draw(wrapped, x + 8, ty, 13, SDLColor(0, 0, 0))
             ty += 17
         }
         if (silver != null && gold != null) {
-            text.draw("Silver: $silver    Gold: $gold", x + 12, y + 168, 13, SDLColor(90, 60, 20))
+            text.draw("Silver: $silver    Gold: $gold", x + 8, y + 168, 13, SDLColor(90, 60, 20))
         }
     }
 
@@ -689,14 +941,13 @@ class StartScreen(
             if (isSelected && bg != null) {
                 renderer.renderTexture(bg, dst = SDLFRect((x - 10).toFloat(), (131 - 11).toFloat(), 50f, 57f))
             }
-            // Medal sheet: 6 frames × 30px — 0 empty, 1 bronze, 2 silver, 3 gold, 4 locked, 5 selected.
-            // Locked missions (not yet unlocked by campaign progress) show the locked frame and
-            // cannot be picked; unlocked missions show their earned medal (if any).
+            // Medal sheet: 6 frames × 30px — 0 empty, 1 bronze, 2 silver, 3 gold, 4 locked,
+            // 5 selected. Every level is unlocked (the mission list has no progression gate),
+            // so only the earned medal / selection frames are ever shown.
             val medal = textures.texture("medal")
             if (medal != null) {
                 val frame = when {
                     isSelected -> 5
-                    !isUnlocked(i) -> 4
                     else -> when (SaveManager.medalFor(missionList()[i].mapUrl)) {
                         "gold" -> 3
                         "silver" -> 2
@@ -727,7 +978,7 @@ class StartScreen(
 
     /** Builds (or refreshes) the terrain-colour minimap preview for the current selection. */
     private fun ensurePreview(m: MissionInfo) {
-        val key = screen to selected
+        val key = (campaigns.getOrNull(campaignIndex)?.id ?: "") to selected
         if (previewKey == key) return
         previewKey = key
         preview = null
@@ -751,25 +1002,39 @@ class StartScreen(
         }
     }
 
-    /** Draws the "Mission Preview" BattalionPanel with a terrain minimap (SWF: at (24, 297)). */
+    /**
+     * Draws the mission preview exactly like `CampaignMenu.createMinimap`: a small "Mission
+     * Preview" title panel (124×64, FRAME2) at (24, 297) and — 22px below it — the 140×184
+     * minimap bitmap on a black backing, wrapped in a 43px-corner frame1 frame.
+     */
     private fun drawMissionPreviewPanel() {
-        val x = 24
-        val y = 297
-        drawPanel(x, y, 140, 200, "frame2", 32, "spotted_texture", title = "Mission Preview")
-        val p = preview ?: return
-        val cell = minOf(120.0 / p.cols, 170.0 / p.rows)
-        val ox = x + 9
-        val oy = y + 16
-        var hasTeamOwned = false
-        for (r in 0 until p.rows) {
-            for (c in 0 until p.cols) {
-                val team = p.teams[r][c]
-                if (team > 0) hasTeamOwned = true
-                val color = if (team > 0) teamColor(team) else terrainColorFor(p.names[r][c])
-                renderer.drawColor = color
-                renderer.fillRect(SDLRect((ox + c * cell).toInt(), (oy + r * cell).toInt(), kotlin.math.ceil(cell).toInt(), kotlin.math.ceil(cell).toInt()))
+        val mmFrameX = 24
+        val mmFrameY = 297
+        drawPanel(mmFrameX, mmFrameY, MM_WIDTH - 16, 64, "frame2", 32, "spotted_texture",
+            title = "Mission Preview")
+
+        // The minimap sprite: black backing + terrain + frame.
+        val mmX = mmFrameX - 9
+        val mmY = mmFrameY + 22
+        renderer.drawColor = SDLColor(0, 0, 0)
+        renderer.fillRect(SDLRect(mmX, mmY, MM_WIDTH, MM_HEIGHT))
+
+        val p = preview
+        if (p != null) {
+            val cell = minOf(MM_WIDTH.toDouble() / p.cols, MM_HEIGHT.toDouble() / p.rows)
+            val ox = mmX + ((MM_WIDTH - cell * p.cols) / 2).toInt()
+            val oy = mmY + ((MM_HEIGHT - cell * p.rows) / 2).toInt()
+            val step = kotlin.math.ceil(cell).toInt()
+            for (r in 0 until p.rows) {
+                for (c in 0 until p.cols) {
+                    val team = p.teams[r][c]
+                    renderer.drawColor = if (team > 0) teamColor(team) else terrainColorFor(p.names[r][c])
+                    renderer.fillRect(SDLRect((ox + c * cell).toInt(), (oy + r * cell).toInt(), step, step))
+                }
             }
         }
+
+        drawNineSliceFrame("frame1", mmX - 8, mmY - 8, MM_WIDTH + 16, MM_HEIGHT + 16, 43, 43)
     }
 
     /** A fixed team-colour palette for the minimap (P1..P4). */
@@ -787,38 +1052,81 @@ class StartScreen(
      */
     private var difficultyIndex: Int = SaveManager.aiDifficulty.coerceIn(0, 2)
 
-    /** Reproduces the SWF DifficultyPanel (Easy/Normal/Hard clickable rows) for the campaign screen. */
+    /**
+     * Reproduces `DifficultyPanel`/`DifficultyOption` for the campaign screen:
+     *
+     *  - a 72×50 "AI Difficulty" title panel at (585, 315);
+     *  - three 80×37 option rows at (582, 340 + i·37): spotted backing, a colour bar on the
+     *    left (`colorBar`, tinted per difficulty), the rank badge (frame = rank 1/2/6),
+     *    and the name in black at (row.x + 38, row.y + 9);
+     *  - a 39px-corner frame1 frame around the whole panel;
+     *  - the left-arrow marker next to the selected row.
+     *
+     * The SWF colours are Easy `0xFF00FF00`, Normal `0xCCCCCC00`, Hard `0xFFFF0000`.
+     */
     private fun drawDifficultyPanel() {
-        val x = 580
-        val y = 340
-        drawPanel(x - 5, y - 25, 80 - 8, 120, "frame2", 32, "spotted_texture", title = "AI Difficulty")
+        val panelX = 580
+        val panelY = 340
+        val rowW = 80
+        val rowH = 37
         val names = listOf("Easy", "Normal", "Hard")
+
+        // Whole-panel frame behind the rows.
+        drawNineSliceFrame("frame1", panelX - 8, panelY - 11, rowW + 18, rowH * 3 + 5, 39, 39)
+
+        // Title panel (WIDTH - 8 = 72 × 50 at (panel.x + 5, panel.y - 25)).
+        drawPanel(panelX + 5, panelY - 25, rowW - 8, 50, "frame2", 32, "spotted_texture",
+            title = "AI Difficulty")
+
+        var selectedRowY = panelY
         for (i in names.indices) {
-            val rowY = y + i * 37
+            val rowX = panelX + 2
+            val rowY = panelY + i * rowH
+            // Row backing: the spotted texture tiled over 80×37.
             val bg = textures.texture("spotted_texture")
             if (bg != null) {
-                renderer.renderTexture(bg, dst = SDLFRect(x.toFloat(), rowY.toFloat(), 80f, 37f))
+                renderer.renderTexture(bg, dst = SDLFRect(rowX.toFloat(), rowY.toFloat(), rowW.toFloat(), rowH.toFloat()))
             }
-            // Selected row: highlight + a hand cursor (hover feedback via the rank badge frame).
-            val selected = i == difficultyIndex
-            if (selected) {
-                renderer.drawColor = SDLColor(255, 220, 120, 90)
-                renderer.fillRect(SDLRect(x, rowY, 80, 37))
+            // Left colour bar (10×32 at (row.x, row.y + 2)), repainted in the difficulty colour.
+            val colorBar = textures.texture("colorBar")
+            if (colorBar != null) {
+                val dc = DIFFICULTY_COLORS[i]
+                val prevMod = colorBar.colorMod
+                val prevAlpha = colorBar.alphaMod
+                colorBar.colorMod = dc.color
+                colorBar.alphaMod = dc.alpha
+                renderer.renderTexture(colorBar, dst = SDLFRect(rowX.toFloat(), (rowY + 2).toFloat(), 10f, 32f))
+                colorBar.colorMod = prevMod
+                colorBar.alphaMod = prevAlpha
             }
-            // rankBadges: 72×37 sheet, frames = ? rows; rank 1/2/6 -> row selection.
+            // Rank badge: frame = rank (1/2/6) in the 18px 4-column badge sheet.
             val rank = when (i) { 1 -> 2; 2 -> 6; else -> 1 }
             val rb = textures.texture("rankBadges")
             if (rb != null) {
-                val cellH = 18
-                val row = (rank - 1) % 4
-                renderer.renderTexture(rb, src = SDLFRect(0f, (row * cellH).toFloat(), 18f, 18f), dst = SDLFRect((x + 15).toFloat(), (rowY + 9).toFloat(), 18f, 18f))
+                renderer.renderTexture(
+                    rb,
+                    src = SDLFRect((rank % 4 * 18).toFloat(), (rank / 4 * 18).toFloat(), 18f, 18f),
+                    dst = SDLFRect((rowX + 15).toFloat(), (rowY + 9).toFloat(), 18f, 18f),
+                )
             }
-            text.draw(names[i], x + 38, rowY + 9, 14, SDLColor(20, 20, 20))
+            text.draw(names[i], rowX + 38, rowY + 9, 14, SDLColor(0, 0, 0))
+
+            if (i == difficultyIndex) selectedRowY = rowY
             // Clickable row -> select + persist (like DifficultyPanel.changeSelection).
-            buttons.add(Btn("difficulty", 80, 37, x, rowY) {
+            buttons.add(Btn("difficulty", rowW, rowH, rowX, rowY) {
                 difficultyIndex = i
                 SaveManager.aiDifficulty = i
             })
+        }
+
+        // Selection marker: the original mirrors the 64×64 arrow sprite to half size next to
+        // the active row (the visible triangle lands just left of the row).
+        val arrow = textures.texture("ui_left_arrow")
+        if (arrow != null) {
+            renderer.renderTexture(
+                arrow,
+                dst = SDLFRect((panelX - 14).toFloat(), (selectedRowY + 2).toFloat(), 32f, 32f),
+            )
         }
     }
 
@@ -837,12 +1145,6 @@ class StartScreen(
         }
         if (current.isNotEmpty()) lines.add(current.toString())
         return lines
-    }
-
-    private fun missionListOf(s: Screen): List<MissionInfo> = when (s) {
-        Screen.CAMPAIGN -> campaignMissions
-        Screen.BOOTCAMP -> bootcampMissions
-        Screen.MAIN, Screen.OPTIONS -> emptyList()
     }
 
     /**

@@ -11,12 +11,27 @@ import cn.enaium.battalion.game.GameManager
  *    unit configs only reference them by name.
  *  - `units/<id>.json` / `terrain/<id>.json` — one file per template.
  *  - `ballistics.json`, `sprites.json`.
- *  - `campaigns/campaign.json` + `campaigns/bootcamp.json`.
+ *  - `campaigns/<generation>.json` — one document per game generation (see [CAMPAIGN_IDS])
+ *    plus `campaigns/bootcamp.json` for the tutorial.
  *  - `maps/<Map>.json`.
  *
  * Mods add content by dropping files into these folders; nothing else changes.
  */
 object GameLoader {
+
+    /** The port's original content (Battalion Vengeance): the default campaign. */
+    const val DEFAULT_CAMPAIGN = "vengeance"
+
+    /** The tutorial campaign document, listed after the generations by the mission select. */
+    const val BOOTCAMP_CAMPAIGN = "bootcamp"
+
+    /**
+     * The single-player campaigns the mission select offers, in release order: Battalion
+     * Nemesis, Battalion Skirmish, Battalion Ghosts, Battalion Vengeance. Each is one document
+     * under `campaigns/` and one directory under `maps/`; missions use Vengeance's unit art
+     * while generation-specific art (portraits) comes from the generation's own sheet.
+     */
+    val CAMPAIGN_IDS: List<String> = listOf("nemesis", "skirmish", "ghosts", "vengeance")
 
     class MissionInfo(
         val number: Int,
@@ -29,6 +44,21 @@ object GameLoader {
         /** Kept for callers that key saves/medals off the old URL form. */
         val mapUrl: String get() = "maps/$mapId"
     }
+
+    /**
+     * One playable generation: its campaign document plus the ordered missions. [id] is the
+     * document name under `campaigns/` (e.g. `"nemesis"`), [displayName] the label shown by
+     * the mission-select switch.
+     */
+    class Campaign(
+        val id: String,
+        val displayName: String,
+        val missions: List<MissionInfo>,
+        /** Header art key for the mission select (`""` = the generic `default_header`). */
+        val headerBackground: String,
+        /** Portrait sheet in `sprites.json` (`"avatars"` = the Vengeance/Ghosts sheet). */
+        val avatarSheet: String,
+    )
 
     /**
      * Imports the registries: unit+terrain modifiers, then terrain, then units, then
@@ -60,61 +90,45 @@ object GameLoader {
             }
             .sortedBy { it.number }
 
-    /** Finds the Ep3 single-player campaign (not bootcamp). */
-    fun findCampaign(assetsDir: String): List<MissionInfo>? =
-        findCampaignNamed(assetsDir, isBootcamp = false)
+    /**
+     * The generation campaigns present in [assetsDir], in release order ([CAMPAIGN_IDS]).
+     * A generation whose document is missing (e.g. a trimmed asset set) is skipped.
+     */
+    fun findCampaigns(assetsDir: String): List<Campaign> =
+        CAMPAIGN_IDS.mapNotNull { findCampaign(assetsDir, it) }
 
-    /** Finds the Ep3 bootcamp campaign. */
-    fun findBootcamp(assetsDir: String): List<MissionInfo>? =
-        findCampaignNamed(assetsDir, isBootcamp = true)
-
-    /** Finds a campaign document (`bootcamp` for the tutorial, otherwise the Ep3 campaign). */
-    fun findCampaignNamed(assetsDir: String, isBootcamp: Boolean): List<MissionInfo>? {
-        val cfg = AssetLoader.campaign(assetsDir, if (isBootcamp) "bootcamp" else "campaign")
-            ?: return null
-        return parseCampaign(cfg)
+    /** One generation campaign by its document name (e.g. `"ghosts"`), or null when absent. */
+    fun findCampaign(assetsDir: String, id: String): Campaign? {
+        val cfg = AssetLoader.campaign(assetsDir, id) ?: return null
+        return Campaign(
+            id = id,
+            displayName = cfg.displayName.ifEmpty { id.replaceFirstChar { it.uppercase() } },
+            missions = parseCampaign(cfg),
+            headerBackground = cfg.headerBackground,
+            avatarSheet = cfg.avatarSheet,
+        )
     }
 
-    /** Loads a single-player campaign mission ([missionIndex], 0-based). */
+    /** Loads a single-player campaign mission of [campaignId], 0-based. */
     fun loadCampaignMission(
         assetsDir: String,
         missionIndex: Int,
+        campaignId: String = DEFAULT_CAMPAIGN,
         difficultyOverride: Int? = null,
     ): GameManager {
         loadAssets(assetsDir)
-        val missions = findCampaign(assetsDir)
-            ?: error("GameLoader: no campaign document found in $assetsDir")
-        if (missionIndex !in missions.indices) {
-            error("GameLoader: mission $missionIndex out of range (0..${missions.lastIndex})")
+        val campaign = findCampaign(assetsDir, campaignId)
+            ?: error("GameLoader: no campaign '$campaignId' document found in $assetsDir")
+        if (missionIndex !in campaign.missions.indices) {
+            error("GameLoader: mission $missionIndex out of range (0..${campaign.missions.lastIndex})")
         }
-        val mission = missions[missionIndex]
+        val mission = campaign.missions[missionIndex]
         val mapCfg = findMap(assetsDir, mission.mapId)
             ?: error("GameLoader: could not find map for '${mission.mapId}'")
         return buildGame(mapCfg, mission.settings,
             difficultyOverride = difficultyOverride,
             mapUrl = "maps/${mission.mapId}", mapName = mission.mapId.substringAfterLast("/"))
-            .also { it.setCampaignContext(missionIndex, bootcamp = false, "maps/${mission.mapId}") }
-    }
-
-    /** Loads a single-player bootcamp mission ([missionIndex], 0-based). */
-    fun loadBootcampMission(
-        assetsDir: String,
-        missionIndex: Int,
-        difficultyOverride: Int? = null,
-    ): GameManager {
-        loadAssets(assetsDir)
-        val missions = findBootcamp(assetsDir)
-            ?: error("GameLoader: no bootcamp document found in $assetsDir")
-        if (missionIndex !in missions.indices) {
-            error("GameLoader: bootcamp mission $missionIndex out of range (0..${missions.lastIndex})")
-        }
-        val mission = missions[missionIndex]
-        val mapCfg = findMap(assetsDir, mission.mapId)
-            ?: error("GameLoader: could not find map for '${mission.mapId}'")
-        return buildGame(mapCfg, mission.settings,
-            difficultyOverride = difficultyOverride,
-            mapUrl = "maps/${mission.mapId}", mapName = mission.mapId.substringAfterLast("/"))
-            .also { it.setCampaignContext(missionIndex, bootcamp = true, "maps/${mission.mapId}") }
+            .also { it.setCampaignContext("maps/${mission.mapId}", campaign.avatarSheet) }
     }
 
     /** True when a campaign [MissionInfo]'s map file is actually present and loadable. */
@@ -136,6 +150,7 @@ object GameLoader {
         return buildGame(mapCfg, save.settings, save.script,
             mapUrl = "maps/${save.mapId}",
             mapName = save.mapName.ifEmpty { save.mapId.substringAfterLast('/') })
+            .also { it.setCampaignContext("maps/${save.mapId}", save.avatarSheet) }
     }
 
     /** Public access to the parsed [MapConfig] for a mission (used by the menu minimap). */

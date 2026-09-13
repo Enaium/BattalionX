@@ -222,12 +222,13 @@ data class CampaignLevelConfig(
 @Serializable
 data class CampaignConfig(
     val levels: List<CampaignLevelConfig> = emptyList(),
-    /** Save-key prefixes for progress (mirrors the SWF storage keys). */
-    val levelKey: String = "campaign_level",
-    val completeKey: String = "campaign_complete",
     /** Sprites shown by the menu (victory art / header). */
     val victoryImage: String = "",
     val headerBackground: String = "",
+    /** Generation label for the mission-select switch (e.g. `"Vengeance"`). */
+    val displayName: String = "",
+    /** `sprites.json` sheet holding this generation's portraits (e.g. `"avatars_nemesis"`). */
+    val avatarSheet: String = "avatars",
 )
 
 // ---------------------------------------------------------------------------

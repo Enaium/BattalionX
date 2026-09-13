@@ -2,7 +2,6 @@ package cn.enaium.battalion.game
 
 import cn.enaium.battalion.data.Astar
 import cn.enaium.battalion.data.GameLoader
-import cn.enaium.battalion.data.TileManager
 import cn.enaium.battalion.data.UnitManager
 import cn.enaium.battalion.game.controllers.HumanController
 import cn.enaium.battalion.game.triggers.PlayerTrigger
@@ -34,6 +33,8 @@ class BattalionGame(
     private val assetsDir: String,
     private val missionIndex: Int? = null,
     private val skirmishMap: String? = null,
+    /** Campaign generation of [missionIndex] (see [GameLoader.CAMPAIGN_IDS]). */
+    private val campaignId: String = GameLoader.DEFAULT_CAMPAIGN,
 ) {
     private lateinit var window: SDLWindow
     private lateinit var renderer: SDLRenderer
@@ -47,6 +48,9 @@ class BattalionGame(
 
     /** Whether the end-of-game dialogue has been queued for the current match. */
     private var endGameDialoguePlayed = false
+
+    /** True while the mission brief is on screen and its turn-start camera focus is pending. */
+    private var briefFocusPending = false
 
     /**
      * True from the moment END_GAME fires until the match tears down. START_TURN events
@@ -70,8 +74,8 @@ class BattalionGame(
     private var buildMessage: String = ""
 
     /** The previous match's spec, kept so "Restart" re-runs it without the menu. */
+    private var lastCampaign: String = GameLoader.DEFAULT_CAMPAIGN
     private var lastMission: Int? = null
-    private var lastBootcamp = false
     private var lastSkirmish: String? = null
     private var lastResume = false
 
@@ -135,8 +139,8 @@ class BattalionGame(
         var menuExplicit = missionIndex != null || skirmishMap != null
         while (running) {
             // Hold the current match spec so "Restart" can re-run it without the menu.
+            var campaign = campaignId
             var mission = missionIndex
-            var bootcamp = false
             var skirmish = skirmishMap
             var resumeSave = false
 
@@ -144,8 +148,8 @@ class BattalionGame(
                 // Restart the previous match (menu skipped, same mission/save spec).
                 restartRequested = false
                 resumeSave = lastResume
+                campaign = lastCampaign
                 mission = lastMission
-                bootcamp = lastBootcamp
                 skirmish = lastSkirmish
             } else if (!menuExplicit) {
                 // The mission-select pages reproduce the original SWF's 700×600 CampaignMenu
@@ -164,28 +168,28 @@ class BattalionGame(
                 applyRenderScale()
                 if (selection.quit) break
                 resumeSave = selection.resume
+                campaign = selection.campaignId ?: campaign
                 mission = selection.missionIndex
-                if (selection.bootcampIndex != null) {
-                    mission = selection.bootcampIndex
-                    bootcamp = true
-                }
                 skirmish = selection.skirmishMap
             }
 
             // Load the game. Resume reads the saved game (map re-loaded from its mapurl);
-            // skirmish plays any map as a free-for-all; a bootcamp mission selects from the
-            // bootcamp tutorial campaign; otherwise a campaign mission at the chosen difficulty.
-            // The AI difficulty selection (Easy/Normal/Hard) overrides the AI teams' difficulty.
+            // skirmish plays any map as a free-for-all; otherwise the chosen campaign's
+            // mission at that campaign's generation (boot camp included — every level list
+            // is a campaign document).
+            //
+            // The AI difficulty option (Easy/Normal/Hard) overrides the missions' AI teams.
+            // The tutorial's menu has no difficulty panel, so its authored difficulty stays.
+            val difficulty = if (campaign == GameLoader.BOOTCAMP_CAMPAIGN) null
+                else SaveManager.aiDifficulty.coerceIn(0, 2)
             game = when {
                 resumeSave && SaveManager.hasSavedGame() ->
                     GameLoader.loadSavedGame(assetsDir, SaveManager.savedGame!!)
                 skirmish != null -> GameLoader.loadSkirmish(assetsDir, skirmish)
-                bootcamp -> GameLoader.loadBootcampMission(assetsDir, mission ?: 0)
-                else -> GameLoader.loadCampaignMission(assetsDir, mission ?: 0,
-                    difficultyOverride = SaveManager.aiDifficulty.coerceIn(0, 2))
+                else -> GameLoader.loadCampaignMission(assetsDir, mission ?: 0, campaign, difficulty)
             }
+            lastCampaign = campaign
             lastMission = mission
-            lastBootcamp = bootcamp
             lastSkirmish = skirmish
             lastResume = resumeSave
 
@@ -234,6 +238,12 @@ class BattalionGame(
                 dialogue = Dialogue(game!!.map.script)
                 render!!.dialogue = dialogue
                 dialogue!!.play("startGame")
+                // The turn-start focus is re-applied once the brief is dismissed: the script's
+                // own startGame responses (highlight / scroll) drive the camera while the player
+                // reads, exactly like the original — but there the turn-start targeting is
+                // queued AFTER those responses, so the player ends up looking at their own force
+                // when they gain control. Without this the view could be left on the enemy side.
+                briefFocusPending = true
             }
             endGameDialoguePlayed = false
             matchEnding = false
@@ -335,6 +345,10 @@ class BattalionGame(
                     render?.dialogue = dialogue
                 }
             }
+            if (briefFocusPending && dialogue?.isActive() != true) {
+                briefFocusPending = false
+                game?.focusActiveForce()
+            }
             handleEdgeScroll()
             render?.render()
 
@@ -409,11 +423,9 @@ class BattalionGame(
 
     private fun tileFromScreen(sx: Int, sy: Int): Pair<Int, Int>? {
         if (sx < BattalionRenderer.MAP_X || sy < BattalionRenderer.MAP_Y) return null
-        val tx = (sx - BattalionRenderer.MAP_X) / TileManager.TILE_WIDTH + (render?.cameraX ?: 0)
-        val ty = (sy - BattalionRenderer.MAP_Y) / TileManager.TILE_HEIGHT + (render?.cameraY ?: 0)
-        val g = game ?: return null
-        if (tx < 0 || ty < 0 || tx >= g.map.width || ty >= g.map.height) return null
-        return tx to ty
+        // The renderer owns the camera (it can be mid-tile while following a unit), so it maps
+        // the screen point to a tile.
+        return render?.mapTileAt(sx, sy)
     }
 
     private fun onMouseDown(button: Int, sx: Int, sy: Int) {

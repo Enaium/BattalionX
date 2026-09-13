@@ -14,7 +14,7 @@ import kotlinx.serialization.json.put
 
 /**
  * The game's persistent storage: options (sound/music/dialog), the AI difficulty selection,
- * campaign progress (levels + medals) and the single saved game.
+ * campaign medals, and the single saved game.
  *
  * The original SWF kept everything in one SharedObject (`batvengeance_v1`); a desktop app has
  * no SharedObject, so the same keys are persisted as JSON beside the assets directory (the only
@@ -121,27 +121,7 @@ object SaveManager {
         get() = getInt("aidifficulty", 1)
         set(value) = setInt("aidifficulty", value)
 
-    // ---- campaign progress ---------------------------------------------------
-
-    /** Highest unlocked campaign level index (SWF `campaign_complete`); beating level N sets N+1. */
-    var campaignComplete: Int
-        get() = getInt("campaign_complete", 0)
-        set(value) = setInt("campaign_complete", value)
-
-    /** Currently selected campaign level (SWF `campaign_level`). */
-    var campaignLevel: Int
-        get() = getInt("campaign_level", 0)
-        set(value) = setInt("campaign_level", value)
-
-    /** Highest unlocked bootcamp level index (SWF `bootcamp_complete`); beating level N sets N+1. */
-    var bootcampComplete: Int
-        get() = getInt("bootcamp_complete", 0)
-        set(value) = setInt("bootcamp_complete", value)
-
-    /** Currently selected bootcamp level (SWF `bootcamp_level`). */
-    var bootcampLevel: Int
-        get() = getInt("bootcamp_level", 0)
-        set(value) = setInt("bootcamp_level", value)
+    // ---- campaign medals -----------------------------------------------------
 
     /** Medal earned for a level, keyed by map URL (SWF `<mapURL>_medal`). */
     fun medalFor(mapUrl: String): String = getString("${mapUrl}_medal") ?: "none"

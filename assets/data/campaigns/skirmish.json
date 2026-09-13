@@ -1,0 +1,48 @@
+{
+  "levels": [
+    {
+      "number": 0,
+      "name": "Skirmish at Daul",
+      "map": "sk1/Mission_1",
+      "brief": "The Akadian campaign has begun. General Durand has placed the Akadian army's brightest young recruit, Lieutenant Hayne, in charge of the forces on the battlefield. Hayne's mission begins slowly; someone needs to clean up the confused remnants of the Northern Federation forces.",
+      "objective": "Destroy the enemy units.",
+      "settings": {
+        "rounds": 2147483647,
+        "resources": 0,
+        "difficulty": 1,
+        "silverMedal": 100,
+        "goldMedal": 200,
+        "teams": [
+          {
+            "name": "Captain Tucker",
+            "teamName": "Red Federation",
+            "color": "ffff0000",
+            "avatar": "tucker",
+            "rank": 6,
+            "controllerType": "Human",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          },
+          {
+            "name": "Mullen",
+            "teamName": "Blue Constitution",
+            "color": "ff0000ff",
+            "avatar": "mullen",
+            "rank": 1,
+            "controllerType": "AI",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          }
+        ]
+      }
+    }
+  ],
+  "victoryImage": "skirmish1_victory",
+  "headerBackground": "skirmish_campaign_header",
+  "displayName": "Skirmish",
+  "avatarSheet": "avatars_skirmish"
+}

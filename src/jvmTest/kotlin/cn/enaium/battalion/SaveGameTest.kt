@@ -60,6 +60,20 @@ class SaveGameTest {
     }
 
     @Test
+    fun `saved game carries the generation portrait sheet`() {
+        if (!haveAssets()) return
+        // Nemesis (and Skirmish) ship their own portrait art; a resumed save must keep it.
+        val original = GameLoader.loadCampaignMission(assetsDir, 0, "nemesis")
+        assertEquals("avatars_nemesis", original.avatarSheet)
+        original.startGame()
+        for (i in 1..40) original.update(16)
+
+        val restored = GameLoader.loadSavedGame(assetsDir, original.toSave())
+        assertEquals("avatars_nemesis", restored.avatarSheet, "portrait sheet must survive a save")
+        assertEquals("maps/ep1/Mission_1", restored.mapUrl, "medal key must survive a save")
+    }
+
+    @Test
     fun `saved game survives a completed turn and restores the next controller`() {
         if (!haveAssets()) return
         val g = GameLoader.loadCampaignMission(assetsDir, 0)

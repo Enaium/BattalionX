@@ -35,6 +35,12 @@ class MoveUnitAction(
     companion object {
         fun stringizePath(path: List<String>): String = path.joinToString(",")
         fun unstringizePath(pathString: String): List<String> = pathString.split(",")
+
+        /**
+         * Extra time (ms) the camera keeps following a unit after its walk ends, so a short move
+         * still reads on screen (the original holds the target for `path.length * 400ms`).
+         */
+        private const val CAMERA_HOLD_MS = 1200
     }
 
     override fun usesUnit(aUnit: Unit): Boolean {
@@ -147,6 +153,19 @@ class MoveUnitAction(
             // the action starts), NOT after the walk drains — [MoveUnitTrigger] is fired only
             // on completion, which would otherwise leave the sound trailing the animation.
             TriggerManager.add(MoveStartTrigger(unit))
+
+            // The camera follows the mover for the length of the walk (plus a short hold) — the
+            // original `MoveUnitAction` targets the unit's sprite so the AI's moves stay in
+            // view. A cloaked unit the player cannot see is not followed, exactly like the
+            // original's `setTarget(null)` branch.
+            val walkMs = ((nodeList.size - 1) * Unit.MOVE_STEP_MS).toInt()
+            val visible = !unit.isCloaked() ||
+                (unit.controller?.let { gameManager.isAlliedToThePlayer(it) } == true)
+            if (visible) {
+                gameManager.setCameraTarget(unit, walkMs + CAMERA_HOLD_MS)
+            } else {
+                gameManager.clearCameraTarget()
+            }
 
             val from = nodeList[nodeList.size - 2]
             val to = nodeList[nodeList.size - 1]

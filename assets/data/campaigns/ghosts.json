@@ -1,0 +1,422 @@
+{
+  "levels": [
+    {
+      "number": 0,
+      "name": "Chapter 1: Taking out the Trash",
+      "map": "ep2/Mission_1",
+      "brief": "The Akadian campaign has begun. General Durand has placed the Akadian army's brightest young recruit, Lieutenant Hayne, in charge of the forces on the battlefield. Akadians's mission begins slowly; someone needs to clean up the confused remnants of the Northern Federation forces.",
+      "objective": "Destroy the enemy units.",
+      "settings": {
+        "rounds": 2147483647,
+        "resources": 0,
+        "difficulty": 1,
+        "silverMedal": 8000,
+        "goldMedal": 10000,
+        "teams": [
+          {
+            "name": "Akadians",
+            "teamName": "Red Federation",
+            "color": "ff0000ff",
+            "avatar": "hayne",
+            "rank": 6,
+            "controllerType": "Human",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          },
+          {
+            "name": "N. Federation",
+            "teamName": "Blue Constitution",
+            "color": "ffff0000",
+            "avatar": "tucker",
+            "rank": 1,
+            "controllerType": "AI",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          }
+        ]
+      }
+    },
+    {
+      "number": 1,
+      "name": "Chapter 2: Mayjor Upset",
+      "map": "ep2/Mission_2",
+      "brief": "Lieutenant Hayne must track down this mysterious new unit that the Northern Federation has in its arsenal, the War Machine. His plan is to simply track the retreating Federation troops, but the problem with following an army is that they will try and slow you down. The Federation deploys a rear guard battalion in an attempt to slow Akadians's advance.",
+      "objective": "Do the stuff the brief told you to do... quick... smart...",
+      "settings": {
+        "rounds": 2147483647,
+        "resources": 0,
+        "difficulty": 1,
+        "silverMedal": 10000,
+        "goldMedal": 13000,
+        "teams": [
+          {
+            "name": "Akadians",
+            "teamName": "Red Federation",
+            "color": "ff0000ff",
+            "avatar": "hayne",
+            "rank": 6,
+            "controllerType": "Human",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          },
+          {
+            "name": "N. Federation",
+            "teamName": "Blue Constitution",
+            "color": "ffff0000",
+            "avatar": "tucker",
+            "rank": 1,
+            "controllerType": "AI",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          }
+        ]
+      }
+    },
+    {
+      "number": 2,
+      "name": "Chapter 3: The War Machine",
+      "map": "ep2/Mission_3",
+      "brief": "Lieutenant Hayne's scouts report discovering a strange radar signature; it must be the mysterious War Machine! It is protected behind a sturdy Barricade, but even a massive defensive structure like that cannot stand up to a focused strike. Akadians plans to claim the War Machine intact... but the Federation isn't prepared to let him have the device that easily.",
+      "objective": "Do the stuff the brief told you to do... quick... smart...",
+      "settings": {
+        "rounds": 2147483647,
+        "resources": 0,
+        "difficulty": 1,
+        "silverMedal": 7500,
+        "goldMedal": 9000,
+        "teams": [
+          {
+            "name": "Akadians",
+            "teamName": "Red Federation",
+            "color": "ff0000ff",
+            "avatar": "hayne",
+            "rank": 6,
+            "controllerType": "Human",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          },
+          {
+            "name": "N. Federation",
+            "teamName": "Blue Constitution",
+            "color": "ffff0000",
+            "avatar": "tucker",
+            "rank": 1,
+            "controllerType": "AI",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          }
+        ]
+      }
+    },
+    {
+      "number": 3,
+      "name": "Chapter 4: Two-Faced",
+      "map": "ep2/Mission_4",
+      "brief": "Lieutenant Hayne receives an urgent communiqu\ufffd from the Major, who reports that large contingents of Northern Federation troops are showing up on his radar scanners. This wouldn't be so strange normally, but Mayjor is located well behind the Akadian front lines, and there doesn't appear to be any way the Federation could have snuck the volume of units he is detecting behind their lines.",
+      "objective": "Do the stuff the brief told you to do... quick... smart...",
+      "settings": {
+        "rounds": 2147483647,
+        "resources": 250,
+        "difficulty": 1,
+        "silverMedal": 12000,
+        "goldMedal": 15000,
+        "teams": [
+          {
+            "name": "Akadians",
+            "teamName": "Red Federation",
+            "color": "ff0000ff",
+            "avatar": "hayne",
+            "rank": 6,
+            "controllerType": "Human",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          },
+          {
+            "name": "N. Federation",
+            "teamName": "Blue Constitution",
+            "color": "ffff0000",
+            "avatar": "tucker",
+            "rank": 1,
+            "controllerType": "AI",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          }
+        ]
+      }
+    },
+    {
+      "number": 4,
+      "name": "Chapter 5: N. Federationed Out",
+      "map": "ep2/Mission_5",
+      "brief": "Now that Lieutenant Hayne has seen the War Machine in action, he knows how imperative it is to claim the technology for the Akadian army. The War Machines he has destroyed so far, though, have not yielded enough functional components for the engineers. Lieutenant Hayne prepares to launch himself into the belly of the beast.",
+      "objective": "Do the stuff the brief told you to do... quick... smart...",
+      "settings": {
+        "rounds": 2147483647,
+        "resources": 0,
+        "difficulty": 1,
+        "silverMedal": 7500,
+        "goldMedal": 9000,
+        "teams": [
+          {
+            "name": "Akadians",
+            "teamName": "Red Federation",
+            "color": "ff0000ff",
+            "avatar": "hayne",
+            "rank": 6,
+            "controllerType": "Human",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": [
+              2
+            ]
+          },
+          {
+            "name": "N. Federation",
+            "teamName": "Blue Constitution",
+            "color": "ffff0000",
+            "avatar": "tucker",
+            "rank": 1,
+            "controllerType": "AI",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          }
+        ]
+      }
+    },
+    {
+      "number": 5,
+      "name": "Chapter 6: Skeletons in the Closet",
+      "map": "ep2/Mission_6",
+      "brief": "While the Akadians focused on the War Machine, Dragoons, old enemies of the Akadians, have been joining the Federation from across the Nithenian Sea. Lieutenant Hayne rushes to stop this influx of combatants before the situation spirals even more out of his control. Lucky for him, the first of the Akadian War Machines is ready for the battlefield.",
+      "objective": "Do the stuff the brief told you to do... quick... smart...",
+      "settings": {
+        "rounds": 2147483647,
+        "resources": 0,
+        "difficulty": 1,
+        "silverMedal": 32000,
+        "goldMedal": 40000,
+        "teams": [
+          {
+            "name": "Akadians",
+            "teamName": "Red Federation",
+            "color": "ff0000ff",
+            "avatar": "hayne",
+            "rank": 6,
+            "controllerType": "Human",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          },
+          {
+            "name": "N. Federation",
+            "teamName": "Blue Constitution",
+            "color": "ffff0000",
+            "avatar": "tucker",
+            "rank": 1,
+            "controllerType": "AI",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          },
+          {
+            "name": "Dragoons",
+            "teamName": "Blue Constitution",
+            "color": "ff00ff00",
+            "avatar": "usul",
+            "rank": 1,
+            "controllerType": "AI",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          }
+        ]
+      }
+    },
+    {
+      "number": 6,
+      "name": "Chapter 7: Here be Dragoons",
+      "map": "ep2/Mission_7",
+      "brief": "Lieutenant Hayne desperately needs to staunch the flow of new Dragoon forces onto the mainland. It's time for Akadians to pay a visit the Federation's shipyards. The Dragoon Jammer Truck could present a serious problem for Akadians's long range and stealth units, both the pride of the Akadian military.",
+      "objective": "Do the stuff the brief told you to do... quick... smart...",
+      "settings": {
+        "rounds": 2147483647,
+        "resources": 0,
+        "difficulty": 1,
+        "silverMedal": 15000,
+        "goldMedal": 25000,
+        "teams": [
+          {
+            "name": "Akadians",
+            "teamName": "Red Federation",
+            "color": "ff0000ff",
+            "avatar": "hayne",
+            "rank": 6,
+            "controllerType": "Human",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          },
+          {
+            "name": "N. Federation",
+            "teamName": "Blue Constitution",
+            "color": "ffff0000",
+            "avatar": "tucker",
+            "rank": 1,
+            "controllerType": "AI",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          }
+        ]
+      }
+    },
+    {
+      "number": 7,
+      "name": "Chapter 8: Snapshot",
+      "map": "ep2/Mission_8",
+      "brief": "Akadians is getting closer and closer to his goal. The Dragoon forces are being directed outward from an island near the now-destroyed shipyards. Akadians must crush this vital control center for the invasion in an attempt to break the organized resistance he's facing.",
+      "objective": "Do the stuff the brief told you to do... quick... smart...",
+      "settings": {
+        "rounds": 2147483647,
+        "resources": 5000,
+        "difficulty": 1,
+        "silverMedal": 32000,
+        "goldMedal": 40000,
+        "teams": [
+          {
+            "name": "Akadians",
+            "teamName": "Red Federation",
+            "color": "ff0000ff",
+            "avatar": "hayne",
+            "rank": 6,
+            "controllerType": "Human",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          },
+          {
+            "name": "N. Federation",
+            "teamName": "Blue Constitution",
+            "color": "ffff0000",
+            "avatar": "tucker",
+            "rank": 1,
+            "controllerType": "AI",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          }
+        ]
+      }
+    },
+    {
+      "number": 8,
+      "name": "Chapter 9: Rift",
+      "map": "ep2/Mission_9",
+      "brief": "Lieutenant Hayne may have managed to secure the outer borders of the mainland for now, but he knows that the forces have moved inland and he means to track them to their center of operations. Scouts have found Dragoon forces entering into nearby forest, no doubt attempting to mask their forces under the cover of the trees.",
+      "objective": "Do the stuff the brief told you to do... quick... smart...",
+      "settings": {
+        "rounds": 2147483647,
+        "resources": 0,
+        "difficulty": 1,
+        "silverMedal": 35000,
+        "goldMedal": 42000,
+        "teams": [
+          {
+            "name": "Akadians",
+            "teamName": "Red Federation",
+            "color": "ff0000ff",
+            "avatar": "hayne",
+            "rank": 6,
+            "controllerType": "Human",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          },
+          {
+            "name": "N. Federation",
+            "teamName": "Blue Constitution",
+            "color": "ffff0000",
+            "avatar": "tucker",
+            "rank": 1,
+            "controllerType": "AI",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          }
+        ]
+      }
+    },
+    {
+      "number": 9,
+      "name": "Chapter 10: Backdraft",
+      "map": "ep2/Mission_10",
+      "brief": "Lieutenant Hayne commences his final assault to crush his opposition. Their central force is gathered here and a successful strike should cripple their operation for good. Akadians has fully committed his forces to this battle... but isn't being this focused on a goal what got them into this mess in the first place?",
+      "objective": "Do the stuff the brief told you to do... quick... smart...",
+      "settings": {
+        "rounds": 2147483647,
+        "resources": 0,
+        "difficulty": 1,
+        "silverMedal": 75000,
+        "goldMedal": 85000,
+        "teams": [
+          {
+            "name": "Akadians",
+            "teamName": "Red Federation",
+            "color": "ff0000ff",
+            "avatar": "hayne",
+            "rank": 6,
+            "controllerType": "Human",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          },
+          {
+            "name": "N. Federation",
+            "teamName": "Blue Constitution",
+            "color": "ffff0000",
+            "avatar": "tucker",
+            "rank": 1,
+            "controllerType": "AI",
+            "difficulty": 1,
+            "active": true,
+            "stats": [],
+            "allies": []
+          }
+        ]
+      }
+    }
+  ],
+  "victoryImage": "campaign_victory_2",
+  "headerBackground": "ep2_campaign_header",
+  "displayName": "Ghosts",
+  "avatarSheet": "avatars"
+}

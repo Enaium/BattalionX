@@ -29,6 +29,14 @@ class StartTurnAction : Action() {
         isNetworked = false
     }
 
+    companion object {
+        /**
+         * How long the view holds on the active controller's force at turn start
+         * (`GameCamera.setTarget`'s default 1500ms timer).
+         */
+        private const val TURN_START_CAMERA_MS = 1500
+    }
+
     override fun fire() {
         super.fire()
         doFire()
@@ -50,6 +58,12 @@ class StartTurnAction : Action() {
 
         // Process units owned by the current controller
         val units = controller.units.toList()
+
+        // Open the turn on the active controller's force: the original's per-unit loop below
+        // targets each visible unit (`GameCamera.setTarget`) as it is processed, which leaves
+        // the view on that side of the map.
+        gameManager.focusActiveForce(TURN_START_CAMERA_MS)
+
         for (unit in units) {
             if (unit.isDeployed() && unit.isAlive()) {
                 // Reset unit state for the new turn
@@ -77,11 +91,6 @@ class StartTurnAction : Action() {
                         unit.healDamage(healAmount)
                         unit.repairing = false
                     }
-                }
-
-                // Camera targeting for visible units
-                if (!unit.isCloaked() || (unit.controller?.let { gameManager.isAlliedToThePlayer(it) } ?: false)) {
-                    // In the original, this would set camera target
                 }
 
                 // Radar reveal of cloaked enemy units
