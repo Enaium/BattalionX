@@ -11,9 +11,9 @@
 kotlin = "2.4.10"                 # Kotlin Multiplatform compiler + plugins
 
 # --- Graphics / audio / fonts (KMP bindings published to Maven Central) ----
-sdl = "1.0.9"                     # SDL3 bindings (window, renderer, input)
+sdl = "1.0.13"                    # SDL3 bindings (window, renderer, input)
 sdl-ttf = "1.0.0"                 # SDL3_ttf (TrueType font rendering)
-sdl-image = "1.0.0"               # SDL3_image (PNG / bitmap loading)
+sdl-image = "1.0.1"               # SDL3_image (PNG / bitmap loading)
 sdl-mixer = "1.0.0"               # SDL3_mixer (sound & music playback)
 
 # --- Kotlinx ecosystem -----------------------------------------------------
@@ -23,12 +23,16 @@ kotlinx-coroutines = "1.10.2"     # Coroutines for async asset loading / loops
 # --- File loading ----------------------------------------------------------
 filekit = "0.15.0"                # Cross-platform file loading (assets)
 
+# --- Android ---------------------------------------------------------------
+android-gradle = "9.4.1"          # Android Gradle Plugin
+
 [libraries]
 # Graphics / audio / fonts
 sdl-kmp = { module = "cn.enaium.sdl:sdl-kmp", version.ref = "sdl" }
 sdl-ttf-kmp = { module = "cn.enaium.sdl:sdl-ttf-kmp", version.ref = "sdl-ttf" }
 sdl-image-kmp = { module = "cn.enaium.sdl:sdl-image-kmp", version.ref = "sdl-image" }
 sdl-mixer-kmp = { module = "cn.enaium.sdl:sdl-mixer-kmp", version.ref = "sdl-mixer" }
+sdl-kmp-android-jvm = { module = "cn.enaium.sdl:sdl-kmp-android-jvm", version.ref = "sdl" }
 
 # Kotlinx
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
@@ -40,3 +44,5 @@ filekit-core = { module = "io.github.vinceglb:filekit-core", version.ref = "file
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+embed-resource = { id = "cn.enaium.embedresource", version = "1.0.0" }
+android-kmp-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "android-gradle" }

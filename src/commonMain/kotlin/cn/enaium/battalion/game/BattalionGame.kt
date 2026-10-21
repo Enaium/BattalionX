@@ -11,6 +11,10 @@ import cn.enaium.battalion.game.ui.Dialogue
 import cn.enaium.battalion.game.ui.SaveManager
 import cn.enaium.battalion.game.ui.StartScreen
 import cn.enaium.battalion.game.ui.TextRenderer
+import cn.enaium.battalion.game.ui.configurePresentation
+import cn.enaium.battalion.game.ui.configurePlatformWindow
+import cn.enaium.battalion.game.ui.logicalMousePosition
+import cn.enaium.battalion.game.ui.pointerToLogical
 import cn.enaium.battalion.game.ui.TextureManager
 import cn.enaium.sdl.SDL
 import cn.enaium.sdl.SDLColor
@@ -122,8 +126,10 @@ class BattalionGame(
             height = BattalionRenderer.WINDOW_H,
             flags = SDLWindowFlags.HIGH_PIXEL_DENSITY,
         )
+        configurePlatformWindow(window)
         renderer = SDL.createRenderer(window)
         applyRenderScale()
+        configurePresentation(renderer, BattalionRenderer.WINDOW_W, BattalionRenderer.WINDOW_H)
         text = TextRenderer(renderer)
         text.load()
 
@@ -168,6 +174,7 @@ class BattalionGame(
                 // the game size afterwards.
                 window.size = cn.enaium.sdl.SDLPoint(700, 600)
                 applyRenderScale()
+                configurePresentation(renderer, 700, 600)
                 // Menu BGM (the original MainMenu loops UIWAV on the "background" channel).
                 // The in-match START_TURN handler switches to the faction loop when the game
                 // starts; this call switches back when the match ends and we return here.
@@ -177,6 +184,7 @@ class BattalionGame(
                 val selection = start.run()
                 window.size = cn.enaium.sdl.SDLPoint(BattalionRenderer.WINDOW_W, BattalionRenderer.WINDOW_H)
                 applyRenderScale()
+                configurePresentation(renderer, BattalionRenderer.WINDOW_W, BattalionRenderer.WINDOW_H)
                 if (selection.quit) break
                 if (selection.editor) {
                     // The editor has no music of its own: silence the menu loop while it is
@@ -185,6 +193,7 @@ class BattalionGame(
                     val editorResult = openMapEditor(window, renderer, assetsDir)
                     window.size = cn.enaium.sdl.SDLPoint(700, 600)
                     applyRenderScale()
+                    configurePresentation(renderer, 700, 600)
                     if (SaveManager.music) audio.startMenuMusic()
                     // The editor's Test button hands its map back for a skirmish; anything else
                     // (Quit, or closing the window) returns to this menu.
@@ -195,6 +204,7 @@ class BattalionGame(
                         BattalionRenderer.WINDOW_W, BattalionRenderer.WINDOW_H,
                     )
                     applyRenderScale()
+                    configurePresentation(renderer, BattalionRenderer.WINDOW_W, BattalionRenderer.WINDOW_H)
                 }
                 resumeSave = selection.resume
                 campaign = selection.campaignId ?: campaign
@@ -390,15 +400,15 @@ class BattalionGame(
      */
     private fun handleEdgeScroll() {
         val r = render ?: return
-        val mouse = SDL.mouseState
+        val (mouseX, mouseY) = logicalMousePosition(renderer)
         val edge = 20
         val speed = 1
         var dx = 0
         var dy = 0
-        if (mouse.x < BattalionRenderer.MAP_X + edge) dx -= speed
-        else if (mouse.x > BattalionRenderer.MAP_X + BattalionRenderer.MAP_W - edge) dx += speed
-        if (mouse.y < BattalionRenderer.MAP_Y + edge) dy -= speed
-        else if (mouse.y > BattalionRenderer.MAP_Y + BattalionRenderer.MAP_H - edge) dy += speed
+        if (mouseX < BattalionRenderer.MAP_X + edge) dx -= speed
+        else if (mouseX > BattalionRenderer.MAP_X + BattalionRenderer.MAP_W - edge) dx += speed
+        if (mouseY < BattalionRenderer.MAP_Y + edge) dy -= speed
+        else if (mouseY > BattalionRenderer.MAP_Y + BattalionRenderer.MAP_H - edge) dy += speed
         if (dx != 0 || dy != 0) r.scrollCamera(dx, dy)
     }
 
@@ -465,7 +475,8 @@ class BattalionGame(
                             dialogueAdvancedOnPress = true
                             advanceDialogueFromInput()
                         } else {
-                            onMouseDown(event.button, event.x.toInt(), event.y.toInt())
+                            val (mx, my) = pointerToLogical(renderer, event.x.toInt(), event.y.toInt())
+                            onMouseDown(event.button, mx, my)
                         }
                     } else if (event.button == 1) {
                         if (dialogue?.isActive() == true) {
@@ -478,7 +489,8 @@ class BattalionGame(
                         } else {
                             // Release on a panel button triggers the action (press only shows
                             // the pressed frame).
-                            val btn = render?.panelButtonAt(event.x.toInt(), event.y.toInt())
+                            val (mx, my) = pointerToLogical(renderer, event.x.toInt(), event.y.toInt())
+                            val btn = render?.panelButtonAt(mx, my)
                             if (btn != null && render?.pressedButton == btn) {
                                 onPanelButton(btn)
                             }

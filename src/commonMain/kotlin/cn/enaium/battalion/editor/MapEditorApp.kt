@@ -2,6 +2,8 @@ package cn.enaium.battalion.editor
 
 import cn.enaium.battalion.data.MapConfig
 import cn.enaium.battalion.game.ui.TextRenderer
+import cn.enaium.battalion.game.ui.configurePresentation
+import cn.enaium.battalion.game.ui.pointerToLogical
 import cn.enaium.battalion.game.ui.TextureManager
 import cn.enaium.sdl.SDL
 import cn.enaium.sdl.SDLEvent
@@ -9,7 +11,7 @@ import cn.enaium.sdl.SDLKeymod
 import cn.enaium.sdl.SDLRenderer
 import cn.enaium.sdl.SDLWindow
 import cn.enaium.sdl.SDLWindowEventType
-import cn.enaium.sdl.image.SDLImage
+import cn.enaium.battalion.game.ui.saveSurfacePng
 
 /**
  * The map editor's frame loop: owns the editor's input forwarding and its own texture/font
@@ -58,6 +60,7 @@ object MapEditorApp {
         val editor = MapEditor(model, renderer, textures, text)
 
         init {
+            configurePresentation(renderer, MapEditor.W, MapEditor.H)
             if (mapId != null && model.open(mapId)) {
                 onStatus("EDITOR: opened $mapId (${model.cols()}×${model.rows()})")
             } else {
@@ -82,12 +85,14 @@ object MapEditorApp {
                     }
                     is SDLEvent.MouseMotion -> {
                         editor.setShift(shift)
-                        editor.onMouseMove(event.x.toInt(), event.y.toInt())
+                        val (mx, my) = pointerToLogical(renderer, event.x.toInt(), event.y.toInt())
+                        editor.onMouseMove(mx, my)
                     }
                     is SDLEvent.MouseButton -> {
                         editor.setShift(shift)
-                        if (event.down) editor.onMouseDown(event.button, event.x.toInt(), event.y.toInt())
-                        else editor.onMouseUp(event.button, event.x.toInt(), event.y.toInt())
+                        val (mx, my) = pointerToLogical(renderer, event.x.toInt(), event.y.toInt())
+                        if (event.down) editor.onMouseDown(event.button, mx, my)
+                        else editor.onMouseUp(event.button, mx, my)
                     }
                     is SDLEvent.MouseWheel -> editor.onWheel(event.y)
                     else -> {}
@@ -110,7 +115,7 @@ object MapEditorApp {
             // back buffer, read it, then present so the window also shows the captured frame.
             editor.render()
             val surface = renderer.renderReadPixels(null) ?: return null
-            SDLImage.savePNG(surface, path)
+            saveSurfacePng(surface, path)
             surface.close()
             renderer.present()
             return path

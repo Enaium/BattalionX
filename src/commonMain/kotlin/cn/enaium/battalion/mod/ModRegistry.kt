@@ -24,9 +24,12 @@ object ModRegistry {
      */
     const val DEFAULT_MODS_ROOT = "mods"
 
-    /** The mods directory the layers were built from. */
+    /**
+     * The mods directory the layers are built from. Desktop leaves the default (`mods/`
+     * relative to the working directory); a host with a different writable layout (Android)
+     * sets it before the first asset load.
+     */
     var modsRoot: String = DEFAULT_MODS_ROOT
-        private set
 
     /** The assets directory the current layers were built for (null before the first load). */
     private var loadedAssetsDir: String? = null

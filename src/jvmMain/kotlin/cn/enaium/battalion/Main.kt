@@ -7,7 +7,6 @@ import cn.enaium.battalion.game.ui.TextRenderer
 import cn.enaium.battalion.game.ui.TextureManager
 import cn.enaium.sdl.SDL
 import cn.enaium.sdl.SDLInitFlags
-import io.github.vinceglb.filekit.FileKit
 
 /**
  * JVM entry point.
@@ -15,7 +14,7 @@ import io.github.vinceglb.filekit.FileKit
  * Usage:
  *   ./gradlew jvmRun --args="<assetsDir> [--campaign id] [--mission N] [--skirmish map] [--selftest]"
  *
- *   <assetsDir>       the project's asset directory (default `assets`): JSON data under
+ *   <assetsDir>       the project's asset directory (default `src/commonMain/resources`): JSON data under
  *                     `data/` (terrain/units/modifiers/ballistics/campaigns/maps), sprites
  *                     under `images/`, sounds under `sounds/`. Mods drop files into these
  *                     folders; see GameLoader for the data formats.
@@ -37,9 +36,12 @@ import io.github.vinceglb.filekit.FileKit
  *   --editorcheck     drive every map-editor feature headlessly and print PASS/FAIL lines.
  */
 fun main(args: Array<String>) {
-    FileKit.init(appId = "BattalionX")
-
-    val dir = args.firstOrNull { !it.startsWith("--") } ?: "assets"
+    val assetsArg = args.firstOrNull { !it.startsWith("--") }
+    val dir = cn.enaium.battalion.data.AssetRoot.resolve(
+        assetsDir = assetsArg ?: "src/commonMain/resources",
+        writableDir = System.getProperty("java.io.tmpdir")?.trimEnd('/') + "/battalionx-assets",
+        versionTag = "1.0.0",
+    )
     val selftest = args.contains("--selftest")
     val campaignArg = args.indexOf("--campaign")
     val campaign = if (campaignArg >= 0 && campaignArg + 1 < args.size) args[campaignArg + 1]

@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 /**
  * Guards walkability of the game's terrains: impassable tiles must NOT become walkable.
  *
- * This pins the ruleset shipped in `assets/data/` (a faithful JSON copy of the original SWF
+ * This pins the ruleset shipped in `src/commonMain/resources/data/` (a faithful JSON copy of the original SWF
  * `terrain_xml` + `terrainModifiers_xml`), and — critically — the registry import order in
  * [GameLoader.loadAssets]: modifier definitions must be imported BEFORE the terrains/units
  * that reference them, otherwise the FIRST `loadAssets` call registers every terrain and unit
@@ -23,7 +23,7 @@ import kotlin.test.assertTrue
  */
 class TerrainPassabilityTest {
 
-    private fun haveAssets(): Boolean = File("assets/data").isDirectory
+    private fun haveAssets(): Boolean = File("src/commonMain/resources/data").isDirectory
 
     private fun cost(unitName: String, terrainName: String): Double {
         val data = UnitManager.get(unitName)!!
@@ -36,7 +36,7 @@ class TerrainPassabilityTest {
     @Test
     fun `a single loadAssets attaches modifiers to the registries`() {
         if (!haveAssets()) return
-        GameLoader.loadAssets("assets")
+        GameLoader.loadAssets("src/commonMain/resources")
         // The order-bug symptom: registry terrain without its Water modifier.
         assertTrue(
             TileManager.get("Sea").modifiers.any { it.name == "Water" },
@@ -49,7 +49,7 @@ class TerrainPassabilityTest {
     @Test
     fun `ground tanks cannot enter water-based or impassable tiles`() {
         if (!haveAssets()) return
-        GameLoader.loadAssets("assets")
+        GameLoader.loadAssets("src/commonMain/resources")
         // Water blocks ground: sea, reef, rock formation, archipelago, oil rig.
         for (t in listOf("Sea", "Reef", "Rock Formation", "Archipelago", "Oil Rig")) {
             assertTrue(blocked("Scorpion Tank", t), "tank must not enter $t")
@@ -63,7 +63,7 @@ class TerrainPassabilityTest {
     @Test
     fun `ground tanks walk ordinary terrain`() {
         if (!haveAssets()) return
-        GameLoader.loadAssets("assets")
+        GameLoader.loadAssets("src/commonMain/resources")
         for (t in listOf("Plains", "Road", "Canyon", "Wasteland", "Shore", "Bridge", "High Bridge", "Factory Base")) {
             assertTrue(!blocked("Scorpion Tank", t), "tank must enter $t")
         }
@@ -75,7 +75,7 @@ class TerrainPassabilityTest {
     @Test
     fun `sea units cannot enter ground or extractable tiles`() {
         if (!haveAssets()) return
-        GameLoader.loadAssets("assets")
+        GameLoader.loadAssets("src/commonMain/resources")
         // Ground blocks sea units.
         for (t in listOf("Plains", "Road", "Desert", "Canyon")) {
             assertTrue(blocked("Corvette Fighter", t), "ship must not enter $t")
@@ -95,7 +95,7 @@ class TerrainPassabilityTest {
     @Test
     fun `air units are only blocked by impassable`() {
         if (!haveAssets()) return
-        GameLoader.loadAssets("assets")
+        GameLoader.loadAssets("src/commonMain/resources")
         assertTrue(blocked("Raptor Fighter", "Volcano"), "air unit blocked on Volcano (Impassable)")
         assertTrue(!blocked("Raptor Fighter", "Sea"), "air unit flies over Sea")
         assertTrue(!blocked("Raptor Fighter", "Plains"), "air unit flies over Plains")
@@ -105,7 +105,7 @@ class TerrainPassabilityTest {
     @Test
     fun `commandos are blocked by barbed desert but pass precipitous mountains`() {
         if (!haveAssets()) return
-        GameLoader.loadAssets("assets")
+        GameLoader.loadAssets("src/commonMain/resources")
         // Barbed: movementType feet -> infinity (desert is barbed).
         assertTrue(blocked("Strike Commando", "Desert"), "commando blocked on Desert (Barbed)")
         // Precipitous: feet pays 2 instead of being blocked.
@@ -116,7 +116,7 @@ class TerrainPassabilityTest {
     @Test
     fun `mission one keeps its water and mountains impassable for tanks`() {
         if (!haveAssets()) return
-        val game = GameLoader.loadCampaignMission("assets", 0)
+        val game = GameLoader.loadCampaignMission("src/commonMain/resources", 0)
         val tank = Unit(UnitManager.get("Scorpion Tank")!!)
         val counts = mutableMapOf<String, Pair<Int, Int>>()
         for (row in game.map.generateTileMap()) {

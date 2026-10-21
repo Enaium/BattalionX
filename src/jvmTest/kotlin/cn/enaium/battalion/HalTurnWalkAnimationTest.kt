@@ -22,7 +22,7 @@ import java.io.File
 class HalTurnWalkAnimationTest {
 
     /** The mission used by the manual run instructions in build/description.md. */
-    private val assetsDir = "assets"
+    private val assetsDir = "src/commonMain/resources"
 
     /** True when the unpacked squad assets are present (skips the test otherwise). */
     private fun haveAssets(): Boolean = File("$assetsDir/data").isDirectory

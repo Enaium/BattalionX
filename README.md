@@ -8,10 +8,10 @@ All game logic (rules engine, AI, turn system, data model) lives in `commonMain`
 
 ## Assets
 
-All game resources live under `assets/` in the project root (versioned, no runtime unpacking):
+All game resources live under `src/commonMain/resources/` (versioned, no runtime unpacking):
 
 ```
-assets/
+src/commonMain/resources/
 ├── data/                        # game data as typed JSON documents
 │   ├── units/<id>.json          # ONE file per unit (stats + sprite sheet + sounds)
 │   ├── terrain/<id>.json        # ONE file per terrain/structure type
@@ -34,6 +34,12 @@ assets/
 Every document is parsed with kotlinx.serialization against the `@Serializable` config models
 in `data/AssetConfigs.kt` — there is no XML or XML-shaped JSON anywhere in the pipeline.
 Unknown fields are ignored, so mods can annotate configs freely.
+
+At build time `cn.enaium.embedresource` embeds **every file under `src/commonMain/resources/`** into Kotlin
+sources (`cn.enaium.battalion.embedded.Resources`, zlib-compressed Base64 chunks). A packaged
+build therefore needs no platform asset bundle: `EmbeddedAssets`/`AssetRoot` materialize the
+tree into a writable directory on first run (Android: `filesDir/assets`). The resource directory
+is used directly when present, so desktop development and mods stay live.
 
 ### Game generations
 
@@ -98,7 +104,7 @@ entries may override it per entry.
 ### Mods
 
 A mod is a folder under `mods/` — beside the assets directory, in the directory the program is
-started from, so mods survive replacing `assets/` — with a `manifest.json`; it never replaces a
+started from, so mods survive replacing the resource tree — with a `manifest.json`; it never replaces a
 game document, it patches one. Both layers are built once per assets directory
 (`ModRegistry.load`) and every document and media lookup goes through them.
 
@@ -131,7 +137,7 @@ mods/my-mod/
 - `examples/mods/` ships three worked examples (a map + campaign, a data patch, a resource
   override with its own icon); copy one into `mods/` to try it. The runtime `mods/` directory is
   git-ignored, and every mod can be switched off from the main menu's Mods screen.
-- `./gradlew jvmRun --args="assets --assetreport"` drives every campaign, missions select page
+- `./gradlew jvmRun --args="--assetreport"` drives every campaign, missions select page
   and menu, then lists every sprite the game requests and every image that was never used
   (a mod checklist).
 
@@ -164,10 +170,10 @@ Entry points:
 
 - **Main menu → Level Editor** starts a new 10×10 map on the game's window (the window grows to
   700×600 while the editor is open).
-- `./gradlew jvmRun --args="assets --editor ep3/Mission_1"` opens that map. With `--frames N` it
+- `./gradlew jvmRun --args="--editor ep3/Mission_1"` opens that map. With `--frames N` it
   renders headless and saves a capture (add `--real` to use a real window instead of SDL's dummy
   driver).
-- `./gradlew jvmRun --args="assets --editorcheck"` drives the whole editor headlessly and prints
+- `./gradlew jvmRun --args="--editorcheck"` drives the whole editor headlessly and prints
   one PASS/FAIL line per feature (40 checks: opening, the rule pass, every tab and colour row,
   painting, Shift-pick, delete brushes, fill, resize, save/reload, every popup, and Test handing
   its map to the match loader).
@@ -204,10 +210,10 @@ Data model and rules:
 
 - A map is three layers deep: terrain (0), buildings (1), units (2). Every cell references an
   entry of the document's palette (a material name, a team and its art), and is saved as the
-  game's `MapConfig` JSON — a map opened from `assets/data/maps/` is written back there; a map a
+  game's `MapConfig` JSON — a map opened from `src/commonMain/resources/data/maps/` is written back there; a map a
   mod owns is written back as that mod's JSON Patch (a root `add`).
 - **Terrain art is chosen by the neighbours**, using the original editor's rule tables, converted
-  to `assets/data/editor/rules.json`: each terrain has an identity character, tilde/dash wildcard
+  to `src/commonMain/resources/data/editor/rules.json`: each terrain has an identity character, tilde/dash wildcard
   sets (`subscriptions.xml`), an out-of-bounds assumption (roads assume an imaginary road, the
   rest sea) and an ordered list of `match` rules. Nine identity characters (3×3, the cell itself
   in the middle) are matched against the rules; the first match supplies either whole-tile
@@ -229,26 +235,26 @@ Data model and rules:
   reason as the script field — the port has no text input — so the document keeps its name; **Test** is enabled with at least
   two players and starts a skirmish from the *working* document (no save needed); **Quit** asks
   before dropping unsaved changes.
-- `assets/data/editor/rules.json` is generated from the GAME's embedded editor documents:
+- `src/commonMain/resources/data/editor/rules.json` is generated from the GAME's embedded editor documents:
   the terrain rules (`xml/editor/terrain`, 18 terrains / 164 rules with subscriptions,
   identities, wildcards and dependencies) plus the unit and building lists
   (`xml/editor/units.xml`, `xml/editor/buildings.xml` — panel order, `mode` and `restricted`).
-  `assets/images/` gains the editor's chrome from the game's `EditorAssets` (`editor_frame`,
+  `src/commonMain/resources/images/` gains the editor's chrome from the game's `EditorAssets` (`editor_frame`,
   `editor_highlight`, `editor_tab_*`, `editor_radio`) and the two art files the rule tables
   referenced but the game export was missing (`canyon_0_v1`, `high_bridge_7_v1`).
 
 ## Running
 
 ```bash
-# Run directly (JVM desktop target) — assets/ is the default asset directory
-./gradlew jvmRun --args="assets --mission 0"
+# Run directly (JVM desktop target) — src/commonMain/resources is the default asset directory
+./gradlew jvmRun --args="--mission 0"
 
 # Arguments
-#   <assetsDir>     the asset directory (default: assets)
+#   <assetsDir>     the asset directory (default: src/commonMain/resources)
 #   --campaign id   campaign generation for --mission (nemesis | skirmish | ghosts |
 #                   vengeance | bootcamp; default vengeance)
 #   --mission N     mission N of --campaign (0-based, default 0), e.g. "--campaign nemesis --mission 3"
-#   --skirmish x    free-for-all skirmish on assets/data/maps/x.json (e.g. ep3/Mission_1)
+#   --skirmish x    free-for-all skirmish on <assetsDir>/data/maps/x.json (e.g. ep3/Mission_1)
 #   --selftest      load the mission and tick the game loop without a window (startup self-check)
 #   --menushot      capture the main menu and every generation's mission select to PNGs
 #   --editor [id]   open the map editor (e.g. --editor ep3/Mission_1); add " --frames 60" to

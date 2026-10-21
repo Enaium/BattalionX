@@ -22,7 +22,7 @@ import kotlin.test.assertTrue
  */
 class MapEditorTest {
 
-    private val assetsDir = "assets"
+    private val assetsDir = "src/commonMain/resources"
     private fun haveAssets(): Boolean = File("$assetsDir/data").isDirectory
     private val tmp: File = File(System.getProperty("java.io.tmpdir"), "battalionx-editor-test")
         .apply { deleteRecursively(); mkdirs() }

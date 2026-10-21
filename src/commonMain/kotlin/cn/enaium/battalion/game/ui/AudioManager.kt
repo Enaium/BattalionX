@@ -12,13 +12,11 @@ import cn.enaium.battalion.game.triggers.MoveStartTrigger
 import cn.enaium.battalion.game.triggers.PlayerTrigger
 import cn.enaium.battalion.game.triggers.UpgradeUnitTrigger
 import cn.enaium.battalion.util.Fio
-import cn.enaium.sdl.SDLAudioDeviceID
-import cn.enaium.sdl.mixer.SDLMixer
 
 /**
  * Plays the game's sound effects through SDL_mixer.
  *
- * Every sound is an MP3 under the project's `assets/sounds/` directory, named by its event
+ * Every sound is an MP3 under the project's `src/commonMain/resources/sounds/` directory, named by its event
  * name (`ExplosionSound.mp3`, `PlayerLoopWAV_3.mp3`). We scan that directory, index the files
  * by base name, and play the right one whenever the matching [Trigger] fires. Mods add a
  * sound by dropping `<event-name>.mp3` into the directory.
@@ -29,11 +27,8 @@ import cn.enaium.sdl.mixer.SDLMixer
  */
 class AudioManager(private val assetsDir: String) {
 
-    /** The SDL_mixer device everything plays through (null until [load]). */
-    private var mixer: cn.enaium.sdl.mixer.SDLMixerDevice? = null
-
-    /** event name -> audio handle (loaded lazily on first play). */
-    private val cache = mutableMapOf<String, cn.enaium.sdl.mixer.SDLAudio>()
+    /** The platform audio backend (SDL_mixer on desktop, SoundPool/MediaPlayer on Android). */
+    private var backend: AudioBackend? = null
 
     /** event name -> file path, discovered by scanning the sounds directory. */
     private val soundFiles = mutableMapOf<String, String>()
@@ -48,9 +43,6 @@ class AudioManager(private val assetsDir: String) {
      * when EndGameAction finalises, so it cannot guard this window.
      */
     private var matchEnding = false
-
-    /** The currently playing looping background-music track (one at a time). */
-    private var musicTrack: cn.enaium.sdl.mixer.SDLTrack? = null
 
     /** The name of the soundtrack currently looping (to avoid restarts that don't change it). */
     private var currentMusic: String? = null
@@ -80,19 +72,13 @@ class AudioManager(private val assetsDir: String) {
      * (`TriggerManager.clearAll`), which would otherwise wipe the listeners registered here.
      */
     fun load() {
-        if (!SDLMixer.init()) {
-            available = false
-            return
-        }
-        mixer = try {
-            SDLMixer.createMixerDevice(SDLAudioDeviceID.DEFAULT_PLAYBACK)
+        backend = try {
+            createAudioBackend()
         } catch (t: Throwable) {
-            SDLMixer.quit()
-            available = false
-            return
+            null
         }
-        available = true
-        indexSounds()
+        available = backend != null
+        if (available) indexSounds()
     }
 
     /**
@@ -234,20 +220,7 @@ class AudioManager(private val assetsDir: String) {
     fun play(name: String) {
         if (!available || !effectsEnabled) return
         val path = soundFiles[name] ?: return
-        val audio = cache.getOrPut(name) {
-            try {
-                mixer?.loadAudio(path) ?: return
-            } catch (t: Throwable) {
-                return
-            }
-        }
-        try {
-            val track = mixer?.createTrack() ?: return
-            if (!track.setAudio(audio)) return
-            track.play()
-        } catch (t: Throwable) {
-            // Ignore transient playback errors; sound is best-effort.
-        }
+        backend?.playSound(path, 1f)
     }
 
     /** Starts the main-menu BGM loop. No-op once it is already playing. */
@@ -263,11 +236,8 @@ class AudioManager(private val assetsDir: String) {
     /** Stops any looping background music (used when the music option is turned off). */
     fun stopMusic() {
         if (!available) return
-        musicTrack?.let { old ->
-            old.stop()
-            musicTrack = null
-            currentMusic = null
-        }
+        backend?.stopMusic()
+        currentMusic = null
     }
 
     /**
@@ -280,53 +250,22 @@ class AudioManager(private val assetsDir: String) {
         // Music toggled off: stop any loop and don't start another (the SWF's master loop
         // volume, but implemented as a hard stop so nothing plays in the background).
         if (!musicEnabled) {
-            if (musicTrack != null) {
-                musicTrack?.stop()
-                musicTrack = null
-                currentMusic = null
-            }
+            backend?.stopMusic()
+            currentMusic = null
             return
         }
         // Same track already playing — don't restart (avoids a click every turn).
         if (currentMusic == name) return
         val path = soundFiles[name] ?: return
-        val audio = cache.getOrPut(name) {
-            try { mixer?.loadAudio(path) ?: return } catch (t: Throwable) { return }
-        }
-        try {
-            // Stop and release the previous music track.
-            musicTrack?.let { old ->
-                old.stop()
-            }
-            musicTrack = null
-            val track = mixer?.createTrack() ?: return
-            if (!track.setAudio(audio)) return
-            track.gain = MUSIC_GAIN
-            track.tag("music")
-            if (!track.play()) return
-            // The loop count only sticks while the track is playing: MIX_SetTrackLoops has no
-            // effect on a stopped track (a later play() resets it), so set loops AFTER play().
-            // Setting it before play() made the background music play exactly once and stop.
-            track.loops = -1            // loop indefinitely
-            musicTrack = track
-            currentMusic = name
-        } catch (t: Throwable) {
-            // Best-effort: a music hiccup must not break the game.
-        }
+        backend?.playMusic(path, MUSIC_GAIN)
+        currentMusic = name
     }
 
     /** Releases all audio and the mixer. */
     fun close() {
         if (!available) return
-        try {
-            mixer?.stopAllTracks()
-            for (audio in cache.values) audio.close()
-            cache.clear()
-            mixer?.close()
-            SDLMixer.quit()
-        } catch (t: Throwable) {
-            // Best-effort shutdown.
-        }
+        backend?.close()
+        backend = null
         available = false
     }
 }

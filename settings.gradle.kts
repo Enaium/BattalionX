@@ -2,6 +2,7 @@ pluginManagement {
     repositories {
         gradlePluginPortal()
         mavenCentral()
+        google()
     }
 }
 
@@ -14,3 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "BattalionX"
+include(":androidApp")

@@ -6,9 +6,9 @@ import kotlinx.serialization.Serializable
  * The typed (kotlinx.serialization) configuration documents that replace the old XML-shaped
  * `{"name","attrs","children","text"}` bridge. Every document is a plain JSON file with
  * explicit fields — this IS the modding contract: a mod drops a folder of these files under
- * `assets/data/` and the registries pick them up.
+ * `src/commonMain/resources/data/` and the registries pick them up.
  *
- * Layout on disk (all relative to `assets/data/`):
+ * Layout on disk (all relative to `src/commonMain/resources/data/`):
  * ```
  * units/<id>.json            one UnitConfig per unit
  * terrain/<id>.json          one TerrainConfig per terrain
@@ -437,7 +437,7 @@ data class SpriteRegionConfig(
 /** One sheet: an image plus how it is sliced. */
 @Serializable
 data class SheetConfig(
-    /** Image key under `assets/images/` (file base name). */
+    /** Image key under `src/commonMain/resources/images/` (file base name). */
     val image: String,
     /**
      * Grid slicing: when set, region i = (i % columns) * cellW, (i / columns) * cellH.

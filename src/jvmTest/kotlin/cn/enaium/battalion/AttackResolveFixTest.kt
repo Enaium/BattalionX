@@ -27,7 +27,7 @@ import java.io.File
  */
 class AttackResolveFixTest {
 
-    private val assetsDir = "assets"
+    private val assetsDir = "src/commonMain/resources"
     private fun haveAssets(): Boolean = File("$assetsDir/data").isDirectory
 
     /** Picks a unit type that is melee (weapon range exactly 1) and ground/sea (can attack adjacent). */

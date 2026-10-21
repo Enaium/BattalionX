@@ -17,6 +17,7 @@ import cn.enaium.battalion.game.ui.SaveManager
 import cn.enaium.battalion.game.ui.TextRenderer
 import cn.enaium.battalion.game.ui.TextureManager
 import cn.enaium.sdl.SDL
+import cn.enaium.battalion.game.ui.logicalMousePosition
 import cn.enaium.sdl.SDLBlendMode
 import cn.enaium.sdl.SDLColor
 import cn.enaium.sdl.SDLFlipMode
@@ -329,10 +330,10 @@ class BattalionRenderer(
         if (!unit.isDeployed()) return clearHoverPath()
 
         // Hovered tile from the cursor (a float offset the mouse is inside the map area).
-        val mouse = SDL.mouseState
-        if (mouse.x < MAP_X || mouse.y < MAP_Y) return clearHoverPath()
-        val tx = mapColAt(mouse.x)
-        val ty = mapRowAt(mouse.y)
+        val (mouseX, mouseY) = logicalMousePosition(renderer)
+        if (mouseX < MAP_X || mouseY < MAP_Y) return clearHoverPath()
+        val tx = mapColAt(mouseX.toFloat())
+        val ty = mapRowAt(mouseY.toFloat())
         val g = game
         if (tx < 0 || ty < 0 || tx >= g.map.width || ty >= g.map.height) return clearHoverPath()
         if (tx == unit.x && ty == unit.y) return clearHoverPath()
@@ -423,10 +424,10 @@ class BattalionRenderer(
         if (!unit.isAvailable() || unit.isMoving || !unit.isDeployed()) return
 
         // Hovered tile under the cursor.
-        val mouse = SDL.mouseState
-        if (mouse.x < MAP_X || mouse.y < MAP_Y) return
-        val tx = mapColAt(mouse.x)
-        val ty = mapRowAt(mouse.y)
+        val (mouseX, mouseY) = logicalMousePosition(renderer)
+        if (mouseX < MAP_X || mouseY < MAP_Y) return
+        val tx = mapColAt(mouseX.toFloat())
+        val ty = mapRowAt(mouseY.toFloat())
         if (tx < 0 || ty < 0 || tx >= g.map.width || ty >= g.map.height) return
 
         // Which cell to show: attack takes priority over move.
@@ -452,7 +453,7 @@ class BattalionRenderer(
         renderer.renderTexture(
             tex,
             src = SDLFRect(region.x.toFloat(), region.y.toFloat(), cellW, cellH),
-            dst = SDLFRect(mouse.x.toFloat(), mouse.y.toFloat(), cellW, cellH),
+            dst = SDLFRect(mouseX.toFloat(), mouseY.toFloat(), cellW, cellH),
         )
     }
 
@@ -581,12 +582,12 @@ class BattalionRenderer(
 
     /** The small selectedArrow that rides the cursor during destination selection. */
     private fun drawHoverCursorArrow() {
-        val mouse = SDL.mouseState
+        val (mouseX, mouseY) = logicalMousePosition(renderer)
         val arrow = textures.texture("selectedArrow") ?: return
         val size = textures.textureSize("selectedArrow") ?: (9 to 10)
         renderer.renderTexture(
             arrow,
-            dst = SDLFRect(mouse.x - size.first / 2f, mouse.y - size.second / 2f,
+            dst = SDLFRect(mouseX - size.first / 2f, mouseY - size.second / 2f,
                 size.first.toFloat(), size.second.toFloat()),
         )
     }
@@ -1259,9 +1260,7 @@ class BattalionRenderer(
         }
         drawFrameBorder(px, py, panelW, panelH)
 
-        val mouse = SDL.mouseState
-        val mx = mouse.x.toInt()
-        val my = mouse.y.toInt()
+        val (mx, my) = logicalMousePosition(renderer)
 
         // Row 1 (SWF layout): sound / music / dialog toggle icons, then the Back button
         // (closeButton tile) right after the dialog toggle, vertically centred on the row.
@@ -1775,8 +1774,8 @@ class BattalionRenderer(
 
     /** True when the mouse is inside the given rect (used by hover states). */
     private fun mouseWithin(x: Int, y: Int, w: Int, h: Int): Boolean {
-        val m = SDL.mouseState
-        return m.x >= x && m.x < x + w && m.y >= y && m.y < y + h
+        val (mx, my) = logicalMousePosition(renderer)
+        return mx >= x && mx < x + w && my >= y && my < y + h
     }
 
     private fun drawMap() {
@@ -1962,9 +1961,7 @@ class BattalionRenderer(
         // unit from its current position — frame 0 = bad threat, 1 = ok, 2 = good escape.
         if (unit.isAvailable()) drawDangerIndicators(unit)
 
-        val mouse = SDL.mouseState
-        val mx = mouse.x.toInt()
-        val my = mouse.y.toInt()
+        val (mx, my) = logicalMousePosition(renderer)
 
         if (!human.unitOptionsOpen) {
             // The small "more options" marker above the unit. unitOptionsButton is a 96×24
@@ -2166,9 +2163,7 @@ class BattalionRenderer(
         buildPageBackground()
 
         // Mouse position for hover state.
-        val mouse = SDL.mouseState
-        val mx = mouse.x.toInt()
-        val my = mouse.y.toInt()
+        val (mx, my) = logicalMousePosition(renderer)
 
         // Column geometry (SWF BuildMenu): ground 3 cols @ x=10,98,186; air 1 col @ x=350;
         // sea 2 cols @ x=500,598. Vertical start 196, row height 125.
@@ -2388,9 +2383,7 @@ class BattalionRenderer(
         human: HumanController,
         menu: HumanController.BuildMenuState,
     ) {
-        val mouse = SDL.mouseState
-        val mx = mouse.x.toInt()
-        val my = mouse.y.toInt()
+        val (mx, my) = logicalMousePosition(renderer)
 
         // The constructor's on-screen tile position.
         val tile = game.tileAt(menu.sourceX, menu.sourceY) ?: return
@@ -3270,8 +3263,8 @@ class BattalionRenderer(
         btnRects.add(BtnHit(btn, dst.x, dst.y, dst.width, dst.height))
         val tex = textures.texture(sprite) ?: return
         val held = pressedButton == btn && (SDL.mouseState.buttons and 1) != 0
-        val hover = (SDL.mouseState.buttons and 1) == 0 &&
-            panelButtonAt(SDL.mouseState.x.toInt(), SDL.mouseState.y.toInt()) == btn
+        val (mouseX, mouseY) = logicalMousePosition(renderer)
+        val hover = (SDL.mouseState.buttons and 1) == 0 && panelButtonAt(mouseX, mouseY) == btn
         val frame = when {
             disabled -> 3
             held -> 2
@@ -3718,8 +3711,8 @@ class BattalionRenderer(
         btnRects.add(BtnHit(PanelButton.END_TURN, x, y, w, h))
         val tex = textures.texture("endturnbutton") ?: return
         val held = pressedButton == PanelButton.END_TURN && (SDL.mouseState.buttons and 1) != 0
-        val hover = (SDL.mouseState.buttons and 1) == 0 &&
-            panelButtonAt(SDL.mouseState.x.toInt(), SDL.mouseState.y.toInt()) == PanelButton.END_TURN
+        val (mouseX, mouseY) = logicalMousePosition(renderer)
+        val hover = (SDL.mouseState.buttons and 1) == 0 && panelButtonAt(mouseX, mouseY) == PanelButton.END_TURN
         val frame = when {
             game.gameOver -> 3
             held -> 2
@@ -3831,9 +3824,9 @@ class BattalionRenderer(
             val cbX = (boxX + boxW - 160)
             val cbY = (boxY + boxH - 45)
             // Touch/click highlight: show the "over" frame while the cursor is over the button.
-            val mouse = SDL.mouseState
-            val hovering = mouse.x >= cbX && mouse.x < cbX + frameW &&
-                mouse.y >= cbY && mouse.y < cbY + frameH
+            val (mouseX, mouseY) = logicalMousePosition(renderer)
+            val hovering = mouseX >= cbX && mouseX < cbX + frameW &&
+                mouseY >= cbY && mouseY < cbY + frameH
             renderer.renderTexture(
                 cont,
                 src = SDLFRect((if (hovering) 2 else 1) * frameW, 0f, frameW, frameH),

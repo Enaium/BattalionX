@@ -7,7 +7,7 @@ import cn.enaium.battalion.game.BattalionGame
  * need explicit initialisation on native.
  */
 fun main(args: Array<String>) {
-    val dir = args.firstOrNull { !it.startsWith("--") } ?: "assets"
+    val dir = args.firstOrNull { !it.startsWith("--") } ?: "src/commonMain/resources"
     val missionArg = args.indexOf("--mission")
     val mission = if (missionArg >= 0 && missionArg + 1 < args.size) args[missionArg + 1].toIntOrNull() ?: 0 else 0
     val skirmishArg = args.indexOf("--skirmish")

@@ -12,6 +12,16 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.embed.resource)
+    alias(libs.plugins.android.kmp.library)
+}
+
+// The game's assets (src/commonMain/resources: data JSON, images, sounds) are embedded by
+// cn.enaium.embedresource: the application ships them with the code and materializes them
+// into a writable directory at startup (see EmbeddedAssets), so no platform bundle or
+// filesystem copy of `src/commonMain/resources/` is needed at runtime (Android, packaged builds).
+embedres {
+    packageName.set("cn.enaium.battalion.embedded")
 }
 
 group = "cn.enaium"
@@ -33,6 +43,23 @@ kotlin {
         }
     }
 
+    // --- Android (JVM/ART: SDL3 + the JNI bridge from sdl-kmp's Android AARs) ---
+    // The Android application lives in :androidApp; this module publishes the shared code as an
+    // Android library (AGP 9 requires com.android.kotlin.multiplatform.library for KMP).
+    android {
+        namespace = "cn.enaium.battalion"
+        compileSdk = 36
+        minSdk = 24
+
+        compilations.configureEach {
+            compileTaskProvider.configure {
+                compilerOptions {
+                    jvmTarget.set(JvmTarget.JVM_21)
+                }
+            }
+        }
+    }
+
     // --- Native desktop targets --------------------------------------------
     macosArm64 {
         binaries.executable {
@@ -49,19 +76,46 @@ kotlin {
     // --- Shared source sets -------------------------------------------------
     sourceSets {
         commonMain.dependencies {
-            // Graphics / audio / fonts (KMP bindings)
-            implementation(libs.sdl.kmp)
-            implementation(libs.sdl.ttf.kmp)
-            implementation(libs.sdl.image.kmp)
-            implementation(libs.sdl.mixer.kmp)
+            // SDL core (window, renderer, input). Its Android variant brings SDLActivity and the
+            // per-ABI libsdl_jni.so; image/ttf/mixer are not published for Android JVM and live
+            // in sdlAddonsMain instead.
+            api(libs.sdl.kmp)
 
             // Kotlinx ecosystem
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.coroutines.core)
 
-            // File loading
+        }
+
+        // SDL_image / SDL_ttf / SDL_mixer bindings, shared by the desktop JVM and native
+        // targets. Android JVM has no artifacts for them and implements the same expect API
+        // with the platform's BitmapFactory / Paint / SoundPool (androidMain).
+        val sdlAddonsMain = create("sdlAddonsMain") {
+            dependsOn(commonMain.get())
+        }
+        sdlAddonsMain.dependencies {
+            implementation(libs.sdl.image.kmp)
+            implementation(libs.sdl.ttf.kmp)
+            implementation(libs.sdl.mixer.kmp)
+        }
+        // JVM and Android share java.io-based file I/O (Android's external files directory is
+        // a normal path; FileKit's Android path handling could not list it).
+        val jvmSharedMain = create("jvmSharedMain") {
+            dependsOn(commonMain.get())
+        }
+        jvmMain.get().dependsOn(jvmSharedMain)
+        getByName("androidMain").dependsOn(jvmSharedMain)
+
+        jvmMain.get().dependsOn(sdlAddonsMain)
+        val nativeMain = maybeCreate("nativeMain")
+        nativeMain.dependsOn(commonMain.get())
+        nativeMain.dependencies {
             implementation(libs.filekit.core)
         }
+        getByName("macosArm64Main").dependsOn(nativeMain)
+        getByName("linuxX64Main").dependsOn(nativeMain)
+        nativeMain.dependsOn(sdlAddonsMain)
+
         commonTest.dependencies {
             implementation(kotlin("test"))
         }

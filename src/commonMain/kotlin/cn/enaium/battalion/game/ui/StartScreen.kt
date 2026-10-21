@@ -8,6 +8,8 @@ import cn.enaium.sdl.SDL
 import cn.enaium.sdl.SDLBlendMode
 import cn.enaium.sdl.SDLColor
 import cn.enaium.sdl.SDLFRect
+import cn.enaium.battalion.game.ui.Presentation
+import cn.enaium.battalion.game.ui.pointerToLogical
 import cn.enaium.sdl.SDLEvent
 import cn.enaium.sdl.SDLKeycode
 import cn.enaium.sdl.SDLRect
@@ -233,9 +235,16 @@ class StartScreen(
                 is SDLEvent.Key -> {
                     if (event.down && !event.repeat) onKey(event.keycode)
                 }
-                is SDLEvent.MouseMotion -> { mouseX = event.x.toInt(); mouseY = event.y.toInt() }
+                is SDLEvent.MouseMotion -> {
+                    val (mx, my) = pointerToLogical(renderer, event.x.toInt(), event.y.toInt())
+                    mouseX = mx
+                    mouseY = my
+                }
                 is SDLEvent.MouseButton ->
-                    if (event.down) onMouseClick(event.x.toInt(), event.y.toInt())
+                    if (event.down) {
+                        val (mx, my) = pointerToLogical(renderer, event.x.toInt(), event.y.toInt())
+                        onMouseClick(mx, my)
+                    }
                 else -> Unit
             }
         }
@@ -469,6 +478,11 @@ class StartScreen(
      * and header tiling must stretch over.
      */
     private fun logicalWindowSize(): Pair<Int, Int> {
+        // A fixed logical canvas (Android) is the drawing area: outputSize is the physical
+        // surface (e.g. 2400×1080), and stretching the menu to it would crop the 700×600 scene.
+        if (Presentation.width > 0 && renderer.logicalPresentationRect != null) {
+            return Presentation.width to Presentation.height
+        }
         val s = renderer.scale
         val sx = if (s.x > 0f) s.x else 1f
         val sy = if (s.y > 0f) s.y else 1f

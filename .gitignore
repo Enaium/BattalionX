@@ -45,6 +45,9 @@ bin/
 ### Mac OS ###
 .DS_Store
 
+### Local SDK path (Android Studio / AGP) ###
+local.properties
+
 ### Runtime files ###
 battalionx_save.json
 

@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
  */
 class QuitSurrenderTest {
 
-    private val assetsDir = "assets"
+    private val assetsDir = "src/commonMain/resources"
     private fun haveAssets(): Boolean = File("$assetsDir/data").isDirectory
 
     @Test

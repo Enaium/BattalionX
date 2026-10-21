@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 
 /**
  * Guards the campaign registry behind the mission select: every game generation (Nemesis,
- * Skirmish, Ghosts, Vengeance) plus the Boot Camp tutorial must load from `assets/data/`, list
+ * Skirmish, Ghosts, Vengeance) plus the Boot Camp tutorial must load from `src/commonMain/resources/data/`, list
  * its levels in order, and resolve each level's map document.
  *
  * A level whose map id has no `maps/<id>.json` is unplayable and the menu silently skips it
@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
  */
 class CampaignRegistryTest {
 
-    private val assetsDir = "assets"
+    private val assetsDir = "src/commonMain/resources"
 
     private fun allCampaigns(): List<GameLoader.Campaign> {
         if (!File("$assetsDir/data").isDirectory) return emptyList()

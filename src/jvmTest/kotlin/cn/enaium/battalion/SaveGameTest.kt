@@ -18,7 +18,7 @@ import java.io.File
  */
 class SaveGameTest {
 
-    private val assetsDir = "assets"
+    private val assetsDir = "src/commonMain/resources"
     private fun haveAssets(): Boolean = File("$assetsDir/data").isDirectory
 
     @Test

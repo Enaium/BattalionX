@@ -12,10 +12,9 @@ import cn.enaium.sdl.SDLRenderer
 import cn.enaium.sdl.SDLScaleMode
 import cn.enaium.sdl.SDLTexture
 import cn.enaium.sdl.SDLTextureAccess
-import cn.enaium.sdl.image.SDLImage
 
 /**
- * Loads and caches the game's image textures from the project's `assets/images/` directory.
+ * Loads and caches the game's image textures from the project's `src/commonMain/resources/images/` directory.
  *
  * Each file is stored under its sprite key — `scorpion.png`, `sea_0_nw.png`,
  * `unitOptionsButton.png` — so the key is simply the file base name. This manager scans the
@@ -24,7 +23,7 @@ import cn.enaium.sdl.image.SDLImage
  * `<sprite-key>.png` into the directory.
  *
  * Sheet slicing (regions/grids for multi-frame art: avatars, explosions, cursor cells) comes
- * from `assets/data/sprites.json` ([SpriteAtlasConfig]) — no pixel offsets live in the code.
+ * from `src/commonMain/resources/data/sprites.json` ([SpriteAtlasConfig]) — no pixel offsets live in the code.
  *
  * Mods extend this index: every file under `<mod>/images/` is addressable by its id (its path
  * without the extension, e.g. `items/crystal_sword`), and a mod's file overrides a game sprite
@@ -49,7 +48,7 @@ class TextureManager(
     /**
      * Mod-diagnostic hook: while [recording] is true, every sprite name the game asks for is
      * collected into [requested] (the `--assetreport` CLI diagnostic uses this to verify the
-     * pruned `assets/images/` set covers all reachable content, and it tells a mod author which
+     * pruned `src/commonMain/resources/images/` set covers all reachable content, and it tells a mod author which
      * sprites a custom map/unit needs).
      */
     var recording: Boolean = false
@@ -188,16 +187,15 @@ class TextureManager(
     fun textureFromPath(name: String, path: String): SDLTexture? {
         cache[name]?.let { return it }
         val tex = try {
-            val surface = SDLImage.load(path) ?: return null
+            val image = decodeRgbaImage(path) ?: return null
             val t = renderer.createTexture(
-                format = surface.format,
+                format = SDLPixelFormat.RGBA32,
                 access = SDLTextureAccess.STATIC,
-                width = surface.width,
-                height = surface.height,
+                width = image.width,
+                height = image.height,
             )
-            t.update(null, surface.pixels, surface.pitch)
-            sizes[name] = surface.width to surface.height
-            surface.close()
+            t.update(null, image.bytes, image.pitch)
+            sizes[name] = image.width to image.height
             t.blendMode = SDLBlendMode.BLEND
             // The source art is pixel art — nearest sampling keeps it crisp when scaled;
             // linear filtering blurred the sprites/menus.
@@ -232,23 +230,12 @@ class TextureManager(
         teamCache[key]?.let { return it }
         val ramp = teamRamp(teamColor)
         val tex = try {
-            val surface = SDLImage.load(p) ?: return null
-            // Convert to a known packed layout (ABGR8888 = R,G,B,A byte order on little-endian).
-            val rgba = surface.convert(SDLPixelFormat.RGBA32)
-            surface.close()
-            val w = rgba.width
-            val h = rgba.height
-            val pitch = rgba.pitch
-            var pxIn: ByteArray
-            if (rgba.lock()) {
-                pxIn = rgba.pixels.copyOf()   // copy: SDL may return a detached array
-                rgba.unlock()
-            } else {
-                rgba.close()
-                return null
-            }
+            val image = decodeRgbaImage(p) ?: return null
+            val w = image.width
+            val h = image.height
+            val pitch = image.pitch
             // Build a new repainted buffer, then upload it (does not depend on write-through).
-            val out = pxIn.copyOf()
+            val out = image.bytes.copyOf()
             for (y in 0 until h) {
                 val row = y * pitch
                 for (x in 0 until w) {
@@ -267,7 +254,6 @@ class TextureManager(
                     }
                 }
             }
-            rgba.close()
             val t = renderer.createTexture(
                 format = SDLPixelFormat.RGBA32,
                 access = SDLTextureAccess.STATIC,

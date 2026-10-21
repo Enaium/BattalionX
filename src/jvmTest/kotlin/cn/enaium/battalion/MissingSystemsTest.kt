@@ -28,7 +28,7 @@ import java.io.File
  */
 class MissingSystemsTest {
 
-    private val assetsDir = "assets"
+    private val assetsDir = "src/commonMain/resources"
     private fun haveAssets(): Boolean = File("$assetsDir/data").isDirectory
 
     private fun warmachineType(): UnitData? =
