@@ -243,6 +243,12 @@ data class PaletteEntryConfig(
     /** Owning team 1..4, 0 = neutral. */
     val team: Int = 0,
     val sprites: TerrainSpritesConfig = TerrainSpritesConfig(),
+    /**
+     * The direction a placed UNIT faces (0..5, the sheet's facing columns), or -1 to let the map
+     * decide: the original faces a unit toward the middle of the map, which is what every shipped
+     * map relies on. The editor's Q/E sets it, so an author can point a vehicle where they want.
+     */
+    val facing: Int = -1,
 )
 
 /** One placed tile layer. */

@@ -68,17 +68,27 @@ class EndTurnAction(private val reason: Int) : Action() {
         }
 
         // ---- Advance to the next player --------------------------------------
-        do {
+        // Skip inactive teams; if nobody is left (or the round limit is reached) the match must
+        // end. The old `while (!active!!)` spun forever when every team was inactive.
+        val count = gameManager.controllers.size
+        var foundActive = false
+        for (step in 0 until maxOf(1, count)) {
             gameManager.turn = gameManager.turn + 1
             gameManager.currentController = gameManager.currentController + 1
-            if (gameManager.currentController > gameManager.controllers.size - 1) {
+            if (gameManager.currentController > count - 1) {
                 gameManager.round = gameManager.round + 1
                 gameManager.currentController = 0
             }
-            if (gameManager.round > gameManager.mapSettings.rounds) {
-                ActionManager.add(EndGameAction())
+            if (gameManager.round > gameManager.mapSettings.rounds) break
+            if (gameManager.activeController?.team?.active == true) {
+                foundActive = true
+                break
             }
-        } while (!gameManager.activeController?.team?.active!!)
+        }
+        if (!foundActive) {
+            ActionManager.add(EndGameAction())
+            return
+        }
 
         // Queue the start of the next player's turn.
         val start = StartTurnAction()

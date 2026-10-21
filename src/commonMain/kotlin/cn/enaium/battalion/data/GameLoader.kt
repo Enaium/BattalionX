@@ -1,6 +1,7 @@
 package cn.enaium.battalion.data
 
 import cn.enaium.battalion.game.GameManager
+import cn.enaium.battalion.mod.ModRegistry
 
 /**
  * Loads the game's static data and builds a ready-to-run [GameManager] for a chosen mission
@@ -15,7 +16,9 @@ import cn.enaium.battalion.game.GameManager
  *    plus `campaigns/bootcamp.json` for the tutorial.
  *  - `maps/<Map>.json`.
  *
- * Mods add content by dropping files into these folders; nothing else changes.
+ * Mods never replace those documents. A mod ships JSON Patch files under
+ * `mods/<id>/data/patches/<same relative path>` (see [cn.enaium.battalion.mod.ModData]) and its
+ * own media under `mods/<id>/images` / `mods/<id>/sounds`, addressed by resource id.
  */
 object GameLoader {
 
@@ -68,6 +71,9 @@ object GameLoader {
      * resolve them by name.
      */
     fun loadAssets(assetsDir: String) {
+        // Mods must be resolved before anything reads data, media or the campaign list: both
+        // layers (JSON Patch + namespaced resources) are built here, once per assets directory.
+        ModRegistry.ensureLoaded(assetsDir)
         AssetLoader.clearCache()
         ModifierManager.clear()
         TileManager.clear()
@@ -94,10 +100,16 @@ object GameLoader {
 
     /**
      * The generation campaigns present in [assetsDir], in release order ([CAMPAIGN_IDS]).
-     * A generation whose document is missing (e.g. a trimmed asset set) is skipped.
+     * A campaign whose document is missing (a trimmed asset set) is skipped.
+     *
+     * Mods may still ship a campaign document — that is what [findCampaign] reads — but they are
+     * deliberately not listed here: the mission select's switch row stays the game's own
+     * generations, and the levels a mod adds are reached from its "Mod Maps" list.
      */
-    fun findCampaigns(assetsDir: String): List<Campaign> =
-        CAMPAIGN_IDS.mapNotNull { findCampaign(assetsDir, it) }
+    fun findCampaigns(assetsDir: String): List<Campaign> {
+        ModRegistry.ensureLoaded(assetsDir)
+        return CAMPAIGN_IDS.mapNotNull { findCampaign(assetsDir, it) }
+    }
 
     /** One generation campaign by its document name (e.g. `"ghosts"`), or null when absent. */
     fun findCampaign(assetsDir: String, id: String): Campaign? {
@@ -209,9 +221,26 @@ object GameLoader {
         val base = mapFile.substringBeforeLast('.').removePrefix("maps/")
         val mapCfg = findMap(assetsDir, base)
             ?: error("GameLoader: cannot read map file $mapFile")
+        return loadSkirmishFromConfig(assetsDir, mapCfg, "maps/$base", base)
+    }
 
-        // Build default settings with one Human + AI per team found in the map palette.
-        val map = GameMap(mapCfg, "maps/$base", base)
+    /**
+     * Plays an in-memory map document as a free-for-all skirmish — the map editor's Test
+     * button. The document is not saved first: the editor hands its working copy over, so a
+     * test always shows exactly what the author is looking at.
+     */
+    fun loadSkirmishFromConfig(
+        assetsDir: String,
+        mapCfg: MapConfig,
+        mapUrl: String,
+        mapName: String,
+    ): GameManager {
+        loadAssets(assetsDir)
+        // Build default settings with one Human + AI per team that actually owns something.
+        // A map saved by the editor may keep palette entries for a colour it no longer uses;
+        // [compactTeams] renumbers the real players to 1..n so no ghost team joins the match.
+        val cfg = compactTeams(mapCfg)
+        val map = GameMap(cfg, mapUrl, mapName)
         val teamCount = map.palette.map { it.ownerTeam() }.filter { it > 0 }.maxOrNull() ?: 2
         val teams = (1..teamCount).map { i ->
             TeamConfig(
@@ -223,10 +252,102 @@ object GameLoader {
             )
         }
         val settings = MissionSettingsConfig(rounds = Int.MAX_VALUE, resources = 3000, teams = teams)
-        return buildGame(mapCfg, settings, mapUrl = base, mapName = base)
+        return buildGame(cfg, settings, mapUrl = mapUrl, mapName = mapName)
+    }
+
+    /**
+     * The map editor's Test button: the original `EditorInterface.onTestClick` settings.
+     *
+     * The original builds `MapSettings(Int.MAX_VALUE, 0, Controller.MEDIUM)`, enables unlocked
+     * units (premium in the online build), and gives the first team the author's name (here
+     * "Player 1", the offline equivalent) and the rest "Testo-tron (AI)", with the editor's four
+     * team colours (red, blue, green, yellow). No resources are granted: an authored map has to
+     * earn them from its ore.
+     */
+    fun loadEditorTest(assetsDir: String, mapCfg: MapConfig): GameManager {
+        loadAssets(assetsDir)
+
+        // The editor's palette can keep entries for a colour that has nothing left on the map
+        // (paint, then delete). The original Save renumbers players to P1..Pn; do the same for
+        // the in-memory test, or those leftovers become ghost players that take empty turns
+        // forever (they never fire NO_UNITS because they never lost a unit).
+        val testMap = compactTeams(mapCfg)
+        val teamCount = placedTeams(mapCfg).size.coerceIn(1, 4)
+
+        val colors = listOf("ffff0000", "ff0000ff", "ff00ff00", "ffffd800")
+        val teams = (0 until teamCount).map { index ->
+            TeamConfig(
+                name = if (index == 0) "Player 1" else "Testo-tron (AI)",
+                teamName = "Team${index + 1}",
+                color = colors[index],
+                controllerType = if (index == 0) "Human" else "AI",
+                difficulty = 1,
+                active = true,
+            )
+        }
+        val settings = MissionSettingsConfig(
+            rounds = Int.MAX_VALUE, resources = 0, difficulty = 1, teams = teams,
+        )
+        return buildGame(
+            testMap, settings,
+            mapUrl = "editor/${mapCfg.name}", mapName = mapCfg.name,
+            useUnlockedUnits = true,
+        )
+    }
+
+    /**
+     * Renumbers the teams that own a unit or structure to 1..n (the original editor does the
+     * same when it saves a map). Palette entries belong to the map document, not the tiles, so a
+     * colour can survive after its last unit is deleted; without this renumbering the loader
+     * would create a controller for it and the turn order would cycle through an empty team.
+     */
+    private fun compactTeams(cfg: MapConfig): MapConfig {
+        val placed = placedTeams(cfg)
+        if (placed.isEmpty() || placed == (1..placed.size).toList()) return cfg
+        val remap = placed.withIndex().associate { (index, team) -> team to index + 1 }
+        return cfg.copy(
+            palette = cfg.palette.map { entry ->
+                if (entry.team <= 0) entry else entry.copy(team = remap[entry.team] ?: 0)
+            },
+        )
+    }
+
+    /** Teams that actually own a unit or structure on [cfg] (palette leftovers excluded). */
+    private fun placedTeams(cfg: MapConfig): List<Int> {
+        val teams = mutableSetOf<Int>()
+        for (tile in cfg.tiles) {
+            for (layer in tile.layers) {
+                if (layer.depth == 0) continue
+                val team = cfg.palette.getOrNull(layer.reference)?.team ?: 0
+                if (team > 0) teams += team
+            }
+        }
+        return teams.sorted()
     }
 
     /** Builds a [GameManager] from a map config, its settings, and an optional save script. */
+    /**
+     * The mission settings a campaign gives the map [mapId] (its teams, colours, avatars and AI
+     * difficulty), or null when no campaign level uses that map. The editor's preview uses these
+     * so it shows the mission's own factions — with the editor's synthetic teams a mission's
+     * vehicles came out in the wrong colours, which reads as "the preview is not the game".
+     */
+    fun campaignSettingsFor(assetsDir: String, mapId: String): MissionSettingsConfig? {
+        loadAssets(assetsDir)
+        for (campaign in findCampaigns(assetsDir)) {
+            val level = campaign.missions.firstOrNull { it.mapId == mapId } ?: continue
+            return level.settings
+        }
+        return null
+    }
+
+    /**
+     * Builds a match from an in-memory map document (the editor's edited document, not the file on
+     * disk) with [settings] and no script, which is what its preview needs.
+     */
+    fun buildPreviewGame(mapCfg: MapConfig, settings: MissionSettingsConfig, url: String): GameManager =
+        buildGame(mapCfg, settings, script = null, mapUrl = url, mapName = mapCfg.name)
+
     private fun buildGame(
         mapCfg: MapConfig,
         settings: MissionSettingsConfig,
@@ -234,8 +355,10 @@ object GameLoader {
         difficultyOverride: Int? = null,
         mapUrl: String? = null,
         mapName: String? = null,
+        useUnlockedUnits: Boolean = false,
     ): GameManager {
         val mapSettings = MapSettings.fromConfig(settings, difficultyOverride = difficultyOverride)
+        mapSettings.useUnlockedUnits = useUnlockedUnits
         val url = mapUrl ?: mapCfg.name
         val name = mapName ?: mapCfg.name
         val map = GameMap(mapCfg, url, name)

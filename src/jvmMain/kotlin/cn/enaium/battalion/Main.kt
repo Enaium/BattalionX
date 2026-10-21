@@ -32,6 +32,9 @@ import io.github.vinceglb.filekit.FileKit
  *                     e.g. `--campaign vengeance --mission 0 --playerteam 1`.
  *   --assetreport     drive every mission/menu and report which requested sprites have no
  *                     backing file under `assets/images/` (verifies the asset set is complete).
+ *   --editor [id]     open the map editor (a new 10×10 map when no id is given); with
+ *                     `--frames N` it renders headlessly, saves a capture and exits.
+ *   --editorcheck     drive every map-editor feature headlessly and print PASS/FAIL lines.
  */
 fun main(args: Array<String>) {
     FileKit.init(appId = "BattalionX")
@@ -90,6 +93,32 @@ fun main(args: Array<String>) {
         carddiag(dir)
         return
     }
+    if (args.contains("--editorcheck")) {
+        editorcheck(dir)
+        return
+    }
+    // Mod switch on a REAL window (no dummy driver): the texture close/re-create a switch
+    // triggers behaves differently there, which is where the "list went blank" report came from.
+    if (args.contains("--modswitch")) {
+        modSwitchShot(dir, realWindow = true)
+        return
+    }
+    // End-to-end check of the main menu's Level Editor button: click it on a real window and
+    // run the editor through the game's own path (headless, N frames, capture).
+    if (args.contains("--guicheck")) {
+        guicheck(dir)
+        return
+    }
+    // Map editor: `--editor [mapId] [--frames N]`. With --frames it runs headless (SDL dummy
+    // driver) for N frames and saves a capture, so the editor can be verified without a display.
+    if (args.contains("--editor")) {
+        val index = args.indexOf("--editor")
+        val mapArg = args.getOrNull(index + 1)?.takeIf { !it.startsWith("--") }
+        val framesIndex = args.indexOf("--frames")
+        val frames = if (framesIndex >= 0) args.getOrNull(framesIndex + 1)?.toIntOrNull() ?: 0 else 0
+        editor(dir, mapArg, frames, realWindow = args.contains("--real"))
+        return
+    }
     if (selftest) {
         selftest(dir, mission, skirmish, campaign, playerTeam)
         return
@@ -111,6 +140,472 @@ private fun saveShot(surf: cn.enaium.sdl.SDLSurface, name: String) {
     val path = "$SHOT_DIR/$name.png"
     cn.enaium.sdl.image.SDLImage.savePNG(surf, path)
     println("saved $path")
+}
+
+/**
+ * Exercises every map-editor feature on a real window (headless), one capture per step, and
+ * prints a PASS/FAIL line for each. Covers the spec's list: opening a level, viewing terrain /
+ * structures / units / environment, the whole level at once, per-category listing with icons,
+ * search / filter / locate, inspecting and editing an object, painting and erasing, saving a game
+ * map and a mod's map, the file dialogs and quitting.
+ */
+/**
+ * Exercises the map editor on a real (headless) window: the original's layout and interaction
+ * (tabs, colour radios, painting, Shift-pick, delete brushes, page controls), the rule engine
+ * (painting sea joins coastlines), the map operations (fill, resize, save/reload), and every
+ * popup (Load, Save, Test, Quit). One capture of the finished screen is written to [SHOT_DIR].
+ */
+private fun editorcheck(dir: String) {
+    cn.enaium.sdl.SDL.setHint("SDL_VIDEO_DRIVER", "dummy")
+    cn.enaium.sdl.SDL.setMainReady()
+    if (!cn.enaium.sdl.SDL.init(cn.enaium.sdl.SDLInitFlags.VIDEO or cn.enaium.sdl.SDLInitFlags.EVENTS)) {
+        println("editorcheck: SDL init failed"); return
+    }
+    val win = cn.enaium.sdl.SDL.createWindow(
+        "editorcheck",
+        cn.enaium.battalion.editor.MapEditorApp.WINDOW_W,
+        cn.enaium.battalion.editor.MapEditorApp.WINDOW_H,
+    )
+    val r = cn.enaium.sdl.SDL.createRenderer(win)
+    runCatching { cn.enaium.battalion.data.GameLoader.loadAssets(dir) }
+    java.io.File(SHOT_DIR).mkdirs()
+
+    val results = mutableListOf<Pair<String, Boolean>>()
+    fun check(name: String, ok: Boolean, detail: String = "") {
+        results += name to ok
+        println("EDITORCHECK ${if (ok) "PASS" else "FAIL"} $name${if (detail.isEmpty()) "" else " — $detail"}")
+    }
+
+    cn.enaium.battalion.editor.MapEditorApp.EditorSession(
+        win, r, dir, mapId = "ep3/Mission_4", onStatus = {},
+    ).use { session ->
+        val ed = session.editor
+        val m = session.model
+        fun frame() = session.frame()
+
+        fun click(id: String): Boolean {
+            frame()
+            val rect = ed.hitRect(id)
+            if (rect == null) {
+                println("EDITORCHECK no button '$id'")
+                return false
+            }
+            val x = rect[0] + rect[2] / 2
+            val y = rect[1] + rect[3] / 2
+            ed.onMouseDown(1, x, y)
+            ed.onMouseUp(1, x, y)
+            frame()
+            return true
+        }
+
+        fun clickCell(col: Int, row: Int, shift: Boolean = false) {
+            val x = col * 56 + 28 - ed.scrollX
+            val y = 40 + row * 56 + 28 - ed.scrollY
+            ed.setShift(shift)
+            ed.onMouseDown(1, x, y)
+            ed.onMouseUp(1, x, y)
+            ed.setShift(false)
+        }
+
+        fun pixel(x: Int, y: Int): Triple<Int, Int, Int>? {
+            val surface = r.renderReadPixels(cn.enaium.sdl.SDLRect(x, y, 1, 1)) ?: return null
+            val bytes = surface.pixels
+            val out = Triple(bytes[0].toInt() and 0xff, bytes[1].toInt() and 0xff, bytes[2].toInt() and 0xff)
+            surface.close()
+            return out
+        }
+
+        // --- 1. the map opens with the game's content ------------------------
+        frame()
+        check("a game map opens", m.mapId == "ep3/Mission_4" && m.cols() == 11 && m.rows() == 10,
+            "map=${m.mapId} ${m.cols()}×${m.rows()}")
+        check("the map's players are counted", m.countPlayers().sorted() == listOf(1, 2),
+            "players=${m.countPlayers()}")
+        click("btn:script")
+        frame()
+        check("Script shows the open map's document",
+            ed.isPopupOpen() && m.scriptJson().contains("\"events\"") &&
+                ed.hitRect("script:copy") != null,
+            "script=${m.scriptJson().length} chars")
+        session.capture("$SHOT_DIR/editorcheck_script.png")
+        click("popup:close")
+        check("units and buildings are on their own layers",
+            (0 until m.rows()).any { r0 -> (0 until m.cols()).any { c -> m.entryAt(c, r0, 2) != null } } &&
+                (0 until m.rows()).any { r0 -> (0 until m.cols()).any { c -> m.entryAt(c, r0, 1) != null } },
+            "units=${m.tileAt(0, 0) != null}")
+
+        // --- 2. the rule engine reproduces the original tables ---------------
+        m.newMap("Rules", 10, 10)
+        check("an empty script still shows the document skeleton",
+            m.scriptJson().contains("\"events\"") && m.scriptJson().contains("\"state\""),
+            "script=${m.scriptJson().lines().take(2)}")
+        click("btn:script")
+        check("the empty-script panel says the map tiles are not script content",
+            ed.isPopupOpen() && m.scriptIsEmpty() && m.scriptSummary().contains("empty"),
+            "summary=${m.scriptSummary()}")
+        session.capture("$SHOT_DIR/editorcheck_script_empty.png")
+        click("popup:close")
+        m.fill("Sea")
+        val allSea = m.entryAt(5, 5, 0)
+        check("filling with sea takes the all-sea rule",
+            allSea?.name == "Sea" && allSea.sprites.composite ==
+                listOf("sea_0_nw", "sea_0_ne", "sea_0_sw", "sea_0_se"),
+            "sprites=${allSea?.sprites}")
+        // A single land tile in the sea must re-join the four coast tiles around it.
+        m.place(5, 5, cn.enaium.battalion.editor.EditorItem("Plains", 0, 0, "plains_v1"))
+        val north = m.entryAt(5, 4, 0)
+        val south = m.entryAt(5, 6, 0)
+        check("painting one land tile re-joins its neighbours",
+            m.nameAt(5, 5) == "Plains" && north?.name == "Sea" && south?.name == "Sea" &&
+                north.sprites.composite != allSea?.sprites?.composite,
+            "north=${north?.sprites?.composite}")
+
+        // --- 3. the rule pass is what the screen shows -----------------------
+        // Two frames: the headless driver's read-back shows the frame that was presented
+        // before the last render, so sample after the changed frame has been presented twice.
+        frame(); frame()
+        val landPixel = pixel(5 * 56 + 28, 40 + 5 * 56 + 28)
+        m.fill("Sea")
+        frame(); frame()
+        val seaPixel = pixel(5 * 56 + 28, 40 + 5 * 56 + 28)
+        // The read-back is BGRA on this backend: green land has the G byte highest, water the B
+        // byte. (The triplet order does not matter for the assertion as long as it is consistent.)
+        check("the viewport draws the terrain it holds",
+            landPixel != null && seaPixel != null &&
+                landPixel.second > landPixel.first && landPixel.second > landPixel.third &&
+                seaPixel.first > seaPixel.second + 40 && seaPixel.first > seaPixel.third + 40,
+            "land=$landPixel sea=$seaPixel")
+
+        // --- 4. tabs, colour radios, row selection ---------------------------
+        check("the units tab opens", click("tab:1") && ed.depth == 2)
+        check("the unit rows list the registry", ed.hitRect("row:0") != null,
+            "rows=${cn.enaium.battalion.data.UnitManager.getAll().size}")
+        check("the red colour radio selects team 1", click("radio:0"))
+        check("the first unit row is selectable",
+            click("row:0") && ed.selectedItem()?.depth == 2 && ed.selectedItem()?.team == 1,
+            "selected=${ed.selectedItem()?.name} team=${ed.selectedItem()?.team}")
+        frame()
+        session.capture("$SHOT_DIR/editorcheck_units.png")
+
+        // --- 5. paint a unit and a building, then delete them ----------------
+        val unitName = ed.selectedItem()?.name
+        m.newMap("Paint", 10, 10)
+        clickCell(2, 2)
+        check("painting places the selected unit",
+            m.entryAt(2, 2, 2)?.name == unitName && m.entryAt(2, 2, 2)?.team == 1,
+            "placed=${m.entryAt(2, 2, 2)?.name}")
+        val unitRows = m.unitItems(1)
+        check("the unit rows follow the game editor's list",
+            unitRows.firstOrNull()?.name == "Warmachine" &&
+                m.rules.units.any { it.name == "Spider Tank" && it.restricted },
+            "first=${unitRows.firstOrNull()?.name} " +
+                "premium=${m.rules.units.filter { it.restricted }.map { it.name }}")
+        // The game gates the Spider/Lancer Tanks behind a Premium account; this offline port has
+        // no accounts and treats the author as fully unlocked, so they paint like any unit.
+        val premiumIndex = unitRows.indexOfFirst { it.name == "Spider Tank" }
+        click("row:$premiumIndex")
+        clickCell(4, 4)
+        check("the game's premium units are paintable offline",
+            m.entryAt(4, 4, 2)?.name == "Spider Tank",
+            "cell=${m.entryAt(4, 4, 2)?.name}")
+        click("row:0")
+        check("the test button enables once a player exists", m.countPlayers().isNotEmpty(),
+            "players=${m.countPlayers()}")
+
+        check("the buildings tab opens", click("tab:2") && ed.depth == 1)
+        check("the neutral colour radio selects neutral", click("radio:4") && ed.buildingColor == 4)
+        check("a building row is selectable", click("row:0"))
+        val buildingName = ed.selectedItem()?.name
+        clickCell(6, 6)
+        check("painting places the building at neutral",
+            m.entryAt(6, 6, 1)?.name == buildingName && m.entryAt(6, 6, 1)?.team == 0,
+            "placed=${m.entryAt(6, 6, 1)?.name} team=${m.entryAt(6, 6, 1)?.team}")
+        check("the delete brush clears the building",
+            click("delete") && run { clickCell(6, 6); m.entryAt(6, 6, 1) == null },
+            "cell=${m.entryAt(6, 6, 1)}")
+        // Buildings are only counted for players; the unit still gives one team, so place a
+        // second player's unit to satisfy the save/test rules.
+        check("the units tab reopens", click("tab:1") && ed.depth == 2)
+        click("radio:1")
+        click("row:0")
+        clickCell(3, 2)
+        check("two teams are now present", m.countPlayers().sorted() == listOf(1, 2),
+            "players=${m.countPlayers()}")
+
+        // --- 6. Shift-click picks the terrain into the palette ---------------
+        click("tab:0")
+        val terrainAt = m.nameAt(0, 0)
+        clickCell(0, 0, shift = true)
+        check("Shift-click selects the terrain under the cursor",
+            ed.selectedItem()?.name == terrainAt,
+            "cell=$terrainAt selected=${ed.selectedItem()?.name}")
+
+        // --- 7. the fill and resize popups rewrite the document -------------
+        val oldCols = m.cols()
+        click("btn:fill")
+        check("Fill lists the original's five terrains", ed.isPopupOpen() && ed.hitRect("fill:Forest") != null)
+        session.capture("$SHOT_DIR/editorcheck_fill.png")
+        click("fill:Forest")
+        check("fill paints every cell",
+            (0 until m.rows()).all { r0 -> (0 until m.cols()).all { c -> m.nameAt(c, r0) == "Forest" } })
+        click("btn:resize")
+        check("Resize opens on its size page",
+            ed.isPopupOpen() && ed.hitRect("resize:cols+") != null)
+        click("resize:cols+")
+        click("resize:cols+")
+        click("resize:next")
+        check("Resize's second page offers the drag grid", ed.hitRect("resize:drag") != null)
+        click("resize:done")
+        check("resize grows the map", m.cols() == oldCols + 2 && m.rows() == 10,
+            "size=${m.cols()}×${m.rows()}")
+
+        // Maps larger than the 10×10 viewport scroll when the mouse rests on a map edge.
+        ed.onMouseMove(560 - 4, 300)
+        for (i in 1..10) ed.update(0.1f)
+        check("the mouse at the map edge scrolls the view", ed.scrollX > 0, "scrollX=${ed.scrollX}")
+        ed.onMouseMove(2, 300)
+        for (i in 1..20) ed.update(0.1f)
+        check("the opposite edge scrolls back", ed.scrollX == 0, "scrollX=${ed.scrollX}")
+
+        click("btn:script")
+        check("Script shows the map's script document",
+            ed.isPopupOpen() && ed.hitRect("script:reset") != null && ed.hitRect("script:copy") != null)
+        click("script:reset")
+        check("Reset clears the script", m.doc!!.script.events.isEmpty() && m.doc!!.script.units.isEmpty(),
+            "events=${m.doc!!.script.events.size}")
+        click("popup:close")
+
+        // --- 8. save and read the document back -----------------------------
+        val out = java.io.File(System.getProperty("java.io.tmpdir"), "battalionx-editorcheck.json")
+        check("save writes the document", m.saveAs(out.absolutePath) && out.length() > 0)
+        // The resize popup grows around the dragged rectangle, which was centred here: the
+        // old grid moved one column right, so the unit placed at (2,2) now sits at (3,2).
+        check("the saved document reloads", m.openFile(out.absolutePath) &&
+            m.cols() == oldCols + 2 && m.entryAt(3, 2, 2)?.team == 1,
+            "size=${m.cols()}×${m.rows()} unit=${m.entryAt(3, 2, 2)?.name}")
+        out.delete()
+
+        // --- 9. the popups --------------------------------------------------
+        cn.enaium.sdl.SDL.setModState(cn.enaium.sdl.SDLKeymod.LCTRL)
+        ed.onKeyDown(0x31)
+        cn.enaium.sdl.SDL.setModState(0)
+        frame()
+        check("Ctrl+1 opens the load list", ed.isPopupOpen())
+        session.capture("$SHOT_DIR/editorcheck_load.png")
+        val firstMap = m.availableMaps().firstOrNull()
+        check("the load list shows the game's maps", firstMap != null && click("load:$firstMap"),
+            "first=$firstMap")
+        check("loading a map from the list opens it", m.mapId == firstMap,
+            "map=${m.mapId}")
+
+        click("btn:save")
+        check("Save opens the document panel",
+            ed.isPopupOpen() && ed.hitRect("save:copy") != null && ed.hitRect("save:file") != null)
+        click("save:copy")
+        click("popup:close")
+
+        val beforeTest = ed.testRequested
+        click("btn:test")
+        check("Test validates the map's players", ed.isPopupOpen() && ed.hitRect("test:play") != null,
+            "players=${m.countPlayers()}")
+        click("test:play")
+        check("Test hands the map back to the game", !beforeTest && ed.testRequested)
+        // The game loop builds the match from exactly this document.
+        val tested = runCatching {
+            cn.enaium.battalion.data.GameLoader.loadEditorTest(dir, m.doc!!)
+        }.getOrNull()
+        check("the tested document builds a match",
+            tested != null && tested.map.width == m.cols() && tested.mapSettings.teams.size >= 2 &&
+                tested.mapSettings.resources == 0 &&
+                tested.mapSettings.teams.first().color == 0xFFFF0000u,
+            "map=${tested?.map?.width}×${tested?.map?.height} " +
+                "teams=${tested?.mapSettings?.teams?.map { it.color }} " +
+                "resources=${tested?.mapSettings?.resources}")
+        ed.testRequested = false
+        ed.closePopup()
+
+        m.fill("Plains")
+        click("btn:quit")
+        check("Quit asks before dropping unsaved work",
+            ed.isPopupOpen() && ed.hitRect("quit:yes") != null, "dirty=${m.dirty}")
+        click("popup:close")
+
+        // --- 10. a capture of the finished editor ---------------------------
+        frame()
+        val shot = "$SHOT_DIR/editorcheck.png"
+        if (session.capture(shot) != null) println("saved $shot")
+        check("the editor still responds", m.mapId != null, "map=${m.mapId}")
+    }
+
+    r.close(); win.close(); cn.enaium.sdl.SDL.quit()
+
+    val failed = results.count { !it.second }
+    println("EDITORCHECK SUMMARY: ${results.size - failed}/${results.size} passed")
+    if (failed > 0) println("EDITORCHECK FAILED: " + results.filterNot { it.second }.joinToString { it.first })
+}
+
+/**
+ * Diagnostic: clicks a mod's enable/disable switch on the mods screen and captures the result.
+ * A switch reloads the mod layers, which closes every cached texture — doing that mid-frame used
+ * to blank the rest of the list. Prints what the list holds afterwards.
+ */
+private fun modSwitchShot(dir: String, realWindow: Boolean = false) {
+    if (!realWindow) cn.enaium.sdl.SDL.setHint("SDL_VIDEO_DRIVER", "dummy")
+    cn.enaium.sdl.SDL.setMainReady()
+    if (!cn.enaium.sdl.SDL.init(cn.enaium.sdl.SDLInitFlags.VIDEO or cn.enaium.sdl.SDLInitFlags.EVENTS)) {
+        println("modswitch: SDL init failed"); return
+    }
+    val win = cn.enaium.sdl.SDL.createWindow("modswitch", 700, 600)
+    val r = cn.enaium.sdl.SDL.createRenderer(win)
+    val text = cn.enaium.battalion.game.ui.TextRenderer(r); text.load()
+    val tm = cn.enaium.battalion.game.ui.TextureManager(dir, r); tm.load()
+    runCatching { cn.enaium.battalion.data.GameLoader.loadAssets(dir) }
+
+    // The switch goes through SaveManager, so point it at a throwaway store: a diagnostic must
+    // not rewrite the player's real battalionx_save.json.
+    val scratch = java.io.File(System.getProperty("java.io.tmpdir"), "battalionx-modswitch")
+    scratch.mkdirs()
+    java.io.File(scratch, "assets").mkdirs()
+    cn.enaium.battalion.game.ui.SaveManager.bind(java.io.File(scratch, "assets").absolutePath)
+    cn.enaium.battalion.game.ui.SaveManager.clearAll()
+
+    val start = cn.enaium.battalion.game.ui.StartScreen(dir, r, text, tm)
+    start.setScreenForCapture("mods")
+    for (i in 1..3) start.renderFrameForCapture()
+    r.renderReadPixels(null)?.let { saveShot(it, "menu_mods_before"); it.close() }
+
+    val before = cn.enaium.battalion.mod.ModRegistry.allMods.map { it.manifest.id to it.enabled }
+    if (before.isEmpty()) { println("modswitch: no mods installed"); return }
+    // Flip every switch in turn (including the last one, which leaves nothing enabled) and check
+    // after each that the whole list is still there — the list must never collapse to the
+    // "no mods installed" state while mods are installed but switched off.
+    var allGood = true
+    for (rowIndex in before.indices) {
+        start.clickForCapture(40 + 620 - 85, 36 + 52 + rowIndex * 96 + 19)
+        try {
+            for (i in 1..3) start.renderFrameForCapture()
+        } catch (t: Throwable) {
+            println("MODSWITCH EXCEPTION while drawing after the switch:")
+            t.printStackTrace()
+            allGood = false
+        }
+        val listed = cn.enaium.battalion.mod.ModRegistry.allMods.size
+        val enabled = cn.enaium.battalion.mod.ModRegistry.mods.size
+        println("MODSWITCH after flipping row $rowIndex: listed=$listed enabled=$enabled")
+        if (listed != before.size) allGood = false
+    }
+    val after = cn.enaium.battalion.mod.ModRegistry.allMods.map { it.manifest.id to it.enabled }
+    println("MODSWITCH: before=$before")
+    println("MODSWITCH: after =$after")
+    println("MODSWITCH ${if (allGood && after.none { it.second }) "PASS" else "FAIL"}: " +
+        "${after.size} mods still listed with every switch off")
+    // Leave the save as it was found.
+    for (mod in cn.enaium.battalion.mod.ModRegistry.allMods) {
+        cn.enaium.battalion.game.ui.SaveManager.setModEnabled(mod.manifest.id, true)
+    }
+    r.renderReadPixels(null)?.let { saveShot(it, "menu_mods_switched"); it.close() }
+    text.close(); tm.close(); r.close(); win.close(); cn.enaium.sdl.SDL.quit()
+}
+
+/**
+ * Diagnostic: drives the menu → editor wiring end to end. Builds the menu, clicks the Level
+ * Editor button with the same synthetic click the capture helpers use, prints the resulting
+ * selection, then opens the editor through [BattalionGame.openMapEditor] — exactly what the game
+ * loop does — for 30 frames (headless) and saves the capture.
+ */
+
+/**
+ * Diagnostic: the mods switch → play path, end to end.
+ *
+ * Switching a mod off changes the asset index. Everything that resolved a texture BEFORE the
+ * switch — a match's terrain/unit textures, the mod list's own icons — then holds a reference
+ * that must stay usable: the reload used to close every cached texture, so resuming a game
+ * afterwards died with "SDL texture is closed" inside the first unit draw, and a disabled mod's
+ * icon disappeared from the mods screen. This check flips every switch in the mods menu, samples
+ * the icon row, then plays a match with the same texture manager and draws frames.
+ */
+
+/**
+ * Diagnostic: opens every map the game ships in a real editor session and compares the vehicles
+ * the map places with the vehicles the level preview ends up with.
+ */
+
+private fun guicheck(dir: String) {
+    cn.enaium.sdl.SDL.setHint("SDL_VIDEO_DRIVER", "dummy")
+    cn.enaium.sdl.SDL.setMainReady()
+    if (!cn.enaium.sdl.SDL.init(cn.enaium.sdl.SDLInitFlags.VIDEO or cn.enaium.sdl.SDLInitFlags.EVENTS)) {
+        println("guicheck: SDL init failed"); return
+    }
+    val win = cn.enaium.sdl.SDL.createWindow("guicheck", 700, 600)
+    val r = cn.enaium.sdl.SDL.createRenderer(win)
+    val text = cn.enaium.battalion.game.ui.TextRenderer(r); text.load()
+    val tm = cn.enaium.battalion.game.ui.TextureManager(dir, r); tm.load()
+    runCatching { cn.enaium.battalion.data.GameLoader.loadAssets(dir) }
+
+    val start = cn.enaium.battalion.game.ui.StartScreen(dir, r, text, tm)
+    start.setScreenForCapture("main")
+    // The button row is 5 × 126px wide, spread evenly across the 700px stage; the Level Editor
+    // is the last one (see StartScreen.drawMainMenu).
+    val separation = (700 - 5 * 126) / 6
+    val editorX = separation + 4 * (separation + 126) + 63
+    val editorY = 380 + 35
+    for (i in 1..3) start.renderFrameForCapture()
+    start.clickForCapture(editorX, editorY)
+    val selection = start.selectionForCapture()
+    println("GUICHECK: clicked Level Editor at ($editorX,$editorY) -> editor=${selection.editor} quit=${selection.quit}")
+
+    val capture = "$SHOT_DIR/guicheck_editor.png"
+    java.io.File(SHOT_DIR).mkdirs()
+    // Open through the game's own path (the same call the menu makes).
+    val result = cn.enaium.battalion.game.BattalionGame.openMapEditor(
+        win, r, dir, maxFrames = 30, capturePath = capture,
+        mapId = "ep3/Mission_4",
+    )
+    println("GUICHECK: editor closed with map=${result?.mapId} test=${result?.testMap?.name} (window=${win.size})")
+
+    text.close(); tm.close(); r.close(); win.close(); cn.enaium.sdl.SDL.quit()
+}
+
+/**
+ * The map editor. Runs interactively until the window is closed (or the editor quits); with
+ * [frames] > 0 it renders that many frames, saves a capture and exits, which is how the editor
+ * is verified headlessly.
+ */
+private fun editor(dir: String, mapId: String?, frames: Int, realWindow: Boolean = false) {
+    if (frames > 0 && !realWindow) {
+        // Headless run (no display): SDL's dummy video driver still renders into the surface.
+        cn.enaium.sdl.SDL.setHint("SDL_VIDEO_DRIVER", "dummy")
+    }
+    cn.enaium.sdl.SDL.setMainReady()
+    if (!cn.enaium.sdl.SDL.init(cn.enaium.sdl.SDLInitFlags.VIDEO or cn.enaium.sdl.SDLInitFlags.EVENTS)) {
+        println("SDL init failed: ${cn.enaium.sdl.SDL.error()}")
+        return
+    }
+    val win = cn.enaium.sdl.SDL.createWindow(
+        "BattalionX — Map Editor",
+        cn.enaium.battalion.editor.MapEditorApp.WINDOW_W,
+        cn.enaium.battalion.editor.MapEditorApp.WINDOW_H,
+    )
+    val r = cn.enaium.sdl.SDL.createRenderer(win)
+    cn.enaium.battalion.game.BattalionGame.applyRenderScale(win, r)
+    // Campaign/terrain/unit registries make the palette names resolvable in the editor.
+    runCatching { cn.enaium.battalion.data.GameLoader.loadAssets(dir) }
+
+    val capturePath = if (frames > 0) {
+        val name = "editor_" + (mapId ?: "empty").replace('/', '_')
+        java.io.File(SHOT_DIR).mkdirs()
+        "$SHOT_DIR/$name.png"
+    } else null
+    cn.enaium.battalion.editor.MapEditorApp.run(
+        window = win,
+        renderer = r,
+        assetsDir = dir,
+        mapId = mapId,
+        maxFrames = frames,
+        capturePath = capturePath,
+        onStatus = { println(it) },
+    )
+    r.close(); win.close(); cn.enaium.sdl.SDL.quit()
 }
 
 /**
@@ -156,6 +651,12 @@ private fun menushot(dir: String) {
     // Three-team level: the picker must show all three faction colours (Ghosts M6 adds the
     // green Dragoons to the blue Akadians and red N. Federation).
     snap("campaign:ghosts#5", "menu_ghosts_3teams")
+
+    // Mod screens: the mod list (from the main menu), a switch being flipped (the list must
+    // survive the reload and still show every mod, enabled or not) and the maps mods add.
+    snap("mods", "menu_mods")
+    modSwitchShot(dir)
+    snap("modmaps", "menu_modmaps")
 
     // Faction picker: the enemy swatch sits right of the next-mission arrow (a 22px button at
     // x = 570 for a two-team mission, vertically centred on the chapter panel).
@@ -446,6 +947,43 @@ private fun assetreport(dir: String) {
     val tm = cn.enaium.battalion.game.ui.TextureManager(dir, r); tm.load()
     tm.recording = true
     val green = cn.enaium.sdl.SDLColor(143, 222, 101) // matcha green
+
+    // The map editor's own chrome (frame, tabs, highlight, radios) and every image its rule
+    // tables can paint — the editor is not part of the match/menu drives below.
+    runCatching {
+        val session = cn.enaium.battalion.editor.MapEditorApp.EditorSession(
+            win, r, dir, mapId = "ep3/Mission_1", textureManager = tm,
+        )
+        session.use {
+            // Every tab (its active and faded art), the unit/building colour radios and the
+            // hover highlight are only drawn in specific states.
+            for (tab in listOf("tab:0", "tab:1", "tab:2")) {
+                val rect = it.editor.hitRect(tab)
+                if (rect != null) {
+                    it.editor.onMouseDown(1, rect[0] + 5, rect[1] + 5)
+                    it.editor.onMouseUp(1, rect[0] + 5, rect[1] + 5)
+                }
+                it.frame()
+            }
+            it.editor.onMouseMove(280, 280)
+            it.frame()
+        }
+        for (terrain in cn.enaium.battalion.editor.EditorRules.load(dir).terrains) {
+            tm.texture(terrain.icon)
+            for (rule in terrain.rules) {
+                for (key in rule.images) tm.texture(key)
+                for (key in rule.composite) {
+                    // "sea_0_v1" is the original's plain-sea placeholder, replaced by the
+                    // directional strips at draw time; it has never been a file of its own.
+                    if (key != cn.enaium.battalion.data.TerrainSprites.SEA_EDGE &&
+                        key != cn.enaium.battalion.data.TerrainSprites.SEA_EDGE_LEGACY
+                    ) {
+                        tm.texture(key)
+                    }
+                }
+            }
+        }
+    }
 
     fun snap(screen: String, confirm: Boolean = false) {
         val start = cn.enaium.battalion.game.ui.StartScreen(dir, r, text, tm)

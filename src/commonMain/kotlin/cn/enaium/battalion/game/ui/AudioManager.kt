@@ -95,8 +95,13 @@ class AudioManager(private val assetsDir: String) {
         indexSounds()
     }
 
-    /** Indexes every MP3 in the sounds directory by its event name. */
+    /**
+     * Indexes every sound in the sounds directory by its event name, then overlays the mods'
+     * sounds (a mod file with the same id replaces the game's; later mods win).
+     */
     private fun indexSounds() {
+        // Make sure the mod layers exist before the index is built (idempotent per assets dir).
+        cn.enaium.battalion.mod.ModRegistry.ensureLoaded(assetsDir)
         val dir = "$assetsDir/sounds"
         for (file in Fio.listDir(dir).orEmpty()) {
             if (!file.endsWith(".mp3")) continue
@@ -105,6 +110,15 @@ class AudioManager(private val assetsDir: String) {
             val name = file.substringBeforeLast('.')
             if (name.isNotEmpty()) soundFiles[name] = "$dir/$file"
         }
+        for (mod in cn.enaium.battalion.mod.ModRegistry.mods) {
+            for ((id, path) in mod.sounds) soundFiles[id] = path
+        }
+    }
+
+    /** Re-indexes the sounds after the mod set changed (switching a mod off/on). */
+    fun reloadIndex() {
+        soundFiles.clear()
+        indexSounds()
     }
 
     /**

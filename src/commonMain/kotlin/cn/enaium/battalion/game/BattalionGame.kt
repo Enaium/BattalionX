@@ -2,6 +2,7 @@ package cn.enaium.battalion.game
 
 import cn.enaium.battalion.data.Astar
 import cn.enaium.battalion.data.GameLoader
+import cn.enaium.battalion.data.MapConfig
 import cn.enaium.battalion.data.UnitManager
 import cn.enaium.battalion.game.controllers.HumanController
 import cn.enaium.battalion.game.triggers.PlayerTrigger
@@ -82,6 +83,9 @@ class BattalionGame(
     private var lastSkirmish: String? = null
     private var lastResume = false
 
+    /** The map the editor asked to test (the editor's Test button), replayed by "Restart". */
+    private var lastEditorTest: MapConfig? = null
+
     private fun setBuildMessage(msg: String) {
         buildMessage = msg
         render?.buildMessage = msg
@@ -147,6 +151,7 @@ class BattalionGame(
             var playerTeam = playerTeamIndex
             var skirmish = skirmishMap
             var resumeSave = false
+            var editorTest: MapConfig? = null
 
             if (restartRequested) {
                 // Restart the previous match (menu skipped, same mission/save spec).
@@ -156,6 +161,7 @@ class BattalionGame(
                 mission = lastMission
                 playerTeam = lastPlayerTeam
                 skirmish = lastSkirmish
+                editorTest = lastEditorTest
             } else if (!menuExplicit) {
                 // The mission-select pages reproduce the original SWF's 700×600 CampaignMenu
                 // stage, so switch the window to that size while the menu is shown and restore
@@ -172,6 +178,24 @@ class BattalionGame(
                 window.size = cn.enaium.sdl.SDLPoint(BattalionRenderer.WINDOW_W, BattalionRenderer.WINDOW_H)
                 applyRenderScale()
                 if (selection.quit) break
+                if (selection.editor) {
+                    // The editor has no music of its own: silence the menu loop while it is
+                    // open, and bring it back when the menu returns.
+                    audio.stopMusic()
+                    val editorResult = openMapEditor(window, renderer, assetsDir)
+                    window.size = cn.enaium.sdl.SDLPoint(700, 600)
+                    applyRenderScale()
+                    if (SaveManager.music) audio.startMenuMusic()
+                    // The editor's Test button hands its map back for a skirmish; anything else
+                    // (Quit, or closing the window) returns to this menu.
+                    editorTest = editorResult?.testMap
+                    if (editorTest == null) continue
+                    // A tested map plays in the game's window (the editor left it at its own size).
+                    window.size = cn.enaium.sdl.SDLPoint(
+                        BattalionRenderer.WINDOW_W, BattalionRenderer.WINDOW_H,
+                    )
+                    applyRenderScale()
+                }
                 resumeSave = selection.resume
                 campaign = selection.campaignId ?: campaign
                 mission = selection.missionIndex
@@ -189,6 +213,7 @@ class BattalionGame(
             val difficulty = if (campaign == GameLoader.BOOTCAMP_CAMPAIGN) null
                 else SaveManager.aiDifficulty.coerceIn(0, 2)
             game = when {
+                editorTest != null -> GameLoader.loadEditorTest(assetsDir, editorTest)
                 resumeSave && SaveManager.hasSavedGame() ->
                     GameLoader.loadSavedGame(assetsDir, SaveManager.savedGame!!)
                 skirmish != null -> GameLoader.loadSkirmish(assetsDir, skirmish)
@@ -201,6 +226,7 @@ class BattalionGame(
             lastPlayerTeam = playerTeam
             lastSkirmish = skirmish
             lastResume = resumeSave
+            lastEditorTest = editorTest
 
             // The GameManager constructor clears the whole trigger event bus, including the
             // audio listeners load() registered — subscribe per match, only now that the bus
@@ -281,13 +307,57 @@ class BattalionGame(
      * [SDLWindow.size] change (the menu runs at a different size than the game).
      */
     private fun applyRenderScale() {
-        val size = window.size
-        if (size.x <= 0 || size.y <= 0) return
-        val px = window.sizeInPixels
-        renderer.scale = cn.enaium.sdl.SDLFloatPoint(
-            px.x.toFloat() / size.x,
-            px.y.toFloat() / size.y,
-        )
+        applyRenderScale(window, renderer)
+    }
+
+    companion object {
+        /**
+         * Sets the renderer scale from the window's logical size and its backing pixels (1x
+         * unless the display is high-density). Falls back to 1:1 when either size is not
+         * available yet — right after a resize, or on a driver without a real backing (the
+         * headless dummy driver), a stale pixel size would otherwise scale the frame to nothing.
+         */
+        fun applyRenderScale(window: SDLWindow, renderer: SDLRenderer) {
+            val size = window.size
+            val px = window.sizeInPixels
+            val scale = if (size.x > 0 && size.y > 0 && px.x > 0 && px.y > 0) {
+                cn.enaium.sdl.SDLFloatPoint(
+                    px.x.toFloat() / size.x,
+                    px.y.toFloat() / size.y,
+                )
+            } else {
+                cn.enaium.sdl.SDLFloatPoint(1f, 1f)
+            }
+            renderer.scale = scale
+        }
+
+        /**
+         * Opens the map editor on the game's window: the editor needs a bigger canvas than the
+         * 700×600 menu, so the window is grown first and the caller restores the menu size when
+         * the editor exits. Shared by the game loop (main menu's Level Editor button) and the
+         * `--guicheck` diagnostic, so both run the same path.
+         */
+        fun openMapEditor(
+            window: SDLWindow,
+            renderer: SDLRenderer,
+            assetsDir: String,
+            maxFrames: Int = 0,
+            capturePath: String? = null,
+            mapId: String? = null,
+        ): cn.enaium.battalion.editor.MapEditorApp.Result? {
+            window.size = cn.enaium.sdl.SDLPoint(
+                cn.enaium.battalion.editor.MapEditorApp.WINDOW_W,
+                cn.enaium.battalion.editor.MapEditorApp.WINDOW_H,
+            )
+            applyRenderScale(window, renderer)
+            return cn.enaium.battalion.editor.MapEditorApp.run(
+                window, renderer, assetsDir,
+                mapId = mapId,
+                maxFrames = maxFrames,
+                capturePath = capturePath,
+                onStatus = { println(it) },
+            )
+        }
     }
 
     /**

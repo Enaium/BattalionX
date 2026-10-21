@@ -1,5 +1,6 @@
 package cn.enaium.battalion.data
 
+import cn.enaium.battalion.mod.ModRegistry
 import cn.enaium.battalion.util.Fio
 import kotlinx.serialization.json.Json
 
@@ -30,7 +31,7 @@ object AssetLoader {
 
     inline fun <reified T> read(assetsDir: String, rel: String): T? {
         cached(rel)?.let { return it as? T }
-        val text = Fio.readText("${dataDir(assetsDir)}/$rel") ?: return null
+        val text = readText(assetsDir, rel) ?: return null
         return try {
             val value = decode<T>(text)
             docs[rel] = value as Any
@@ -44,11 +45,31 @@ object AssetLoader {
     @PublishedApi
     internal inline fun <reified T> decode(text: String): T = json.decodeFromString(text)
 
-    /** Lists document names in a data subdirectory (e.g. `units`), without extension. */
-    fun list(assetsDir: String, rel: String): List<String> =
-        Fio.listDir("${dataDir(assetsDir)}/$rel").orEmpty()
-            .filter { it.endsWith(".json") }
-            .map { it.removeSuffix(".json") }
+    /**
+     * The final text of a data document: the game's own document with every mod's JSON Patch
+     * applied (see [cn.enaium.battalion.mod.ModData]). Without mods this is a plain file read.
+     */
+    fun readText(assetsDir: String, rel: String): String? {
+        val data = ModRegistry.data
+        val dir = dataDir(assetsDir)
+        return if (data != null) data.readText(dir, rel) else Fio.readText("$dir/$rel")
+    }
+
+    /**
+     * Lists document names in a data subdirectory (e.g. `units`), without extension: the game's
+     * own documents plus the ones mods add.
+     */
+    fun list(assetsDir: String, rel: String): List<String> {
+        val data = ModRegistry.data
+        val dir = dataDir(assetsDir)
+        return if (data != null) {
+            data.list(dir, rel)
+        } else {
+            Fio.listDir("$dir/$rel").orEmpty()
+                .filter { it.endsWith(".json") || Fio.listDir("$dir/$rel/$it") != null }
+                .map { it.removeSuffix(".json") }
+        }
+    }
 
     fun dataDir(assetsDir: String): String = "$assetsDir/data"
 

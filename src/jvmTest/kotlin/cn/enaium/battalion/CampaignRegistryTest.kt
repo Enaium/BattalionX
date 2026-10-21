@@ -29,7 +29,8 @@ class CampaignRegistryTest {
     fun `every generation campaign loads with playable levels`() {
         val campaigns = allCampaigns()
         if (campaigns.isEmpty()) return
-        // The registry lists the generations in release order, then the tutorial.
+        // The registry lists the generations in release order, then the tutorial. The mission
+        // select's switch row shows exactly these (mod campaigns are not listed there).
         assertEquals(
             GameLoader.CAMPAIGN_IDS + GameLoader.BOOTCAMP_CAMPAIGN,
             campaigns.map { it.id },

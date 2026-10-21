@@ -47,3 +47,6 @@ bin/
 
 ### Runtime files ###
 battalionx_save.json
+
+# Player mods live beside the assets directory at runtime (see README).
+mods/

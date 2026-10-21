@@ -1,7 +1,9 @@
 package cn.enaium.battalion.game.ui
 
+import cn.enaium.battalion.data.AssetLoader
 import cn.enaium.battalion.data.GameLoader
 import cn.enaium.battalion.data.GameLoader.MissionInfo
+import cn.enaium.battalion.mod.ModRegistry
 import cn.enaium.sdl.SDL
 import cn.enaium.sdl.SDLBlendMode
 import cn.enaium.sdl.SDLColor
@@ -50,6 +52,8 @@ class StartScreen(
         val skirmishMap: String? = null,
         /** True when the player chose "Continue" on the main menu to resume a saved game. */
         val resume: Boolean = false,
+        /** True when the player opened the map editor from the main menu's Level Editor button. */
+        val editor: Boolean = false,
         val quit: Boolean = false,
     ) {
         companion object {
@@ -58,7 +62,7 @@ class StartScreen(
         }
     }
 
-    private enum class Screen { MAIN, MISSIONS, CREDITS, OPTIONS }
+    private enum class Screen { MAIN, MISSIONS, CREDITS, OPTIONS, MODS, MOD_MAPS }
 
     companion object {
         /** Campaign generation switch row (mission select): y, height, side margin, gap. */
@@ -140,6 +144,10 @@ class StartScreen(
     private var mouseY = 0
     private var chosenSkirmish: String? = null
     private var resumeRequested = false
+    private var editorRequested = false
+
+    /** Set by a mod switch, applied between frames (see [applyPendingModReload]). */
+    private var modReloadPending = false
 
     private data class Btn(val key: String, val frameW: Int, val frameH: Int, val x: Int, val y: Int, val action: () -> Unit)
 
@@ -183,11 +191,17 @@ class StartScreen(
             draw()
             SDL.delay(16)
         }
+        return currentSelection()
+    }
+
+    /** What the player has chosen: the editor, a save to resume, a skirmish map or a mission. */
+    private fun currentSelection(): Selection {
         if (resumeRequested) return Selection.RESUME
+        if (editorRequested) return Selection(editor = true)
         if (chosenSkirmish != null) return Selection(skirmishMap = chosenSkirmish)
         val campaign = campaigns.getOrNull(campaignIndex)
         return when (screen) {
-            Screen.MAIN, Screen.CREDITS, Screen.OPTIONS -> Selection.QUIT
+            Screen.MAIN, Screen.CREDITS, Screen.OPTIONS, Screen.MODS, Screen.MOD_MAPS -> Selection.QUIT
             Screen.MISSIONS -> Selection(
                 campaignId = campaign?.id,
                 missionIndex = selected.coerceIn(0, maxOf(0, (campaign?.missions?.size ?: 1) - 1)),
@@ -198,7 +212,9 @@ class StartScreen(
 
     /** Loads every campaign document the mission select offers (generations + boot camp). */
     private fun reloadCampaigns() {
-        campaigns = GameLoader.findCampaigns(assetsDir) +
+        // Only the built-in generations sit in the switch row; the maps a mod adds are reached
+        // through the "Mod Maps" button instead (a mod campaign would clutter the row).
+        campaigns = GameLoader.CAMPAIGN_IDS.mapNotNull { GameLoader.findCampaign(assetsDir, it) } +
             listOfNotNull(GameLoader.findCampaign(assetsDir, GameLoader.BOOTCAMP_CAMPAIGN))
         if (campaignIndex !in campaigns.indices) {
             // Open on the port's original campaign (Vengeance) unless told otherwise.
@@ -279,7 +295,7 @@ class StartScreen(
 
     private fun activateSelected() {
         when (screen) {
-            Screen.MAIN, Screen.CREDITS, Screen.OPTIONS ->
+            Screen.MAIN, Screen.CREDITS, Screen.OPTIONS, Screen.MODS, Screen.MOD_MAPS ->
                 { /* Enter not used on these screens; click buttons instead */ }
             Screen.MISSIONS ->
                 // Only start a mission whose map is present; otherwise give feedback.
@@ -320,6 +336,7 @@ class StartScreen(
     /* ------------------------------------------------------------------ */
 
     private fun draw() {
+        applyPendingModReload()
         renderer.drawColor = SDLColor(12, 14, 20)
         renderer.clear()
         buttons.clear()
@@ -328,7 +345,9 @@ class StartScreen(
         // the SWF CampaignMenu composition themselves (header + backdrop), so no shared backdrop
         // is drawn for those. The Options and Credits overlays sit ON the main menu, so its
         // backdrop stays visible behind them (CreditsMenu dims it with its own 60% overlay).
-        if (screen == Screen.MAIN || screen == Screen.OPTIONS || screen == Screen.CREDITS) {
+        if (screen == Screen.MAIN || screen == Screen.OPTIONS || screen == Screen.CREDITS ||
+            screen == Screen.MODS || screen == Screen.MOD_MAPS
+        ) {
             drawMainBackdrop()
         }
 
@@ -336,6 +355,8 @@ class StartScreen(
             Screen.MAIN -> drawMainMenu()
             Screen.CREDITS -> drawCreditsMenu()
             Screen.OPTIONS -> drawOptionsMenu()
+            Screen.MODS -> drawModsMenu()
+            Screen.MOD_MAPS -> drawModMapsMenu()
             else -> drawMissionSelect()
         }
 
@@ -410,6 +431,8 @@ class StartScreen(
             "main" -> Screen.MAIN
             "options" -> Screen.OPTIONS
             "credits" -> Screen.CREDITS
+            "mods" -> Screen.MODS
+            "modmaps" -> Screen.MOD_MAPS
             else -> Screen.MISSIONS
         }
         if (target != null) {
@@ -418,6 +441,12 @@ class StartScreen(
         }
         if (targetMission != null && targetMission in missionList().indices) selected = targetMission
     }
+
+    /**
+     * Diagnostic: the selection the screen would return right now (what the game loop acts on
+     * when [run] returns), so the button wiring can be checked without a window.
+     */
+    fun selectionForCapture(): Selection = currentSelection()
 
     /** Diagnostic: forwards a synthetic click at ([x], [y]) to the current screen. */
     fun clickForCapture(x: Int, y: Int) {
@@ -587,9 +616,9 @@ class StartScreen(
         drawButton("singleplayerButton", btnW, btnH, x, y, { openMissionSelect() }); x += separation + btnW
         drawButton("multiplayerButton", btnW, btnH, x, y, { /* multiplayer exclude */ }, disabled = true); x += separation + btnW
         drawButton("optionsMainButton", btnW, btnH, x, y, { screen = Screen.OPTIONS }); x += separation + btnW
-        // Level Editor: the original opens the map editor, which this build does not port
-        // (the note below says so) — the button is drawn and clickable, but does nothing.
-        drawButton("levelEditorButton", btnW, btnH, x, y, { /* level editor not ported */ })
+        // Level Editor: opens the map editor on the game's window, which the caller resizes for
+        // the editor and restores for the menu afterwards.
+        drawButton("levelEditorButton", btnW, btnH, x, y, { editorRequested = true; running = false })
 
         // Corner buttons: credits top-right (MainMenu.x = WIDTH - width, y = 0) and the bonus
         // map top-left, both 126×71 like every other main-menu button. Opening the credits
@@ -600,9 +629,230 @@ class StartScreen(
         })
         drawButton("bonusMapButton", 126, 71, 8, 8, { loadBonusMap() })
 
-        text.drawCentered("Multiplayer / Level Editor excluded in this build", 350, 540, 14, SDLColor(150, 150, 165))
+        // Mods: the mod list (and, from the mission select, the maps mods add). Drawn in the
+        // same VistaButton material as the rest of the port's menu buttons, under the Bonus Map
+        // corner button so the original's main-menu row keeps its layout.
+        val modLabel = if (ModRegistry.isModded) "Mods (${ModRegistry.mods.size})" else "Mods"
+        drawVistaToggleButton(8, 88, 126, 34, modLabel, action = { screen = Screen.MODS })
+
+        text.drawCentered("Multiplayer excluded in this build", 350, 540, 14, SDLColor(150, 150, 165))
         text.drawCentered("ESC: Quit", 350, 566, 14, SDLColor(140, 140, 160))
     }
+
+    // ---------------------------------------------------------------------
+    // Mods
+    // ---------------------------------------------------------------------
+
+    /**
+     * The mod map documents mods add (paths under `maps/`, without the extension): these are
+     * the levels the "Mod Maps" list plays. Maps a mod patches into an existing folder show up
+     * here too, since the list is driven by the patch target paths.
+     */
+    private fun modMapIds(): List<String> {
+        val patched = ModRegistry.data?.patchedPaths.orEmpty()
+        return patched
+            .filter { it.startsWith("maps/") && it.endsWith(".json") }
+            .map { it.removePrefix("maps/").removeSuffix(".json") }
+            .sorted()
+    }
+
+    /** Which mod contributed a mod map document (for the list's subtitle). */
+    /**
+     * The texture for a mod's `manifest.icon` id. Enabled mods resolve through the shared index
+     * (so a base-game or overriding image is honoured); a DISABLED mod still shows its own icon,
+     * which is why the fallback reads the mod's folder directly — its resources are not part of
+     * the index while it is off.
+     */
+    private fun modIcon(mod: cn.enaium.battalion.mod.LoadedMod, icon: String): SDLTexture? {
+        mod.images[icon]?.let { path ->
+            textures.textureFromPath("mod:${mod.namespace}:$icon", path)?.let { return it }
+        }
+        if (mod.enabled) textures.texture(icon)?.let { return it }
+        // `ui/icon` -> `<mod>/images/ui/icon.png` (the id's own path, in any supported format).
+        for (ext in cn.enaium.battalion.mod.ModLoader.imageExtensions) {
+            val path = "${mod.dir}/images/$icon.$ext"
+            if (javaFileExists(path)) {
+                textures.textureFromPath("mod:${mod.namespace}:$icon", path)?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private fun modMapOwner(mapId: String): String? =
+        ModRegistry.mods.firstOrNull { it.patches.containsKey("maps/$mapId.json") }?.manifest?.id
+
+    /**
+     * The mod list: one row per loaded mod (icon, name, version, author, what it contributes),
+     * followed by everything the loader rejected. Mods are read-only here — enabling/disabling
+     * is a matter of removing the folder — so the screen is the player-visible account of what
+     * the game is running.
+     */
+    private fun drawModsMenu() {
+        dimBehindPanel()
+        val panelX = 40
+        val panelY = 36
+        val panelW = 620
+        val panelH = 520
+        drawPanel(panelX, panelY, panelW, panelH, "frame2", 32, "spotted_texture", title = "Mods")
+        drawButton("closeButton", 126, 71, panelX + panelW - 126 - 4, panelY - 71 / 2, { screen = Screen.MAIN })
+
+        if (ModRegistry.allMods.isEmpty()) {
+            text.draw("No mods installed.", panelX + 20, panelY + 60, 18, SDLColor(20, 20, 20))
+            text.draw("Drop a folder with a manifest.json into:", panelX + 20, panelY + 92, 14, SDLColor(60, 60, 70))
+            text.draw(ModRegistry.modsRoot, panelX + 20, panelY + 114, 14, SDLColor(60, 60, 70))
+        } else {
+            var y = panelY + 52
+            for (mod in ModRegistry.allMods) {
+                val manifest = mod.manifest
+                // Icon. A mod's icon lives in ITS OWN folder, so it is loaded straight from
+                // there: resolving it through the shared index made the icon vanish as soon as
+                // the mod was switched off (a disabled mod contributes no resources to the index).
+                if (manifest.icon.isNotEmpty()) {
+                    val icon = modIcon(mod, manifest.icon)
+                    if (icon != null) {
+                        renderer.renderTexture(icon, dst = SDLFRect(
+                            (panelX + 18).toFloat(), y.toFloat(), 40f, 40f))
+                    }
+                }
+                val textX = panelX + 70
+                text.draw("${manifest.displayName}  ${manifest.version}", textX, y, 18, SDLColor(20, 20, 20))
+                text.draw(manifest.id, textX, y + 22, 12, SDLColor(80, 80, 95))
+                val author = manifest.authors.joinToString(", ") { it.name }
+                if (author.isNotEmpty()) text.draw(author, textX + 250, y + 22, 12, SDLColor(80, 80, 95))
+
+                // What the mod contributes: patched documents, its own documents, media.
+                val ownDocuments = mod.patches.keys.count { rel ->
+                    !javaFileExists("${assetsDir}/data/$rel")
+                }
+                val maps = mod.patches.keys.count { it.startsWith("maps/") && !javaFileExists("${assetsDir}/data/$it") }
+                val parts = mutableListOf<String>()
+                parts += "${mod.patches.size} patched document(s)"
+                if (ownDocuments > 0) parts += "$ownDocuments new document(s)"
+                if (maps > 0) parts += "$maps map(s)"
+                if (mod.images.isNotEmpty()) parts += "${mod.images.size} image(s)"
+                if (mod.sounds.isNotEmpty()) parts += "${mod.sounds.size} sound(s)"
+                text.draw(parts.joinToString(", "), textX, y + 40, 12, SDLColor(60, 90, 60))
+                if (manifest.description.isNotEmpty()) {
+                    text.draw(manifest.description, textX, y + 58, 12, SDLColor(50, 50, 60))
+                }
+                // Per-mod switch: disabled mods stay installed but contribute nothing, so the
+                // player can compare with and without a mod without touching the files.
+                val enabled = mod.enabled
+                val toggleLabel = if (enabled) "Enabled" else "Disabled"
+                drawVistaToggleButton(
+                    panelX + panelW - 150, y + 4, 130, 30, toggleLabel, active = enabled,
+                    action = {
+                        SaveManager.setModEnabled(mod.manifest.id, !enabled)
+                        refreshMods()
+                    },
+                )
+                y += 96
+                if (y > panelY + panelH - 140) {
+                    text.draw("...", textX, y, 14, SDLColor(80, 80, 95))
+                    break
+                }
+            }
+        }
+
+        // Anything rejected while loading, and any patch that failed on a read.
+        val problems = ModRegistry.problems
+        if (problems.isNotEmpty()) {
+            var y = panelY + panelH - 116
+            text.draw("Problems", panelX + 20, y, 15, SDLColor(120, 30, 30))
+            y += 22
+            for (problem in problems.take(3)) {
+                text.draw("[${problem.mod}] ${problem.message}", panelX + 20, y, 12, SDLColor(120, 30, 30))
+                y += 18
+            }
+        }
+        val enabledCount = ModRegistry.mods.size
+        text.draw("$enabledCount of ${ModRegistry.allMods.size} enabled  ·  ESC / Close: back",
+            panelX + 20, panelY + panelH - 30, 13, SDLColor(70, 70, 80))
+    }
+
+    /**
+     * The maps mods add: each row is one map document, showing the map's own name and the mod
+     * that ships it. Clicking a row starts that map exactly like a skirmish (the game's player
+     * team comes from the map's palette teams).
+     */
+    private fun drawModMapsMenu() {
+        dimBehindPanel()
+        val panelX = 40
+        val panelY = 36
+        val panelW = 620
+        val panelH = 520
+        drawPanel(panelX, panelY, panelW, panelH, "frame2", 32, "spotted_texture", title = "Mod Maps")
+        drawButton("closeButton", 126, 71, panelX + panelW - 126 - 4, panelY - 71 / 2, { screen = Screen.MISSIONS })
+
+        val maps = modMapIds()
+        if (maps.isEmpty()) {
+            text.draw("No mod maps installed.", panelX + 20, panelY + 60, 18, SDLColor(20, 20, 20))
+        } else {
+            var y = panelY + 56
+            for (id in maps) {
+                val map = AssetLoader.map(assetsDir, "$id.json")
+                val rowH = 34
+                val hover = mouseX >= panelX + 16 && mouseX < panelX + panelW - 16 &&
+                    mouseY >= y && mouseY < y + rowH
+                val prevBlend = renderer.blendMode
+                renderer.blendMode = SDLBlendMode.BLEND
+                renderer.drawColor = if (hover) SDLColor(255, 240, 190, 120) else SDLColor(255, 255, 255, 60)
+                renderer.fillRect(SDLRect(panelX + 16, y, panelW - 32, rowH))
+                renderer.blendMode = prevBlend
+
+                text.draw(map?.name?.ifEmpty { id } ?: id, panelX + 26, y + 8, 16, SDLColor(20, 20, 20))
+                val owner = modMapOwner(id) ?: ""
+                text.draw("$owner  ·  $id", panelX + 300, y + 11, 12, SDLColor(80, 80, 95))
+                buttons.add(Btn("modmap:$id", panelW - 32, rowH, panelX + 16, y, {
+                    chosenSkirmish = id
+                    running = false
+                }))
+                y += rowH + 4
+                if (y > panelY + panelH - 40) break
+            }
+        }
+    }
+
+    /**
+     * Reloads the mod layers after a switch was flipped (documents + media re-resolve).
+     *
+     * The reload closes every cached texture, so it must NOT happen while a frame is being
+     * drawn (the current frame's draws still reference them). The flag is consumed at the top
+     * of [draw], before anything is drawn.
+     */
+    private fun refreshMods() {
+        modReloadPending = true
+    }
+
+    /**
+     * Applies a pending mod reload between frames. A failure here (a mod folder that vanished
+     * mid-session, a texture the driver refuses) must not take the menu down: the switch is
+     * reported and the list keeps drawing with whatever is loaded.
+     */
+    private fun applyPendingModReload() {
+        if (!modReloadPending) return
+        modReloadPending = false
+        try {
+            ModRegistry.load(assetsDir, ModRegistry.modsRoot)
+            cn.enaium.battalion.data.AssetLoader.clearCache()
+            // Sprite/sound indexes are built from the mod folders, so they must be rebuilt too.
+            textures.reloadIndex()
+        } catch (t: Throwable) {
+            println("Mods: reload after a switch failed: $t")
+        }
+    }
+
+    /** The 60% black overlay the Credits/Mods overlays put over the menu behind them. */
+    private fun dimBehindPanel() {
+        val prevBlend = renderer.blendMode
+        renderer.blendMode = SDLBlendMode.BLEND
+        renderer.drawColor = SDLColor(0, 0, 0, 153)
+        renderer.fillRect(SDLRect(0, 0, 700, 600))
+        renderer.blendMode = prevBlend
+    }
+
+    /** File existence for the mod overview (base documents vs documents a mod adds). */
+    private fun javaFileExists(path: String): Boolean = cn.enaium.battalion.util.Fio.exists(path)
 
     /**
      * Draws the Credits screen, reproducing the original `CreditsMenu`: a 60%-alpha black
@@ -762,11 +1012,24 @@ class StartScreen(
         val btnW = 200
         val btnH = 44
         val bottomY = 600 - btnH - 8
-        // Main Menu (Back).
-        drawVistaToggleButton(8, bottomY, btnW, btnH, "Main Menu") { screen = Screen.MAIN }
-        // Start Game (right). Missions whose map file is missing cannot be started.
-        drawVistaToggleButton(700 - btnW - 8, bottomY, btnW, btnH, "Start Game") {
-            if (isPlayable(selected)) running = false
+        // Bottom action row: Main Menu / Mod Maps / Start Game. The mod entry only appears when
+        // a mod ships maps; the buttons are then spread evenly across the stage, and without it
+        // the two remaining buttons keep the original's left/right placement.
+        val modMaps = modMapIds()
+        if (modMaps.isNotEmpty()) {
+            val separation = (700 - 3 * btnW) / 4
+            drawVistaToggleButton(separation, bottomY, btnW, btnH, "Main Menu") { screen = Screen.MAIN }
+            drawVistaToggleButton(separation * 2 + btnW, bottomY, btnW, btnH, "Mod Maps (${modMaps.size})") {
+                screen = Screen.MOD_MAPS
+            }
+            drawVistaToggleButton(separation * 3 + 2 * btnW, bottomY, btnW, btnH, "Start Game") {
+                if (isPlayable(selected)) running = false
+            }
+        } else {
+            drawVistaToggleButton(8, bottomY, btnW, btnH, "Main Menu") { screen = Screen.MAIN }
+            drawVistaToggleButton(700 - btnW - 8, bottomY, btnW, btnH, "Start Game") {
+                if (isPlayable(selected)) running = false
+            }
         }
     }
 

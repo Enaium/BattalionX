@@ -10,6 +10,8 @@ class TileSwatch(
     val team: Int = 0,
     sprites: TerrainSprites? = null,
     legacyImageCode: String = "",
+    /** Direction a placed unit faces (0..5), or -1 for the map's own choice. */
+    val facing: Int = -1,
 ) {
     val name: String
     val imageFiles: List<String>

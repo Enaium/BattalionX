@@ -630,6 +630,29 @@ class BattalionRenderer(
     }
 
     companion object {
+        /**
+         * The flat colour a terrain is painted with when its art is missing. The map pass and the
+         * editor's palette chips share it, so a swatch reads as the same terrain.
+         */
+        fun terrainColorOf(name: String): SDLColor = when (name) {
+            "Sea" -> SDLColor(40, 90, 160)
+            "Shore" -> SDLColor(120, 160, 190)
+            "Reef" -> SDLColor(60, 140, 170)
+            "Plains" -> SDLColor(150, 190, 110)
+            "Forest" -> SDLColor(70, 130, 60)
+            "Mountain" -> SDLColor(140, 140, 145)
+            "Hill" -> SDLColor(170, 160, 90)
+            "Road" -> SDLColor(180, 170, 130)
+            "Factory Base" -> SDLColor(120, 120, 120)
+            "Ore Deposit", "Enriched Ore Deposit", "Depleted Ore Deposit" -> SDLColor(150, 110, 60)
+            "Wasteland" -> SDLColor(190, 170, 120)
+            "Volcano" -> SDLColor(110, 60, 50)
+            "Bridge", "High Bridge" -> SDLColor(140, 130, 120)
+            "Canyon" -> SDLColor(160, 120, 90)
+            "Rock Formation" -> SDLColor(130, 130, 135)
+            else -> SDLColor(110, 110, 110)
+        }
+
         // The window is the mission map (560) plus the info panel. The panel is the `mainframe`
         // sprite scaled to the panel HEIGHT (560/600 → 0.933) with its 10px transparent left
         // edge cropped off, so the frame's metal starts flush at the map's right edge: no gap,
@@ -643,6 +666,9 @@ class BattalionRenderer(
         // edge and sits 4px inside the window's right edge (SIDE_X + SIDE_W = 690 < WINDOW_W),
         // like the original (frame.x = WIDTH - frame.width) — the panel never spills off-screen.
         const val SIDE_W = 144
+
+        /** The mainframe texture's natural width (the original draws it uncropped). */
+        const val FRAME_W = 154
 
         /** Max muzzle-recoil displacement (px) of a unit's sprite while it is firing. */
         const val FIRE_RECOIL_PX = 6f
@@ -698,6 +724,7 @@ class BattalionRenderer(
         /** Panel / recon art drawn from the first frame, warmed in [setupTextures]. */
         private val PANEL_SPRITES = listOf(
             "mainframe", "info_icons", "cursor", "selectedArrow", "unitOptionsButton",
+            "marker", "marker2", "select", "selectRed",
             "movement_start", "movement_straight", "movement_turn", "movement_end", "movement_nomove",
             "recon_unit", "recon_terrain", "recon_none",
             "reconHealth_black", "reconHealth_green", "reconHealth_yellow",
@@ -888,24 +915,8 @@ class BattalionRenderer(
     }
 
     // Terrain -> base colour. Unknown terrain falls back to a neutral grey.
-    private fun terrainColor(name: String): SDLColor = when (name) {
-        "Sea" -> SDLColor(40, 90, 160)
-        "Shore" -> SDLColor(120, 160, 190)
-        "Reef" -> SDLColor(60, 140, 170)
-        "Plains" -> SDLColor(150, 190, 110)
-        "Forest" -> SDLColor(70, 130, 60)
-        "Mountain" -> SDLColor(140, 140, 145)
-        "Hill" -> SDLColor(170, 160, 90)
-        "Road" -> SDLColor(180, 170, 130)
-        "Factory Base" -> SDLColor(120, 120, 120)
-        "Ore Deposit", "Enriched Ore Deposit", "Depleted Ore Deposit" -> SDLColor(150, 110, 60)
-        "Wasteland" -> SDLColor(190, 170, 120)
-        "Volcano" -> SDLColor(110, 60, 50)
-        "Bridge", "High Bridge" -> SDLColor(140, 130, 120)
-        "Canyon" -> SDLColor(160, 120, 90)
-        "Rock Formation" -> SDLColor(130, 130, 135)
-        else -> SDLColor(110, 110, 110)
-    }
+    private fun terrainColor(name: String): SDLColor = terrainColorOf(name)
+
 
     /**
      * The accent colour for a controller/team, read from the team's configured colour
@@ -1875,6 +1886,24 @@ class BattalionRenderer(
         // Explosion effects float above the units.
         drawExplosions()
 
+        // Available-unit markers (the original `HumanController.selectUnits`): every friendly
+        // unit that can still act this turn carries the thick `marker` frame and is a click
+        // target to switch the selection. The selected unit wears `marker2` instead.
+        if (humanCtrl != null) {
+            for (unit in game.units) {
+                if (unit === selected) continue
+                if (unit.controller !== game.activeController) continue
+                if (!unit.isAlive() || !unit.isDeployed() || !unit.isAvailable()) continue
+                if (unit.x < cameraX - 1 || unit.x >= cameraX + VIEW_COLS + 2) continue
+                if (unit.y < cameraY - 1 || unit.y >= cameraY + VIEW_ROWS + 2) continue
+                textureMarker("marker")?.let { t ->
+                    renderer.renderTexture(t, dst = SDLFRect(screenX(unit.x).toFloat(),
+                        screenY(unit.y).toFloat(), TileManager.TILE_WIDTH.toFloat(),
+                        TileManager.TILE_HEIGHT.toFloat()))
+                }
+            }
+        }
+
         // Selection highlight: the white "marker2" frame under the selected unit
         // (not under a display-only preview).
         if (selected != null) {
@@ -2807,96 +2836,100 @@ class BattalionRenderer(
      *
      * A plain 56×56 texture is a single frame, drawn unchanged.
      */
-    private fun drawTerrainFrame(
+    /**
+     * One draw of a tile's art, in TILE-LOCAL pixels: (0,0) is the tile's top-left, and tall art
+     * may extend above it (negative y) — the same thing the original's `TileSwatch.getSprite`
+     * returns, which both the map and the mini-map draw.
+     */
+    private class TileArt(
+        val key: String,
+        val src: SDLFRect,
+        val x: Float,
+        val y: Float,
+        val w: Float,
+        val h: Float,
+    )
+
+    /**
+     * The draws for one terrain texture inside a [dstW]×[dstH] cell at (ox, oy): the map's
+     * slicing rules (tile-wide animated frames, tall art bottom-anchored, short strips repeated
+     * across the cell). Shared with the mini-map.
+     */
+    private fun terrainFrameOps(
         tile: Tile,
         key: String,
-        px: Int,
-        py: Int,
         dstW: Int,
         dstH: Int,
+        ox: Float,
+        oy: Float,
         animShift: Int = 0,
-    ) {
-        val tex = textures.textureOrFallback(key)
-        if (tex == null) {
-            renderer.drawColor = terrainColor(tile.terrain.name)
-            renderer.fillRect(SDLRect(px, py, dstW, dstH))
-            return
-        }
-        val size = textures.textureSize(key)
-        val texW = size?.first ?: dstW
-        val texH = size?.second ?: dstH
-
-        // ---- 1. Strip texture (height below the tile height): tile it statically. ----
-        if (texH < dstH) {
-            // Sea/shore strips are 28px tall and 112..224 wide; repeat them to fill the cell.
-            // The original copies 28px (height) segments horizontally within a 56px band.
-            val segH = texH
-            val segW = texW
-            // Tile horizontally across the destination.
-            var ox = 0
-            while (ox < dstW) {
-                renderer.renderTexture(
-                    tex,
-                    src = SDLFRect(0f, 0f, segW.toFloat(), segH.toFloat()),
-                    dst = SDLFRect((px + ox).toFloat(), py.toFloat(), segW.toFloat(), segH.toFloat()),
-                )
-                ox += segW
-            }
-            return
-        }
-
-        // ---- 2. Tall texture: bottom-anchored static sprite (mountains 56×65, hills 56×112,
-        //        structures, etc). This matches the original `TileSwatch.getSprite`, which only
-        //        slices a bitmap into frames when its *width* exceeds one tile; a 56-wide tall
-        //        bitmap is drawn unchanged and overflows upward. ----
-        if (texH > dstH && texW <= dstW) {
-            val srcW = minOf(texW, dstW)
-            val srcH = texH
-            renderer.renderTexture(
-                tex,
-                src = SDLFRect(0f, 0f, srcW.toFloat(), srcH.toFloat()),
-                dst = SDLFRect(px.toFloat(), (py + dstH - srcH).toFloat(), srcW.toFloat(), srcH.toFloat()),
+        frame: Int = -1,
+    ): List<TileArt> {
+        val animFrame = if (frame >= 0) frame else terrainAnimFrame + (tile.x * 3 + tile.y) + animShift
+        val art = cn.enaium.battalion.game.ui.SpriteArt.tileFrame(textures, key, dstW, dstH, animFrame)
+            ?: return emptyList()
+        val (spriteFrame, mode) = art
+        return when (mode) {
+            // A piece shorter than the cell (the sea/shore strips) is drawn at its own size at
+            // the cell's top edge: one 28×28 frame of the four the strip holds, advancing with
+            // the same animation frame the tile uses.
+            cn.enaium.battalion.game.ui.TileArtMode.STRIP -> listOf(
+                TileArt(key, spriteFrame.src, ox, oy, spriteFrame.src.width, spriteFrame.src.height),
             )
-            return
-        }
-
-        // ---- 3. Horizontal frame-grid animated tilesheet. The original `TileSwatch.getSprite`
-        //        slices a bitmap wider than one tile into 56px-wide vertical frames and plays
-        //        them left→right. The frame keeps the texture's FULL height: reef/wasteland are
-        //        224×56 (4 frames), volcano is 224×112 (4 tall frames). Never split into rows. ----
-        if (texW > dstW && texW % dstW == 0 && dstW > 0) {
-            val frames = texW / dstW
-            // Stable per-tile offset keeps neighbouring tiles out of phase (deterministic).
-            val frame = ((((terrainAnimFrame + ((tile.x * 3 + tile.y) + animShift)) % frames) + frames) % frames)
-            val src = SDLFRect(
-                (frame * dstW).toFloat(),
-                0f,
-                dstW.toFloat(), texH.toFloat(),
+            // Tall art (mountains 56×65, volcano's 112px frames) overflows upward.
+            cn.enaium.battalion.game.ui.TileArtMode.TALL -> listOf(
+                TileArt(
+                    key, spriteFrame.src, ox, oy + dstH - spriteFrame.src.height,
+                    spriteFrame.src.width, spriteFrame.src.height,
+                ),
             )
-            // Tall frame (e.g. volcano 112px): draw at natural height anchored to the bottom so
-            // it overflows upward; tile-height frames fill the cell exactly.
-            if (texH > dstH) {
-                renderer.renderTexture(
-                    tex,
-                    src = src,
-                    dst = SDLFRect(px.toFloat(), (py + dstH - texH).toFloat(), dstW.toFloat(), texH.toFloat()),
-                )
-            } else {
-                renderer.renderTexture(
-                    tex,
-                    src = src,
-                    dst = SDLFRect(px.toFloat(), py.toFloat(), dstW.toFloat(), dstH.toFloat()),
-                )
-            }
-            return
+            cn.enaium.battalion.game.ui.TileArtMode.FILL -> listOf(
+                TileArt(key, spriteFrame.src, ox, oy, dstW.toFloat(), dstH.toFloat()),
+            )
         }
-
-        // ---- 4. Plain single-frame texture: draw full cell. ----
-        renderer.renderTexture(
-            tex,
-            dst = SDLFRect(px.toFloat(), py.toFloat(), dstW.toFloat(), dstH.toFloat()),
-        )
     }
+
+    /** Every draw a tile needs, in tile-local pixels (see [TileArt]). */
+    private fun tileArtOps(tile: Tile, frame: Int = -1): List<TileArt> {
+        val keys = tile.spriteKeys
+        return when (tile.spriteKind) {
+            TerrainSprites.Kind.SINGLE, TerrainSprites.Kind.VARIANT -> {
+                if (keys.isEmpty()) return emptyList()
+                // A variant tile shows exactly one of its interchangeable textures.
+                val key = keys[tile.variantIndex.coerceIn(0, keys.lastIndex)]
+                terrainFrameOps(tile, key, TileManager.TILE_WIDTH, TileManager.TILE_HEIGHT, 0f, 0f, frame = frame)
+            }
+            TerrainSprites.Kind.COMPOSITE -> {
+                if (keys.size != 4) return emptyList()
+                val halfW = TileManager.TILE_WIDTH / 2
+                val halfH = TileManager.TILE_HEIGHT / 2
+                val positions = listOf(
+                    0 to 0,               // top-left
+                    halfW to 0,           // top-right
+                    0 to halfH,           // bottom-left
+                    halfW to halfH,       // bottom-right
+                )
+                buildList {
+                    for (i in 0 until 4) {
+                        val (ox, oy) = positions[i]
+                        // "sea_edge" (or legacy "sea_0_v1") in a composite slot means "the sea
+                        // edge meeting this corner"; swap in the matching directional strip.
+                        val key = if (keys[i] == TerrainSprites.SEA_EDGE || keys[i] == TerrainSprites.SEA_EDGE_LEGACY)
+                            SEA_EDGE_STRIPS[i] else keys[i]
+                        // All four quadrants advance together: the original builds one joined
+                        // 4-frame tile per swatch, so the pieces never run out of phase.
+                        addAll(
+                            terrainFrameOps(
+                                tile, key, halfW, halfH, ox.toFloat(), oy.toFloat(),
+                                frame = frame,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
 
     /**
      * Draws the terrain tile at pixel position (px, py).
@@ -2909,42 +2942,26 @@ class BattalionRenderer(
      *    sea strip for that corner, matching the original `TileSwatch.generateJoinedTile`.
      */
     private fun drawTerrainTile(tile: Tile, px: Int, py: Int) {
-        val keys = tile.spriteKeys
-        when (tile.spriteKind) {
-            TerrainSprites.Kind.SINGLE, TerrainSprites.Kind.VARIANT -> {
-                if (keys.isEmpty()) {
-                    renderer.drawColor = terrainColor(tile.terrain.name)
-                    renderer.fillRect(SDLRect(px, py, TileManager.TILE_WIDTH, TileManager.TILE_HEIGHT))
-                    return
-                }
-                // A variant tile shows exactly one of its interchangeable textures.
-                val key = keys[tile.variantIndex.coerceIn(0, keys.lastIndex)]
-                drawTerrainFrame(tile, key, px, py, TileManager.TILE_WIDTH, TileManager.TILE_HEIGHT)
+        // One implementation of "what does this tile look like" (tileArtOps) is shared with the
+        // mini-map, so the small map is a scaled copy of the big one by construction.
+        val ops = tileArtOps(tile)
+        if (ops.isEmpty()) {
+            renderer.drawColor = terrainColor(tile.terrain.name)
+            renderer.fillRect(SDLRect(px, py, TileManager.TILE_WIDTH, TileManager.TILE_HEIGHT))
+            return
+        }
+        for (op in ops) {
+            val tex = textures.textureOrFallback(op.key)
+            if (tex == null) {
+                renderer.drawColor = terrainColor(tile.terrain.name)
+                renderer.fillRect(SDLRect(px, py, TileManager.TILE_WIDTH, TileManager.TILE_HEIGHT))
+                continue
             }
-            TerrainSprites.Kind.COMPOSITE -> {
-                if (keys.size != 4) {
-                    // Malformed composite — fall back to a flat fill.
-                    renderer.drawColor = terrainColor(tile.terrain.name)
-                    renderer.fillRect(SDLRect(px, py, TileManager.TILE_WIDTH, TileManager.TILE_HEIGHT))
-                    return
-                }
-                val halfW = TileManager.TILE_WIDTH / 2
-                val halfH = TileManager.TILE_HEIGHT / 2
-                val positions = listOf(
-                    0 to 0,               // top-left
-                    halfW to 0,           // top-right
-                    0 to halfH,           // bottom-left
-                    halfW to halfH,       // bottom-right
-                )
-                for (i in 0 until 4) {
-                    val (ox, oy) = positions[i]
-                    // "sea_edge" (or legacy "sea_0_v1") in a composite slot means "the sea
-                    // edge meeting this corner"; swap in the matching directional strip.
-                    val key = if (keys[i] == TerrainSprites.SEA_EDGE || keys[i] == TerrainSprites.SEA_EDGE_LEGACY)
-                        SEA_EDGE_STRIPS[i] else keys[i]
-                    drawTerrainFrame(tile, key, px + ox, py + oy, halfW, halfH, animShift = i)
-                }
-            }
+            renderer.renderTexture(
+                tex,
+                src = op.src,
+                dst = SDLFRect(px + op.x, py + op.y, op.w, op.h),
+            )
         }
     }
 
@@ -3027,6 +3044,11 @@ class BattalionRenderer(
         const val BUTTON_H = 40
         const val PORTRAIT_OFFSET_X = 6      // right shift of the portrait window
         const val PORTRAIT_OFFSET_Y = -12    // up shift of the portrait window
+        // The mainframe's transparent portrait opening, in source (154×600) coordinates.
+        const val PORTRAIT_SRC_X0 = 20
+        const val PORTRAIT_SRC_X1 = 134
+        const val PORTRAIT_SRC_Y0 = 240
+        const val PORTRAIT_SRC_Y1 = 392
         // GameManager.as: y = BattalionMain.HEIGHT - height - 14 = 600 - 71 - 14 = 515 in the
         // 600px frame, i.e. the button's bottom edge lands on the frame's gold bottom border.
         const val END_TURN_Y = 517
@@ -3049,17 +3071,18 @@ class BattalionRenderer(
     }
 
     /**
-     * The mapped rectangle (screen coords) of the `mainframe` sprite drawn in the panel.
-     * It is scaled to the panel HEIGHT (600 → 560) so the frame is never height-compressed.
-     * Source x 0..9 is transparent padding; it is cropped (src x=10..154 → 144 px). The panel
-     * column is exactly SIDE_W wide and flush with the window's right edge (SIDE_X + SIDE_W ==
-     * WINDOW_W), so the frame fits on-screen and overlaps the map's right edge like the original.
+     * The mapped rectangle (screen coords) of the `mainframe` sprite.
+     *
+     * The original draws the frame at its NATURAL 154×600 at `WIDTH - frame.width` (x=546 on a
+     * 700px stage), overlapping the 560px map. Here it is drawn at the window's right edge
+     * (x = WINDOW_W - 154) and scaled vertically 600 → 602; nothing is cropped. The old
+     * `src x=10..154` crop removed the frame's left bevel, which read as a missing strip.
      */
     private fun mainframeRect(): SDLRect {
         return SDLRect(
-            SIDE_X,
+            WINDOW_W - FRAME_W,
             SIDE_Y,
-            SIDE_W,
+            FRAME_W,
             WINDOW_H - SIDE_Y,
         )
     }
@@ -3087,7 +3110,7 @@ class BattalionRenderer(
             val mr = mainframeRect()
             renderer.renderTexture(
                 mf,
-                src = SDLFRect(10f, 0f, 144f, 600f),
+                src = SDLFRect(0f, 0f, FRAME_W.toFloat(), 600f),
                 dst = SDLFRect(mr.x.toFloat(), mr.y.toFloat(), mr.width.toFloat(), mr.height.toFloat()),
             )
         }
@@ -3106,10 +3129,10 @@ class BattalionRenderer(
         val mr = mainframeRect()
         val mfScale = (WINDOW_H - SIDE_Y).toFloat() / 600f
         return SDLRect(
-            (mr.x + (20 - 10) * mfScale).toInt() + Panel.PORTRAIT_OFFSET_X,
-            (mr.y + 240 * mfScale).toInt() + Panel.PORTRAIT_OFFSET_Y,
-            ((134 - 20) * mfScale).toInt(),
-            ((392 - 240) * mfScale).toInt(),
+            (mr.x + Panel.PORTRAIT_SRC_X0).toInt() + Panel.PORTRAIT_OFFSET_X,
+            (mr.y + Panel.PORTRAIT_SRC_Y0 * mfScale).toInt() + Panel.PORTRAIT_OFFSET_Y,
+            (Panel.PORTRAIT_SRC_X1 - Panel.PORTRAIT_SRC_X0),
+            ((Panel.PORTRAIT_SRC_Y1 - Panel.PORTRAIT_SRC_Y0) * mfScale).toInt(),
         )
     }
 
@@ -3119,8 +3142,8 @@ class BattalionRenderer(
         // The minimap window is the mainframe's hollow interior, mapped to screen coords.
         val mr = mainframeRect()
         val mfScale = (WINDOW_H - SIDE_Y).toFloat() / 600f
-        val winX = mr.x + (Panel.MM_SRC_X0 - 10) * mfScale
-        val winW = (Panel.MM_SRC_X1 - Panel.MM_SRC_X0) * mfScale
+        val winX = mr.x + Panel.MM_SRC_X0.toFloat()
+        val winW = (Panel.MM_SRC_X1 - Panel.MM_SRC_X0).toFloat()
         val winY = mr.y + Panel.MM_SRC_Y0 * mfScale
         val winH = (Panel.MM_SRC_Y1 - Panel.MM_SRC_Y0) * mfScale
 
@@ -3145,15 +3168,32 @@ class BattalionRenderer(
                     (x0 + (col * cell).toInt()).toFloat(),
                     (y0 + (row * cell).toInt()).toFloat(),
                     kotlin.math.ceil(cell).toFloat(), kotlin.math.ceil(cell).toFloat())
-                // Draw the tile's actual terrain texture (not a flat colour) so the minimap
-                // looks like the real map. Use the first sprite key of the tile's swatch.
-                val keys = tile.spriteKeys
-                val tex = if (keys.isNotEmpty()) textures.textureOrFallback(keys[0]) else null
-                if (tex != null) {
-                    renderer.renderTexture(tex, dst = dst)
-                } else {
+                // Draw the tile exactly as the map does, scaled into the cell — the original's
+                // `Map.generateMiniMap` draws each tile's `TileSwatch.getSprite()` through
+                // `Matrix.scale(useWidth/54, useHeight/54)` and anchors tall art to the cell's
+                // bottom, which is why a tall sprite (mountain, structure) keeps its shape here
+                // instead of being squashed. Sharing [tileArtOps] is what makes the mini-map a
+                // miniature of the map rather than a second, different renderer.
+                val ops = tileArtOps(tile, frame = terrainAnimFrame)
+                if (ops.isEmpty()) {
                     renderer.drawColor = terrainColor(tile.terrain.name)
                     renderer.fillRect(SDLRect(dst.x.toInt(), dst.y.toInt(), dst.width.toInt(), dst.height.toInt()))
+                    continue
+                }
+                val k = (cell / TileManager.TILE_WIDTH).toFloat()
+                for (op in ops) {
+                    val tex = textures.textureOrFallback(op.key)
+                    if (tex == null) continue
+                    renderer.renderTexture(
+                        tex,
+                        src = op.src,
+                        dst = SDLFRect(
+                            dst.x + op.x * k,
+                            dst.y + op.y * k,
+                            op.w * k,
+                            op.h * k,
+                        ),
+                    )
                 }
             }
         }

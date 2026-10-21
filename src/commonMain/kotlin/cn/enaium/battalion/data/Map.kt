@@ -47,7 +47,9 @@ class GameMap(
 
     init {
         for (entry in cfg.palette) {
-            palette.add(TileSwatch(entry.name, entry.team, entry.sprites.toTerrainSprites()))
+            palette.add(
+                TileSwatch(entry.name, entry.team, entry.sprites.toTerrainSprites(), facing = entry.facing),
+            )
         }
         // Manual swatches for ore deposit variants (the game adds these itself).
         addManualSwatch("Ore Deposit", "?(ore_deposit_v1.png;ore_deposit_v2.png)")
@@ -133,8 +135,9 @@ class GameMap(
                 val ud = UnitManager.get(p.name) ?: continue
                 val u = Unit(ud, unitHelper.x, unitHelper.y, controllers[team - 1])
                 // Default facing faces the unit toward the centre of the map: units on the
-                // left point east (1), units on the right point west (3).
-                u.facing = if (unitHelper.x < width / 2) 1 else 3
+                // left point east (1), units on the right point west (3). A swatch that carries a
+                // facing (what the editor's Q/E writes) wins over that.
+                u.facing = if (p.facing in 0..5) p.facing else if (unitHelper.x < width / 2) 1 else 3
                 u.animFacing = u.facing
                 result.add(u)
             }

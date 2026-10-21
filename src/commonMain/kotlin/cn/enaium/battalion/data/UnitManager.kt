@@ -8,7 +8,15 @@ object UnitManager {
     private val units = mutableMapOf<String, UnitData>()
 
     /** The Vulture Drone is a reward unit; in the original it is gated on release status. */
-    var allowVulture: Boolean = false
+    /**
+     * The Vulture Drone is a reward unit. The original hides it unless the game's own release
+     * check passes — except in Episode 3, where `UnitManager` forces it on
+     * (`if (BattalionMain.EPISODE == EPISODE_EPISODE3) ALLOW_VULTURE = true`). This port ships the
+     * Ep3 campaign, so the drone is always available here; leaving the flag off silently dropped
+     * the unit from the registry, and every map that places one (Mission_10 fields six) lost
+     * those vehicles in the match and in the editor's preview alike.
+     */
+    var allowVulture: Boolean = true
 
     fun add(unit: UnitData) {
         units[unit.name] = unit

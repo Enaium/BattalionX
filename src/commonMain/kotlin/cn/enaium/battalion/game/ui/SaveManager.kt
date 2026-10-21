@@ -150,6 +150,19 @@ object SaveManager {
         get() = getInt("aidifficulty", 1)
         set(value) = setInt("aidifficulty", value)
 
+    // ---- mods ----------------------------------------------------------------
+
+    /** Mod ids the player switched off (they stay installed, but do not load). */
+    fun disabledMods(): Set<String> = (store["disabledMods"] as? List<*>)
+        ?.mapNotNull { it as? String }?.toSet().orEmpty()
+
+    fun setModEnabled(id: String, enabled: Boolean) {
+        val disabled = disabledMods().toMutableSet()
+        if (enabled) disabled.remove(id) else disabled.add(id)
+        store["disabledMods"] = disabled.sorted()
+        flush()
+    }
+
     // ---- campaign medals -----------------------------------------------------
 
     /** Medal earned for a level, keyed by map URL (SWF `<mapURL>_medal`). */

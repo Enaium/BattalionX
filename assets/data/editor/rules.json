@@ -1,0 +1,1866 @@
+{
+ "terrains": [
+  {
+   "name": "Plains",
+   "identity": "P",
+   "tildeWild": "PRFmMVCW",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "",
+   "mode": "",
+   "icon": "plains_v1",
+   "rules": [
+    {
+     "match": "*********",
+     "images": [
+      "plains_v1",
+      "plains_v2",
+      "plains_v3",
+      "plains_v4",
+      "plains_v5",
+      "plains_v6",
+      "plains_v7",
+      "plains_v8"
+     ],
+     "composite": []
+    }
+   ]
+  },
+  {
+   "name": "Sea",
+   "identity": "S",
+   "tildeWild": "SHAKEbB",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "",
+   "mode": "",
+   "icon": "sea_v1",
+   "rules": [
+    {
+     "match": "~~~~*~~~~",
+     "images": [],
+     "composite": [
+      "sea_0_nw",
+      "sea_0_ne",
+      "sea_0_sw",
+      "sea_0_se"
+     ]
+    },
+    {
+     "match": "*-*-*-*-*",
+     "images": [],
+     "composite": [
+      "sea_1_v1",
+      "sea_2_v1",
+      "sea_3_v1",
+      "sea_4_v1"
+     ]
+    },
+    {
+     "match": "~~~~*~-~~",
+     "images": [],
+     "composite": [
+      "sea_0_nw",
+      "sea_0_ne",
+      "sea_14_v1",
+      "sea_0_se"
+     ]
+    },
+    {
+     "match": "~~~~*~~~-",
+     "images": [],
+     "composite": [
+      "sea_0_nw",
+      "sea_0_ne",
+      "sea_0_sw",
+      "sea_13_v1"
+     ]
+    },
+    {
+     "match": "-~~~*~~~~",
+     "images": [],
+     "composite": [
+      "sea_16_v1",
+      "sea_0_ne",
+      "sea_0_sw",
+      "sea_0_se"
+     ]
+    },
+    {
+     "match": "~~-~*~~~~",
+     "images": [],
+     "composite": [
+      "sea_0_nw",
+      "sea_15_v1",
+      "sea_0_sw",
+      "sea_0_se"
+     ]
+    },
+    {
+     "match": "*-*~*~~~~",
+     "images": [],
+     "composite": [
+      "sea_5_v1",
+      "sea_6_v1",
+      "sea_0_sw",
+      "sea_0_se"
+     ]
+    },
+    {
+     "match": "~~*~*-~~*",
+     "images": [],
+     "composite": [
+      "sea_0_nw",
+      "sea_11_v1",
+      "sea_0_sw",
+      "sea_12_v1"
+     ]
+    },
+    {
+     "match": "*~~-*~*~~",
+     "images": [],
+     "composite": [
+      "sea_9_v1",
+      "sea_0_ne",
+      "sea_10_v1",
+      "sea_0_se"
+     ]
+    },
+    {
+     "match": "~~~~*~*-*",
+     "images": [],
+     "composite": [
+      "sea_0_nw",
+      "sea_0_ne",
+      "sea_7_v1",
+      "sea_8_v1"
+     ]
+    },
+    {
+     "match": "*~*-*-*-*",
+     "images": [],
+     "composite": [
+      "sea_9_v1",
+      "sea_11_v1",
+      "sea_3_v1",
+      "sea_4_v1"
+     ]
+    },
+    {
+     "match": "*-*-*~*-*",
+     "images": [],
+     "composite": [
+      "sea_1_v1",
+      "sea_6_v1",
+      "sea_3_v1",
+      "sea_8_v1"
+     ]
+    },
+    {
+     "match": "*-*~*-*-*",
+     "images": [],
+     "composite": [
+      "sea_5_v1",
+      "sea_2_v1",
+      "sea_7_v1",
+      "sea_4_v1"
+     ]
+    },
+    {
+     "match": "*-*-*-*~*",
+     "images": [],
+     "composite": [
+      "sea_1_v1",
+      "sea_2_v1",
+      "sea_10_v1",
+      "sea_12_v1"
+     ]
+    },
+    {
+     "match": "*-*~*-~~*",
+     "images": [],
+     "composite": [
+      "sea_5_v1",
+      "sea_2_v1",
+      "sea_0_sw",
+      "sea_12_v1"
+     ]
+    },
+    {
+     "match": "~~*~*-*-*",
+     "images": [],
+     "composite": [
+      "sea_0_nw",
+      "sea_11_v1",
+      "sea_7_v1",
+      "sea_4_v1"
+     ]
+    },
+    {
+     "match": "*-*-*~*~~",
+     "images": [],
+     "composite": [
+      "sea_1_v1",
+      "sea_6_v1",
+      "sea_10_v1",
+      "sea_0_se"
+     ]
+    },
+    {
+     "match": "*~~-*~*-*",
+     "images": [],
+     "composite": [
+      "sea_9_v1",
+      "sea_0_ne",
+      "sea_3_v1",
+      "sea_8_v1"
+     ]
+    },
+    {
+     "match": "*~*-*-*~*",
+     "images": [],
+     "composite": [
+      "sea_9_v1",
+      "sea_11_v1",
+      "sea_10_v1",
+      "sea_12_v1"
+     ]
+    },
+    {
+     "match": "*-*~*~*-*",
+     "images": [],
+     "composite": [
+      "sea_5_v1",
+      "sea_6_v1",
+      "sea_7_v1",
+      "sea_8_v1"
+     ]
+    },
+    {
+     "match": "-~-~*~-~-",
+     "images": [],
+     "composite": [
+      "sea_16_v1",
+      "sea_15_v1",
+      "sea_14_v1",
+      "sea_13_v1"
+     ]
+    },
+    {
+     "match": "-~-~*~~~~",
+     "images": [],
+     "composite": [
+      "sea_16_v1",
+      "sea_15_v1",
+      "sea_0_sw",
+      "sea_0_se"
+     ]
+    },
+    {
+     "match": "~~-~*~~~-",
+     "images": [],
+     "composite": [
+      "sea_0_nw",
+      "sea_15_v1",
+      "sea_0_sw",
+      "sea_13_v1"
+     ]
+    },
+    {
+     "match": "-~~~*~-~~",
+     "images": [],
+     "composite": [
+      "sea_16_v1",
+      "sea_0_ne",
+      "sea_14_v1",
+      "sea_0_se"
+     ]
+    },
+    {
+     "match": "~~~~*~-~-",
+     "images": [],
+     "composite": [
+      "sea_0_nw",
+      "sea_0_ne",
+      "sea_14_v1",
+      "sea_13_v1"
+     ]
+    },
+    {
+     "match": "*-*-*~*~-",
+     "images": [],
+     "composite": [
+      "sea_1_v1",
+      "sea_6_v1",
+      "sea_10_v1",
+      "sea_13_v1"
+     ]
+    },
+    {
+     "match": "*-*~*--~*",
+     "images": [],
+     "composite": [
+      "sea_5_v1",
+      "sea_2_v1",
+      "sea_14_v1",
+      "sea_12_v1"
+     ]
+    },
+    {
+     "match": "*~--*~*-*",
+     "images": [],
+     "composite": [
+      "sea_9_v1",
+      "sea_15_v1",
+      "sea_3_v1",
+      "sea_8_v1"
+     ]
+    },
+    {
+     "match": "-~*~*-*-*",
+     "images": [],
+     "composite": [
+      "sea_16_v1",
+      "sea_11_v1",
+      "sea_7_v1",
+      "sea_4_v1"
+     ]
+    },
+    {
+     "match": "-~*~*--~*",
+     "images": [],
+     "composite": [
+      "sea_16_v1",
+      "sea_11_v1",
+      "sea_14_v1",
+      "sea_12_v1"
+     ]
+    },
+    {
+     "match": "-~-~*~*-*",
+     "images": [],
+     "composite": [
+      "sea_16_v1",
+      "sea_15_v1",
+      "sea_7_v1",
+      "sea_8_v1"
+     ]
+    },
+    {
+     "match": "*~--*~*~-",
+     "images": [],
+     "composite": [
+      "sea_9_v1",
+      "sea_15_v1",
+      "sea_10_v1",
+      "sea_13_v1"
+     ]
+    },
+    {
+     "match": "*-*~*~-~-",
+     "images": [],
+     "composite": [
+      "sea_5_v1",
+      "sea_6_v1",
+      "sea_14_v1",
+      "sea_13_v1"
+     ]
+    },
+    {
+     "match": "-~-~*~-~~",
+     "images": [],
+     "composite": [
+      "sea_16_v1",
+      "sea_15_v1",
+      "sea_14_v1",
+      "sea_0_se"
+     ]
+    },
+    {
+     "match": "-~-~*~~~-",
+     "images": [],
+     "composite": [
+      "sea_16_v1",
+      "sea_15_v1",
+      "sea_0_sw",
+      "sea_13_v1"
+     ]
+    },
+    {
+     "match": "~~-~*~-~-",
+     "images": [],
+     "composite": [
+      "sea_0_nw",
+      "sea_15_v1",
+      "sea_14_v1",
+      "sea_13_v1"
+     ]
+    },
+    {
+     "match": "-~~~*~-~-",
+     "images": [],
+     "composite": [
+      "sea_16_v1",
+      "sea_0_ne",
+      "sea_14_v1",
+      "sea_13_v1"
+     ]
+    },
+    {
+     "match": "*-*~*~-~~",
+     "images": [],
+     "composite": [
+      "sea_5_v1",
+      "sea_6_v1",
+      "sea_14_v1",
+      "sea_0_se"
+     ]
+    },
+    {
+     "match": "*~~-*~*~-",
+     "images": [],
+     "composite": [
+      "sea_9_v1",
+      "sea_0_ne",
+      "sea_10_v1",
+      "sea_13_v1"
+     ]
+    },
+    {
+     "match": "~~-~*~*-*",
+     "images": [],
+     "composite": [
+      "sea_0_nw",
+      "sea_15_v1",
+      "sea_7_v1",
+      "sea_8_v1"
+     ]
+    },
+    {
+     "match": "-~*~*-~~*",
+     "images": [],
+     "composite": [
+      "sea_16_v1",
+      "sea_11_v1",
+      "sea_0_sw",
+      "sea_12_v1"
+     ]
+    },
+    {
+     "match": "*-*~*~~~-",
+     "images": [],
+     "composite": [
+      "sea_5_v1",
+      "sea_6_v1",
+      "sea_0_sw",
+      "sea_13_v1"
+     ]
+    },
+    {
+     "match": "~~*~*--~*",
+     "images": [],
+     "composite": [
+      "sea_0_nw",
+      "sea_11_v1",
+      "sea_14_v1",
+      "sea_12_v1"
+     ]
+    },
+    {
+     "match": "-~~~*~*-*",
+     "images": [],
+     "composite": [
+      "sea_16_v1",
+      "sea_0_ne",
+      "sea_7_v1",
+      "sea_8_v1"
+     ]
+    },
+    {
+     "match": "*~--*~*~~",
+     "images": [],
+     "composite": [
+      "sea_9_v1",
+      "sea_15_v1",
+      "sea_10_v1",
+      "sea_0_se"
+     ]
+    },
+    {
+     "match": "-~~~*~~~-",
+     "images": [],
+     "composite": [
+      "sea_16_v1",
+      "sea_0_ne",
+      "sea_0_sw",
+      "sea_13_v1"
+     ]
+    },
+    {
+     "match": "~~-~*~-~~",
+     "images": [],
+     "composite": [
+      "sea_0_nw",
+      "sea_15_v1",
+      "sea_14_v1",
+      "sea_0_se"
+     ]
+    },
+    {
+     "match": "*********",
+     "images": [],
+     "composite": [
+      "sea_0_nw",
+      "sea_0_ne",
+      "sea_0_sw",
+      "sea_0_se"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Forest",
+   "identity": "F",
+   "tildeWild": "PRFmMVCW",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "",
+   "mode": "",
+   "icon": "forest_v2",
+   "rules": [
+    {
+     "match": "*********",
+     "images": [
+      "forest_v1",
+      "forest_v2",
+      "forest_v3",
+      "forest_v4"
+     ],
+     "composite": []
+    }
+   ]
+  },
+  {
+   "name": "Shore",
+   "identity": "H",
+   "tildeWild": "SHAKEbB",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "Sea",
+   "mode": "",
+   "icon": "shore_8_v1",
+   "rules": [
+    {
+     "match": "*-*~~~~~~",
+     "images": [],
+     "composite": [
+      "shore_8_v1",
+      "shore_7_v1",
+      "sea_0_v1",
+      "sea_0_v1"
+     ]
+    },
+    {
+     "match": "~~~~~~*-*",
+     "images": [],
+     "composite": [
+      "sea_0_v1",
+      "sea_0_v1",
+      "shore_2_v1",
+      "shore_1_v1"
+     ]
+    },
+    {
+     "match": "~~*~~-~~*",
+     "images": [],
+     "composite": [
+      "sea_0_v1",
+      "shore_6_v1",
+      "sea_0_v1",
+      "shore_5_v1"
+     ]
+    },
+    {
+     "match": "*~~-~~*~~",
+     "images": [],
+     "composite": [
+      "shore_4_v1",
+      "sea_0_v1",
+      "shore_3_v1",
+      "sea_0_v1"
+     ]
+    },
+    {
+     "match": "*~*-~-*-*",
+     "images": [],
+     "composite": [
+      "shore_4_v1",
+      "shore_6_v1",
+      "shore_9_v1",
+      "shore_11_v1"
+     ]
+    },
+    {
+     "match": "*-*~~-*-*",
+     "images": [],
+     "composite": [
+      "shore_8_v1",
+      "shore_12_v1",
+      "shore_2_v1",
+      "shore_11_v1"
+     ]
+    },
+    {
+     "match": "*-*-~~*-*",
+     "images": [],
+     "composite": [
+      "shore_10_v1",
+      "shore_7_v1",
+      "shore_9_v1",
+      "shore_1_v1"
+     ]
+    },
+    {
+     "match": "*-*-~-*~*",
+     "images": [],
+     "composite": [
+      "shore_10_v1",
+      "shore_12_v1",
+      "shore_3_v1",
+      "shore_5_v1"
+     ]
+    },
+    {
+     "match": "*-*~~-~~*",
+     "images": [],
+     "composite": [
+      "shore_8_v1",
+      "shore_12_v1",
+      "sea_0_v1",
+      "shore_5_v1"
+     ]
+    },
+    {
+     "match": "~~*~~-*-*",
+     "images": [],
+     "composite": [
+      "sea_0_v1",
+      "shore_6_v1",
+      "shore_2_v1",
+      "shore_11_v1"
+     ]
+    },
+    {
+     "match": "*-*-~~*~~",
+     "images": [],
+     "composite": [
+      "shore_10_v1",
+      "shore_7_v1",
+      "shore_3_v1",
+      "sea_0_v1"
+     ]
+    },
+    {
+     "match": "*~~-~~*-*",
+     "images": [],
+     "composite": [
+      "shore_4_v1",
+      "sea_0_v1",
+      "shore_9_v1",
+      "shore_1_v1"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Mountain",
+   "identity": "M",
+   "tildeWild": "MPmV",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "",
+   "mode": "",
+   "icon": "mountains_v1",
+   "rules": [
+    {
+     "match": "*********",
+     "images": [
+      "mountains_v1",
+      "mountains_v2",
+      "mountains_v3",
+      "mountains_v4"
+     ],
+     "composite": []
+    }
+   ]
+  },
+  {
+   "name": "Reef",
+   "identity": "E",
+   "tildeWild": "SHAKEbB",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "Sea",
+   "mode": "",
+   "icon": "reef_v1",
+   "rules": [
+    {
+     "match": "~~~~~~~~~",
+     "images": [
+      "reef_v1",
+      "reef_v2",
+      "reef_v3",
+      "reef_v4"
+     ],
+     "composite": []
+    }
+   ]
+  },
+  {
+   "name": "Road",
+   "identity": "R",
+   "tildeWild": "RbB",
+   "dashWild": "RbBr",
+   "oob": "r",
+   "dependency": "",
+   "mode": "",
+   "icon": "road_2_v1",
+   "rules": [
+    {
+     "match": "*~*~*~*~*",
+     "images": [
+      "road_1_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "***~*~*~*",
+     "images": [
+      "road_7_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*~*~***~*",
+     "images": [
+      "road_8_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*~***~*~*",
+     "images": [
+      "road_9_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*~*~*~***",
+     "images": [
+      "road_10_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "***~***~*",
+     "images": [
+      "road_3_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*~*~*****",
+     "images": [
+      "road_4_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*****~*~*",
+     "images": [
+      "road_5_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*~***~***",
+     "images": [
+      "road_6_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "***-*-***",
+     "images": [
+      "road_2_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*-*****-*",
+     "images": [
+      "road_11_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "***-***-*",
+     "images": [
+      "road_3_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*-*-*****",
+     "images": [
+      "road_4_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*****-*-*",
+     "images": [
+      "road_5_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*-***-***",
+     "images": [
+      "road_6_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "***-*****",
+     "images": [
+      "road_14_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*****-***",
+     "images": [
+      "road_12_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*******-*",
+     "images": [
+      "road_13_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*-*******",
+     "images": [
+      "road_15_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*********",
+     "images": [
+      "road_12_v1"
+     ],
+     "composite": []
+    }
+   ]
+  },
+  {
+   "name": "Bridge",
+   "identity": "b",
+   "tildeWild": "SHAKEbB",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "Sea",
+   "mode": "",
+   "icon": "bridge_4_v1",
+   "rules": [
+    {
+     "match": "*~~-~~*~~",
+     "images": [
+      "bridge_1_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~~*~~-~~*",
+     "images": [
+      "bridge_2_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*~*-~-*~*",
+     "images": [
+      "bridge_3_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~~~b~b~~~",
+     "images": [
+      "bridge_4_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~~~b~~~~~",
+     "images": [
+      "bridge_4_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~~~~~b~~~",
+     "images": [
+      "bridge_4_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*-*~~~~~~",
+     "images": [
+      "bridge_5_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~~~~~~*-*",
+     "images": [
+      "bridge_6_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*-*~~~*-*",
+     "images": [
+      "bridge_7_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~b~~~~~b~",
+     "images": [
+      "bridge_8_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~b~~~~~~~",
+     "images": [
+      "bridge_8_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~~~~~~~b~",
+     "images": [
+      "bridge_8_v1"
+     ],
+     "composite": []
+    }
+   ]
+  },
+  {
+   "name": "Hill",
+   "identity": "m",
+   "tildeWild": "SHAKEbB",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "",
+   "mode": "",
+   "icon": "hills_v1",
+   "rules": [
+    {
+     "match": "*********",
+     "images": [
+      "hills_v1",
+      "hills_v2",
+      "hills_v3",
+      "hills_v4"
+     ],
+     "composite": []
+    }
+   ]
+  },
+  {
+   "name": "High Bridge",
+   "identity": "b",
+   "tildeWild": "SHAKEbB",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "Sea",
+   "mode": "",
+   "icon": "high_bridge_4_v1",
+   "rules": [
+    {
+     "match": "*~~-~~*~~",
+     "images": [
+      "high_bridge_1_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~~*~~-~~*",
+     "images": [
+      "high_bridge_2_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*~*-~-*~*",
+     "images": [
+      "high_bridge_3_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~~~b~b~~~",
+     "images": [
+      "high_bridge_4_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~~~b~~~~~",
+     "images": [
+      "high_bridge_4_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~~~~~b~~~",
+     "images": [
+      "high_bridge_4_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*-*~~~~~~",
+     "images": [
+      "high_bridge_5_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~~~~~~*-*",
+     "images": [
+      "high_bridge_6_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "*-*~~~*-*",
+     "images": [
+      "high_bridge_7_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~b~~~~~b~",
+     "images": [
+      "high_bridge_8_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~b~~~~~~~",
+     "images": [
+      "high_bridge_8_v1"
+     ],
+     "composite": []
+    },
+    {
+     "match": "~~~~~~~b~",
+     "images": [
+      "high_bridge_8_v1"
+     ],
+     "composite": []
+    }
+   ]
+  },
+  {
+   "name": "Depleted Ore Deposit",
+   "identity": "P",
+   "tildeWild": "PRFmMVCW",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "",
+   "mode": "wm_mode",
+   "icon": "depleted_ore_deposit_v1",
+   "rules": [
+    {
+     "match": "*********",
+     "images": [
+      "depleted_ore_deposit_v1",
+      "depleted_ore_deposit_v2"
+     ],
+     "composite": []
+    }
+   ]
+  },
+  {
+   "name": "Ore Deposit",
+   "identity": "P",
+   "tildeWild": "PRFmMVCW",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "",
+   "mode": "wm_mode",
+   "icon": "ore_deposit_v1",
+   "rules": [
+    {
+     "match": "*********",
+     "images": [
+      "ore_deposit_v1",
+      "ore_deposit_v2"
+     ],
+     "composite": []
+    }
+   ]
+  },
+  {
+   "name": "Enriched Ore Deposit",
+   "identity": "P",
+   "tildeWild": "PRFmMVCW",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "",
+   "mode": "wm_mode",
+   "icon": "enriched_ore_deposit_v1",
+   "rules": [
+    {
+     "match": "*********",
+     "images": [
+      "enriched_ore_deposit_v1",
+      "enriched_ore_deposit_v2"
+     ],
+     "composite": []
+    }
+   ]
+  },
+  {
+   "name": "Archipelago",
+   "identity": "A",
+   "tildeWild": "SHAKEbB",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "Sea",
+   "mode": "",
+   "icon": "archipelago_v1",
+   "rules": [
+    {
+     "match": "~~~~~~~~~",
+     "images": [
+      "archipelago_v1",
+      "archipelago_v2",
+      "archipelago_v3",
+      "archipelago_v4"
+     ],
+     "composite": []
+    }
+   ]
+  },
+  {
+   "name": "Rock Formation",
+   "identity": "K",
+   "tildeWild": "SHAKEbB",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "Sea",
+   "mode": "",
+   "icon": "rock_formation_v1",
+   "rules": [
+    {
+     "match": "~~~~~~~~~",
+     "images": [
+      "rock_formation_v1",
+      "rock_formation_v2",
+      "rock_formation_v3",
+      "rock_formation_v4"
+     ],
+     "composite": []
+    }
+   ]
+  },
+  {
+   "name": "Volcano",
+   "identity": "V",
+   "tildeWild": "MPmV",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "",
+   "mode": "",
+   "icon": "volcano_v1",
+   "rules": [
+    {
+     "match": "*********",
+     "images": [
+      "volcano_v1"
+     ],
+     "composite": []
+    }
+   ]
+  },
+  {
+   "name": "Canyon",
+   "identity": "C",
+   "tildeWild": "PRFmMVCW",
+   "dashWild": "PRFmMVWSHAKEbB",
+   "oob": "",
+   "dependency": "",
+   "mode": "",
+   "icon": "canyon_0_v1",
+   "rules": [
+    {
+     "match": "CCCC*CCCC",
+     "images": [],
+     "composite": [
+      "canyon_0_v1",
+      "canyon_0_v1",
+      "canyon_0_v1",
+      "canyon_0_v1"
+     ]
+    },
+    {
+     "match": "*-*-*-*-*",
+     "images": [],
+     "composite": [
+      "canyon_1_v1",
+      "canyon_2_v1",
+      "canyon_3_v1",
+      "canyon_4_v1"
+     ]
+    },
+    {
+     "match": "CCCC*C-CC",
+     "images": [],
+     "composite": [
+      "canyon_0_v1",
+      "canyon_0_v1",
+      "canyon_14_v1",
+      "canyon_0_v1"
+     ]
+    },
+    {
+     "match": "CCCC*CCC-",
+     "images": [],
+     "composite": [
+      "canyon_0_v1",
+      "canyon_0_v1",
+      "canyon_0_v1",
+      "canyon_13_v1"
+     ]
+    },
+    {
+     "match": "-CCC*CCCC",
+     "images": [],
+     "composite": [
+      "canyon_16_v1",
+      "canyon_0_v1",
+      "canyon_0_v1",
+      "canyon_0_v1"
+     ]
+    },
+    {
+     "match": "CC-C*CCCC",
+     "images": [],
+     "composite": [
+      "canyon_0_v1",
+      "canyon_15_v1",
+      "canyon_0_v1",
+      "canyon_0_v1"
+     ]
+    },
+    {
+     "match": "*-*C*CCCC",
+     "images": [],
+     "composite": [
+      "canyon_5_v1",
+      "canyon_6_v1",
+      "canyon_0_v1",
+      "canyon_0_v1"
+     ]
+    },
+    {
+     "match": "CC*C*-CC*",
+     "images": [],
+     "composite": [
+      "canyon_0_v1",
+      "canyon_11_v1",
+      "canyon_0_v1",
+      "canyon_12_v1"
+     ]
+    },
+    {
+     "match": "*CC-*C*CC",
+     "images": [],
+     "composite": [
+      "canyon_9_v1",
+      "canyon_0_v1",
+      "canyon_10_v1",
+      "canyon_0_v1"
+     ]
+    },
+    {
+     "match": "CCCC*C*-*",
+     "images": [],
+     "composite": [
+      "canyon_0_v1",
+      "canyon_0_v1",
+      "canyon_7_v1",
+      "canyon_8_v1"
+     ]
+    },
+    {
+     "match": "*C*-*-*-*",
+     "images": [],
+     "composite": [
+      "canyon_9_v1",
+      "canyon_11_v1",
+      "canyon_3_v1",
+      "canyon_4_v1"
+     ]
+    },
+    {
+     "match": "*-*-*C*-*",
+     "images": [],
+     "composite": [
+      "canyon_1_v1",
+      "canyon_6_v1",
+      "canyon_3_v1",
+      "canyon_8_v1"
+     ]
+    },
+    {
+     "match": "*-*C*-*-*",
+     "images": [],
+     "composite": [
+      "canyon_5_v1",
+      "canyon_2_v1",
+      "canyon_7_v1",
+      "canyon_4_v1"
+     ]
+    },
+    {
+     "match": "*-*-*-*C*",
+     "images": [],
+     "composite": [
+      "canyon_1_v1",
+      "canyon_2_v1",
+      "canyon_10_v1",
+      "canyon_12_v1"
+     ]
+    },
+    {
+     "match": "*-*C*-CC*",
+     "images": [],
+     "composite": [
+      "canyon_5_v1",
+      "canyon_2_v1",
+      "canyon_0_v1",
+      "canyon_12_v1"
+     ]
+    },
+    {
+     "match": "CC*C*-*-*",
+     "images": [],
+     "composite": [
+      "canyon_0_v1",
+      "canyon_11_v1",
+      "canyon_7_v1",
+      "canyon_4_v1"
+     ]
+    },
+    {
+     "match": "*-*-*C*CC",
+     "images": [],
+     "composite": [
+      "canyon_1_v1",
+      "canyon_6_v1",
+      "canyon_10_v1",
+      "canyon_0_v1"
+     ]
+    },
+    {
+     "match": "*CC-*C*-*",
+     "images": [],
+     "composite": [
+      "canyon_9_v1",
+      "canyon_0_v1",
+      "canyon_3_v1",
+      "canyon_8_v1"
+     ]
+    },
+    {
+     "match": "*C*-*-*C*",
+     "images": [],
+     "composite": [
+      "canyon_9_v1",
+      "canyon_11_v1",
+      "canyon_10_v1",
+      "canyon_12_v1"
+     ]
+    },
+    {
+     "match": "*-*C*C*-*",
+     "images": [],
+     "composite": [
+      "canyon_5_v1",
+      "canyon_6_v1",
+      "canyon_7_v1",
+      "canyon_8_v1"
+     ]
+    },
+    {
+     "match": "-C-C*C-C-",
+     "images": [],
+     "composite": [
+      "canyon_16_v1",
+      "canyon_15_v1",
+      "canyon_14_v1",
+      "canyon_13_v1"
+     ]
+    },
+    {
+     "match": "-C-C*CCCC",
+     "images": [],
+     "composite": [
+      "canyon_16_v1",
+      "canyon_15_v1",
+      "canyon_0_v1",
+      "canyon_0_v1"
+     ]
+    },
+    {
+     "match": "CC-C*CCC-",
+     "images": [],
+     "composite": [
+      "canyon_0_v1",
+      "canyon_15_v1",
+      "canyon_0_v1",
+      "canyon_13_v1"
+     ]
+    },
+    {
+     "match": "-CCC*C-CC",
+     "images": [],
+     "composite": [
+      "canyon_16_v1",
+      "canyon_0_v1",
+      "canyon_14_v1",
+      "canyon_0_v1"
+     ]
+    },
+    {
+     "match": "CCCC*C-C-",
+     "images": [],
+     "composite": [
+      "canyon_0_v1",
+      "canyon_0_v1",
+      "canyon_14_v1",
+      "canyon_13_v1"
+     ]
+    },
+    {
+     "match": "*-*-*C*C-",
+     "images": [],
+     "composite": [
+      "canyon_1_v1",
+      "canyon_6_v1",
+      "canyon_10_v1",
+      "canyon_13_v1"
+     ]
+    },
+    {
+     "match": "*-*C*--C*",
+     "images": [],
+     "composite": [
+      "canyon_5_v1",
+      "canyon_2_v1",
+      "canyon_14_v1",
+      "canyon_12_v1"
+     ]
+    },
+    {
+     "match": "*C--*C*-*",
+     "images": [],
+     "composite": [
+      "canyon_9_v1",
+      "canyon_15_v1",
+      "canyon_3_v1",
+      "canyon_8_v1"
+     ]
+    },
+    {
+     "match": "-C*C*-*-*",
+     "images": [],
+     "composite": [
+      "canyon_16_v1",
+      "canyon_11_v1",
+      "canyon_7_v1",
+      "canyon_4_v1"
+     ]
+    },
+    {
+     "match": "-C*C*--C*",
+     "images": [],
+     "composite": [
+      "canyon_16_v1",
+      "canyon_11_v1",
+      "canyon_14_v1",
+      "canyon_12_v1"
+     ]
+    },
+    {
+     "match": "-C-C*C*-*",
+     "images": [],
+     "composite": [
+      "canyon_16_v1",
+      "canyon_15_v1",
+      "canyon_7_v1",
+      "canyon_8_v1"
+     ]
+    },
+    {
+     "match": "*C--*C*C-",
+     "images": [],
+     "composite": [
+      "canyon_9_v1",
+      "canyon_15_v1",
+      "canyon_10_v1",
+      "canyon_13_v1"
+     ]
+    },
+    {
+     "match": "*-*C*C-C-",
+     "images": [],
+     "composite": [
+      "canyon_5_v1",
+      "canyon_6_v1",
+      "canyon_14_v1",
+      "canyon_13_v1"
+     ]
+    },
+    {
+     "match": "-C-C*C-CC",
+     "images": [],
+     "composite": [
+      "canyon_16_v1",
+      "canyon_15_v1",
+      "canyon_14_v1",
+      "canyon_0_v1"
+     ]
+    },
+    {
+     "match": "-C-C*CCC-",
+     "images": [],
+     "composite": [
+      "canyon_16_v1",
+      "canyon_15_v1",
+      "canyon_0_v1",
+      "canyon_13_v1"
+     ]
+    },
+    {
+     "match": "CC-C*C-C-",
+     "images": [],
+     "composite": [
+      "canyon_0_v1",
+      "canyon_15_v1",
+      "canyon_14_v1",
+      "canyon_13_v1"
+     ]
+    },
+    {
+     "match": "-CCC*C-C-",
+     "images": [],
+     "composite": [
+      "canyon_16_v1",
+      "canyon_0_v1",
+      "canyon_14_v1",
+      "canyon_13_v1"
+     ]
+    },
+    {
+     "match": "*-*C*C-CC",
+     "images": [],
+     "composite": [
+      "canyon_5_v1",
+      "canyon_6_v1",
+      "canyon_14_v1",
+      "canyon_0_v1"
+     ]
+    },
+    {
+     "match": "*CC-*C*C-",
+     "images": [],
+     "composite": [
+      "canyon_9_v1",
+      "canyon_0_v1",
+      "canyon_10_v1",
+      "canyon_13_v1"
+     ]
+    },
+    {
+     "match": "CC-C*C*-*",
+     "images": [],
+     "composite": [
+      "canyon_0_v1",
+      "canyon_15_v1",
+      "canyon_7_v1",
+      "canyon_8_v1"
+     ]
+    },
+    {
+     "match": "-C*C*-CC*",
+     "images": [],
+     "composite": [
+      "canyon_16_v1",
+      "canyon_11_v1",
+      "canyon_0_v1",
+      "canyon_12_v1"
+     ]
+    },
+    {
+     "match": "*-*C*CCC-",
+     "images": [],
+     "composite": [
+      "canyon_5_v1",
+      "canyon_6_v1",
+      "canyon_0_v1",
+      "canyon_13_v1"
+     ]
+    },
+    {
+     "match": "CC*C*--C*",
+     "images": [],
+     "composite": [
+      "canyon_0_v1",
+      "canyon_11_v1",
+      "canyon_14_v1",
+      "canyon_12_v1"
+     ]
+    },
+    {
+     "match": "-CCC*C*-*",
+     "images": [],
+     "composite": [
+      "canyon_16_v1",
+      "canyon_0_v1",
+      "canyon_7_v1",
+      "canyon_8_v1"
+     ]
+    },
+    {
+     "match": "*C--*C*CC",
+     "images": [],
+     "composite": [
+      "canyon_9_v1",
+      "canyon_15_v1",
+      "canyon_10_v1",
+      "canyon_0_v1"
+     ]
+    },
+    {
+     "match": "-CCC*CCC-",
+     "images": [],
+     "composite": [
+      "canyon_16_v1",
+      "canyon_0_v1",
+      "canyon_0_v1",
+      "canyon_13_v1"
+     ]
+    },
+    {
+     "match": "CC-C*C-CC",
+     "images": [],
+     "composite": [
+      "canyon_0_v1",
+      "canyon_15_v1",
+      "canyon_14_v1",
+      "canyon_0_v1"
+     ]
+    },
+    {
+     "match": "*********",
+     "images": [],
+     "composite": [
+      "canyon_0_v1",
+      "canyon_0_v1",
+      "canyon_0_v1",
+      "canyon_0_v1"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Wasteland",
+   "identity": "W",
+   "tildeWild": "PRFmMVCW",
+   "dashWild": "PRFmMVCW",
+   "oob": "",
+   "dependency": "",
+   "mode": "",
+   "icon": "wasteland_v1",
+   "rules": [
+    {
+     "match": "*********",
+     "images": [
+      "wasteland_v1"
+     ],
+     "composite": []
+    }
+   ]
+  }
+ ],
+ "units": [
+  {
+   "name": "Warmachine",
+   "mode": "wm_mode",
+   "restricted": false
+  },
+  {
+   "name": "Strike Commando",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Heavy Commando",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Flak Tank",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Scorpion Tank",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Stealth Tank",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Spider Tank",
+   "mode": "",
+   "restricted": true
+  },
+  {
+   "name": "Lancer Tank",
+   "mode": "",
+   "restricted": true
+  },
+  {
+   "name": "Annihilator Tank",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Jammer Truck",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Mortar Truck",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Rocket Truck",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Raptor Fighter",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Condor Bomber",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Intrepid",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Hunter Support",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Corvette Fighter",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "U-Boat",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Battlecruiser",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Blockade",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Turret",
+   "mode": "",
+   "restricted": false
+  },
+  {
+   "name": "Vulture Drone",
+   "mode": "",
+   "restricted": false
+  }
+ ],
+ "buildings": [
+  {
+   "name": "Command Center",
+   "mode": ""
+  },
+  {
+   "name": "Factory",
+   "mode": ""
+  },
+  {
+   "name": "Ground Control",
+   "mode": ""
+  },
+  {
+   "name": "Air Control",
+   "mode": ""
+  },
+  {
+   "name": "Sea Control",
+   "mode": ""
+  },
+  {
+   "name": "Oil Refinery",
+   "mode": ""
+  },
+  {
+   "name": "Advanced Oil Refinery",
+   "mode": ""
+  },
+  {
+   "name": "Oil Rig",
+   "mode": ""
+  }
+ ]
+}

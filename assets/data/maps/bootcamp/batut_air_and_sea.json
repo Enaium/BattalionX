@@ -1,1 +1,1543 @@
-{"name": "Unnamed Map", "description": "", "author": "Unknown Author", "classicMode": false, "special": false, "rows": 10, "cols": 10, "palette": [{"name": "Sea", "team": 0, "sprites": {"composite": ["sea_0_v1", "sea_0_v1", "sea_0_v1", "sea_0_v1"], "variants": []}}, {"name": "Rock Formation", "team": 0, "sprites": {"variants": ["rock_formation_v1", "rock_formation_v2", "rock_formation_v3", "rock_formation_v4"], "composite": []}}, {"name": "Reef", "team": 0, "sprites": {"variants": ["reef_v1", "reef_v2", "reef_v3", "reef_v4"], "composite": []}}, {"name": "Sea", "team": 0, "sprites": {"composite": ["sea_0_v1", "sea_0_v1", "sea_0_v1", "sea_13_v1"], "variants": []}}, {"name": "Sea", "team": 0, "sprites": {"composite": ["sea_0_v1", "sea_11_v1", "sea_0_v1", "sea_12_v1"], "variants": []}}, {"name": "Shore", "team": 0, "sprites": {"composite": ["sea_0_v1", "shore_6_v1", "sea_0_v1", "shore_5_v1"], "variants": []}}, {"name": "Sea", "team": 0, "sprites": {"composite": ["sea_0_v1", "sea_15_v1", "sea_0_v1", "sea_0_v1"], "variants": []}}, {"name": "Battlecruiser", "team": 2, "sprites": {"single": "battlecruiser", "variants": [], "composite": []}}, {"name": "Shore", "team": 0, "sprites": {"composite": ["sea_0_v1", "shore_6_v1", "shore_2_v1", "shore_11_v1"], "variants": []}}, {"name": "Plains", "team": 0, "sprites": {"variants": ["plains_v1", "plains_v2", "plains_v3", "plains_v4", "plains_v5", "plains_v6", "plains_v7"], "composite": []}}, {"name": "Forest", "team": 0, "sprites": {"variants": ["forest_v1", "forest_v2"], "composite": []}}, {"name": "Shore", "team": 0, "sprites": {"composite": ["shore_8_v1", "shore_12_v1", "sea_0_v1", "shore_5_v1"], "variants": []}}, {"name": "Sea", "team": 0, "sprites": {"composite": ["sea_0_v1", "sea_15_v1", "sea_0_v1", "sea_13_v1"], "variants": []}}, {"name": "Sea", "team": 0, "sprites": {"composite": ["sea_0_v1", "sea_11_v1", "sea_7_v1", "sea_4_v1"], "variants": []}}, {"name": "Scorpion Tank", "team": 1, "sprites": {"single": "scorpion", "variants": [], "composite": []}}, {"name": "Road", "team": 0, "sprites": {"single": "road_5_v1", "variants": [], "composite": []}}, {"name": "Annihilator Tank", "team": 2, "sprites": {"single": "annihilator", "variants": [], "composite": []}}, {"name": "Road", "team": 0, "sprites": {"single": "road_11_v1", "variants": [], "composite": []}}, {"name": "Road", "team": 0, "sprites": {"single": "road_6_v1", "variants": [], "composite": []}}, {"name": "Shore", "team": 0, "sprites": {"composite": ["shore_8_v1", "shore_12_v1", "shore_2_v1", "shore_11_v1"], "variants": []}}, {"name": "Road", "team": 0, "sprites": {"single": "road_15_v1", "variants": [], "composite": []}}, {"name": "Road", "team": 0, "sprites": {"single": "road_13_v1", "variants": [], "composite": []}}, {"name": "Flak Tank", "team": 2, "sprites": {"single": "flak", "variants": [], "composite": []}}, {"name": "Road", "team": 0, "sprites": {"single": "road_4_v1", "variants": [], "composite": []}}, {"name": "Road", "team": 0, "sprites": {"single": "road_7_v1", "variants": [], "composite": []}}, {"name": "Mountain", "team": 0, "sprites": {"variants": ["mountains_v2", "mountains_v4"], "composite": []}}, {"name": "Hill", "team": 0, "sprites": {"variants": ["hills_v1", "hills_v2", "hills_v3", "hills_v4"], "composite": []}}, {"name": "Road", "team": 0, "sprites": {"single": "road_2_v1", "variants": [], "composite": []}}, {"name": "Mountain", "team": 0, "sprites": {"variants": ["mountains_v1", "mountains_v3"], "composite": []}}, {"name": "Rocket Truck", "team": 2, "sprites": {"single": "rocket", "variants": [], "composite": []}}, {"name": "Raptor Fighter", "team": 1, "sprites": {"single": "raptor", "variants": [], "composite": []}}, {"name": "Condor Bomber", "team": 1, "sprites": {"single": "condor", "variants": [], "composite": []}}, {"name": "Scorpion Tank", "team": 2, "sprites": {"single": "scorpion", "variants": [], "composite": []}}, {"name": "Ore Deposit", "team": 0, "sprites": {"variants": ["ore_deposit_v1", "ore_deposit_v2"], "composite": []}}, {"name": "Depleted Ore Deposit", "team": 0, "sprites": {"variants": ["depleted_ore_deposit_v1", "depleted_ore_deposit_v2"], "composite": []}}, {"name": "Enriched Ore Deposit", "team": 0, "sprites": {"variants": ["enriched_ore_deposit_v1", "enriched_ore_deposit_v2"], "composite": []}}], "tiles": [{"c": 0, "r": 0, "layers": [{"depth": 0, "reference": 0}]}, {"c": 1, "r": 0, "layers": [{"depth": 0, "reference": 0}]}, {"c": 2, "r": 0, "layers": [{"depth": 0, "reference": 5}]}, {"c": 3, "r": 0, "layers": [{"depth": 0, "reference": 10}]}, {"c": 4, "r": 0, "layers": [{"depth": 0, "reference": 9}]}, {"c": 5, "r": 0, "layers": [{"depth": 0, "reference": 21}, {"depth": 2, "reference": 22}]}, {"c": 6, "r": 0, "layers": [{"depth": 0, "reference": 9}]}, {"c": 7, "r": 0, "layers": [{"depth": 0, "reference": 28}]}, {"c": 8, "r": 0, "layers": [{"depth": 0, "reference": 28}]}, {"c": 9, "r": 0, "layers": [{"depth": 0, "reference": 9}]}, {"c": 0, "r": 1, "layers": [{"depth": 0, "reference": 0}]}, {"c": 1, "r": 1, "layers": [{"depth": 0, "reference": 2}]}, {"c": 2, "r": 1, "layers": [{"depth": 0, "reference": 4}]}, {"c": 3, "r": 1, "layers": [{"depth": 0, "reference": 9}]}, {"c": 4, "r": 1, "layers": [{"depth": 0, "reference": 15}, {"depth": 2, "reference": 16}]}, {"c": 5, "r": 1, "layers": [{"depth": 0, "reference": 23}]}, {"c": 6, "r": 1, "layers": [{"depth": 0, "reference": 25}]}, {"c": 7, "r": 1, "layers": [{"depth": 0, "reference": 25}]}, {"c": 8, "r": 1, "layers": [{"depth": 0, "reference": 9}, {"depth": 2, "reference": 32}]}, {"c": 9, "r": 1, "layers": [{"depth": 0, "reference": 9}]}, {"c": 0, "r": 2, "layers": [{"depth": 0, "reference": 0}]}, {"c": 1, "r": 2, "layers": [{"depth": 0, "reference": 0}]}, {"c": 2, "r": 2, "layers": [{"depth": 0, "reference": 6}]}, {"c": 3, "r": 2, "layers": [{"depth": 0, "reference": 11}]}, {"c": 4, "r": 2, "layers": [{"depth": 0, "reference": 17}]}, {"c": 5, "r": 2, "layers": [{"depth": 0, "reference": 9}]}, {"c": 6, "r": 2, "layers": [{"depth": 0, "reference": 9}]}, {"c": 7, "r": 2, "layers": [{"depth": 0, "reference": 9}, {"depth": 2, "reference": 29}]}, {"c": 8, "r": 2, "layers": [{"depth": 0, "reference": 21}]}, {"c": 9, "r": 2, "layers": [{"depth": 0, "reference": 10}, {"depth": 2, "reference": 32}]}, {"c": 0, "r": 3, "layers": [{"depth": 0, "reference": 1}]}, {"c": 1, "r": 3, "layers": [{"depth": 0, "reference": 0}]}, {"c": 2, "r": 3, "layers": [{"depth": 0, "reference": 2}]}, {"c": 3, "r": 3, "layers": [{"depth": 0, "reference": 4}]}, {"c": 4, "r": 3, "layers": [{"depth": 0, "reference": 17}]}, {"c": 5, "r": 3, "layers": [{"depth": 0, "reference": 10}]}, {"c": 6, "r": 3, "layers": [{"depth": 0, "reference": 26}]}, {"c": 7, "r": 3, "layers": [{"depth": 0, "reference": 15}]}, {"c": 8, "r": 3, "layers": [{"depth": 0, "reference": 23}]}, {"c": 9, "r": 3, "layers": [{"depth": 0, "reference": 9}]}, {"c": 0, "r": 4, "layers": [{"depth": 0, "reference": 0}]}, {"c": 1, "r": 4, "layers": [{"depth": 0, "reference": 0}]}, {"c": 2, "r": 4, "layers": [{"depth": 0, "reference": 0}, {"depth": 2, "reference": 7}]}, {"c": 3, "r": 4, "layers": [{"depth": 0, "reference": 4}]}, {"c": 4, "r": 4, "layers": [{"depth": 0, "reference": 18}]}, {"c": 5, "r": 4, "layers": [{"depth": 0, "reference": 24}]}, {"c": 6, "r": 4, "layers": [{"depth": 0, "reference": 27}]}, {"c": 7, "r": 4, "layers": [{"depth": 0, "reference": 23}, {"depth": 2, "reference": 30}]}, {"c": 8, "r": 4, "layers": [{"depth": 0, "reference": 9}]}, {"c": 9, "r": 4, "layers": [{"depth": 0, "reference": 25}]}, {"c": 0, "r": 5, "layers": [{"depth": 0, "reference": 0}]}, {"c": 1, "r": 5, "layers": [{"depth": 0, "reference": 2}]}, {"c": 2, "r": 5, "layers": [{"depth": 0, "reference": 0}]}, {"c": 3, "r": 5, "layers": [{"depth": 0, "reference": 12}]}, {"c": 4, "r": 5, "layers": [{"depth": 0, "reference": 19}]}, {"c": 5, "r": 5, "layers": [{"depth": 0, "reference": 17}]}, {"c": 6, "r": 5, "layers": [{"depth": 0, "reference": 10}]}, {"c": 7, "r": 5, "layers": [{"depth": 0, "reference": 9}, {"depth": 2, "reference": 31}]}, {"c": 8, "r": 5, "layers": [{"depth": 0, "reference": 25}, {"depth": 2, "reference": 30}]}, {"c": 9, "r": 5, "layers": [{"depth": 0, "reference": 25}]}, {"c": 0, "r": 6, "layers": [{"depth": 0, "reference": 0}]}, {"c": 1, "r": 6, "layers": [{"depth": 0, "reference": 0}]}, {"c": 2, "r": 6, "layers": [{"depth": 0, "reference": 3}, {"depth": 2, "reference": 7}]}, {"c": 3, "r": 6, "layers": [{"depth": 0, "reference": 13}]}, {"c": 4, "r": 6, "layers": [{"depth": 0, "reference": 9}, {"depth": 2, "reference": 14}]}, {"c": 5, "r": 6, "layers": [{"depth": 0, "reference": 17}]}, {"c": 6, "r": 6, "layers": [{"depth": 0, "reference": 9}]}, {"c": 7, "r": 6, "layers": [{"depth": 0, "reference": 25}, {"depth": 2, "reference": 30}]}, {"c": 8, "r": 6, "layers": [{"depth": 0, "reference": 25}, {"depth": 2, "reference": 30}]}, {"c": 9, "r": 6, "layers": [{"depth": 0, "reference": 10}]}, {"c": 0, "r": 7, "layers": [{"depth": 0, "reference": 0}]}, {"c": 1, "r": 7, "layers": [{"depth": 0, "reference": 2}]}, {"c": 2, "r": 7, "layers": [{"depth": 0, "reference": 4}]}, {"c": 3, "r": 7, "layers": [{"depth": 0, "reference": 10}, {"depth": 2, "reference": 14}]}, {"c": 4, "r": 7, "layers": [{"depth": 0, "reference": 15}, {"depth": 2, "reference": 14}]}, {"c": 5, "r": 7, "layers": [{"depth": 0, "reference": 23}]}, {"c": 6, "r": 7, "layers": [{"depth": 0, "reference": 25}]}, {"c": 7, "r": 7, "layers": [{"depth": 0, "reference": 25}]}, {"c": 8, "r": 7, "layers": [{"depth": 0, "reference": 25}]}, {"c": 9, "r": 7, "layers": [{"depth": 0, "reference": 28}]}, {"c": 0, "r": 8, "layers": [{"depth": 0, "reference": 1}]}, {"c": 1, "r": 8, "layers": [{"depth": 0, "reference": 3}]}, {"c": 2, "r": 8, "layers": [{"depth": 0, "reference": 8}]}, {"c": 3, "r": 8, "layers": [{"depth": 0, "reference": 9}]}, {"c": 4, "r": 8, "layers": [{"depth": 0, "reference": 17}]}, {"c": 5, "r": 8, "layers": [{"depth": 0, "reference": 10}]}, {"c": 6, "r": 8, "layers": [{"depth": 0, "reference": 9}]}, {"c": 7, "r": 8, "layers": [{"depth": 0, "reference": 25}]}, {"c": 8, "r": 8, "layers": [{"depth": 0, "reference": 25}]}, {"c": 9, "r": 8, "layers": [{"depth": 0, "reference": 9}]}, {"c": 0, "r": 9, "layers": [{"depth": 0, "reference": 0}]}, {"c": 1, "r": 9, "layers": [{"depth": 0, "reference": 4}]}, {"c": 2, "r": 9, "layers": [{"depth": 0, "reference": 9}]}, {"c": 3, "r": 9, "layers": [{"depth": 0, "reference": 9}]}, {"c": 4, "r": 9, "layers": [{"depth": 0, "reference": 20}]}, {"c": 5, "r": 9, "layers": [{"depth": 0, "reference": 9}]}, {"c": 6, "r": 9, "layers": [{"depth": 0, "reference": 9}]}, {"c": 7, "r": 9, "layers": [{"depth": 0, "reference": 9}]}, {"c": 8, "r": 9, "layers": [{"depth": 0, "reference": 10}]}, {"c": 9, "r": 9, "layers": [{"depth": 0, "reference": 9}]}], "script": {"state": {}, "units": [], "structures": [], "events": [{"conditions": [{"type": "startGame"}], "responses": [{"type": "disableMorale", "disable": true}, {"type": "disableControllers", "disable": true}, {"type": "chat", "sender": "GENERAL PEARL", "message": "As an officer in the Northern Federation, you will often find yourself in control of ground, air and sea forces.", "avatar": "pearl", "color": "FFFF0000"}, {"type": "chat", "sender": "GENERAL PEARL", "message": "In this scenario you are being tasked with eliminating the enemy naval fleet and ground forces using a combination of your air force and ground troops.", "avatar": "pearl", "color": "FFFF0000"}, {"type": "highlight", "x": 7, "y": 5, "show": true}, {"type": "chat", "sender": "GENERAL PEARL", "message": "The Condor Bomber is one of the most powerful units in the game. It can do massive damage to ground and sea targets.", "avatar": "pearl", "color": "FFFF0000"}, {"type": "highlight", "x": 7, "y": 5, "show": false}, {"type": "highlight", "x": 7, "y": 2, "show": true}, {"type": "chat", "sender": "GENERAL PEARL", "message": "Beware the enemy Rocket Truck. It is capable of firing on air, sea and ground targets and it has an impressive range, though it tends to be more effective against heavily armored targets.", "avatar": "pearl", "color": "FFFF0000"}, {"type": "highlight", "x": 7, "y": 2, "show": false}, {"type": "highlight", "x": 2, "y": 4, "show": true}, {"type": "highlight", "x": 2, "y": 6, "show": true}, {"type": "chat", "sender": "GENERAL PEARL", "message": "The enemy Battlecruisers have a longer attack range than any other unit on the battlefield. Luckily, its guns cannot fire on your air units.", "avatar": "pearl", "color": "FFFF0000"}, {"type": "highlight", "x": 2, "y": 4, "show": false}, {"type": "highlight", "x": 2, "y": 6, "show": false}, {"type": "chat", "sender": "GENERAL PEARL", "message": "Remember to review the important tactical information that appears in the recon panel when you click on a unit or terrain. Good luck soldier!", "avatar": "pearl", "color": "FFFF0000"}, {"type": "disableControllers", "disable": false}]}, {"conditions": [{"type": "endGame", "player": 1, "victory": false}], "responses": [{"type": "chat", "sender": "GENERAL PEARL", "message": "You can win this battle without your ground forces.", "avatar": "pearl", "color": "FFFF0000"}, {"type": "chat", "sender": "GENERAL PEARL", "message": "Focus on eliminating the Rocket Truck and Flak Tank. If even one of your air units survives the encounter, the enemy will be unable to stop you.", "avatar": "pearl", "color": "FFFF0000"}, {"type": "chat", "sender": "GENERAL PEARL", "message": "Ready to give it another go?", "avatar": "pearl", "color": "FFFF0000"}]}, {"conditions": [{"type": "endGame", "player": 1, "victory": true}], "responses": [{"type": "chat", "sender": "GENERAL PEARL", "message": "Generally speaking, you will be commanding multi-disciplinary forces. Picking the right mix of air, sea and ground forces is the key to strategic victory. Let's move on to the next lesson.", "avatar": "pearl", "color": "FFFF0000"}]}]}}
+{
+    "name": "Unnamed Map",
+    "author": "Unknown Author",
+    "rows": 10,
+    "cols": 10,
+    "palette": [
+        {
+            "name": "Sea",
+            "sprites": {
+                "composite": [
+                    "sea_0_v1",
+                    "sea_0_v1",
+                    "sea_0_v1",
+                    "sea_0_v1"
+                ]
+            }
+        },
+        {
+            "name": "Rock Formation",
+            "sprites": {
+                "variants": [
+                    "rock_formation_v1",
+                    "rock_formation_v2",
+                    "rock_formation_v3",
+                    "rock_formation_v4"
+                ]
+            }
+        },
+        {
+            "name": "Reef",
+            "sprites": {
+                "variants": [
+                    "reef_v1",
+                    "reef_v2",
+                    "reef_v3",
+                    "reef_v4"
+                ]
+            }
+        },
+        {
+            "name": "Sea",
+            "sprites": {
+                "composite": [
+                    "sea_0_v1",
+                    "sea_0_v1",
+                    "sea_0_v1",
+                    "sea_13_v1"
+                ]
+            }
+        },
+        {
+            "name": "Sea",
+            "sprites": {
+                "composite": [
+                    "sea_0_v1",
+                    "sea_11_v1",
+                    "sea_0_v1",
+                    "sea_12_v1"
+                ]
+            }
+        },
+        {
+            "name": "Shore",
+            "sprites": {
+                "composite": [
+                    "sea_0_v1",
+                    "shore_6_v1",
+                    "sea_0_v1",
+                    "shore_5_v1"
+                ]
+            }
+        },
+        {
+            "name": "Sea",
+            "sprites": {
+                "composite": [
+                    "sea_0_v1",
+                    "sea_15_v1",
+                    "sea_0_v1",
+                    "sea_0_v1"
+                ]
+            }
+        },
+        {
+            "name": "Battlecruiser",
+            "team": 2,
+            "sprites": {
+                "single": "battlecruiser"
+            }
+        },
+        {
+            "name": "Shore",
+            "sprites": {
+                "composite": [
+                    "sea_0_v1",
+                    "shore_6_v1",
+                    "shore_2_v1",
+                    "shore_11_v1"
+                ]
+            }
+        },
+        {
+            "name": "Plains",
+            "sprites": {
+                "variants": [
+                    "plains_v1",
+                    "plains_v2",
+                    "plains_v3",
+                    "plains_v4",
+                    "plains_v5",
+                    "plains_v6",
+                    "plains_v7"
+                ]
+            }
+        },
+        {
+            "name": "Forest",
+            "sprites": {
+                "variants": [
+                    "forest_v1",
+                    "forest_v2"
+                ]
+            }
+        },
+        {
+            "name": "Shore",
+            "sprites": {
+                "composite": [
+                    "shore_8_v1",
+                    "shore_12_v1",
+                    "sea_0_v1",
+                    "shore_5_v1"
+                ]
+            }
+        },
+        {
+            "name": "Sea",
+            "sprites": {
+                "composite": [
+                    "sea_0_v1",
+                    "sea_15_v1",
+                    "sea_0_v1",
+                    "sea_13_v1"
+                ]
+            }
+        },
+        {
+            "name": "Sea",
+            "sprites": {
+                "composite": [
+                    "sea_0_v1",
+                    "sea_11_v1",
+                    "sea_7_v1",
+                    "sea_4_v1"
+                ]
+            }
+        },
+        {
+            "name": "Scorpion Tank",
+            "team": 1,
+            "sprites": {
+                "single": "scorpion"
+            }
+        },
+        {
+            "name": "Road",
+            "sprites": {
+                "single": "road_5_v1"
+            }
+        },
+        {
+            "name": "Annihilator Tank",
+            "team": 2,
+            "sprites": {
+                "single": "annihilator"
+            }
+        },
+        {
+            "name": "Road",
+            "sprites": {
+                "single": "road_11_v1"
+            }
+        },
+        {
+            "name": "Road",
+            "sprites": {
+                "single": "road_6_v1"
+            }
+        },
+        {
+            "name": "Shore",
+            "sprites": {
+                "composite": [
+                    "shore_8_v1",
+                    "shore_12_v1",
+                    "shore_2_v1",
+                    "shore_11_v1"
+                ]
+            }
+        },
+        {
+            "name": "Road",
+            "sprites": {
+                "single": "road_15_v1"
+            }
+        },
+        {
+            "name": "Road",
+            "sprites": {
+                "single": "road_13_v1"
+            }
+        },
+        {
+            "name": "Flak Tank",
+            "team": 2,
+            "sprites": {
+                "single": "flak"
+            }
+        },
+        {
+            "name": "Road",
+            "sprites": {
+                "single": "road_4_v1"
+            }
+        },
+        {
+            "name": "Road",
+            "sprites": {
+                "single": "road_7_v1"
+            }
+        },
+        {
+            "name": "Mountain",
+            "sprites": {
+                "variants": [
+                    "mountains_v2",
+                    "mountains_v4"
+                ]
+            }
+        },
+        {
+            "name": "Hill",
+            "sprites": {
+                "variants": [
+                    "hills_v1",
+                    "hills_v2",
+                    "hills_v3",
+                    "hills_v4"
+                ]
+            }
+        },
+        {
+            "name": "Road",
+            "sprites": {
+                "single": "road_2_v1"
+            }
+        },
+        {
+            "name": "Mountain",
+            "sprites": {
+                "variants": [
+                    "mountains_v1",
+                    "mountains_v3"
+                ]
+            }
+        },
+        {
+            "name": "Rocket Truck",
+            "team": 2,
+            "sprites": {
+                "single": "rocket"
+            }
+        },
+        {
+            "name": "Raptor Fighter",
+            "team": 1,
+            "sprites": {
+                "single": "raptor"
+            }
+        },
+        {
+            "name": "Condor Bomber",
+            "team": 1,
+            "sprites": {
+                "single": "condor"
+            }
+        },
+        {
+            "name": "Scorpion Tank",
+            "team": 2,
+            "sprites": {
+                "single": "scorpion"
+            }
+        },
+        {
+            "name": "Ore Deposit",
+            "sprites": {
+                "variants": [
+                    "ore_deposit_v1",
+                    "ore_deposit_v2"
+                ]
+            }
+        },
+        {
+            "name": "Depleted Ore Deposit",
+            "sprites": {
+                "variants": [
+                    "depleted_ore_deposit_v1",
+                    "depleted_ore_deposit_v2"
+                ]
+            }
+        },
+        {
+            "name": "Enriched Ore Deposit",
+            "sprites": {
+                "variants": [
+                    "enriched_ore_deposit_v1",
+                    "enriched_ore_deposit_v2"
+                ]
+            }
+        }
+    ],
+    "tiles": [
+        {
+            "c": 0,
+            "r": 0,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                }
+            ]
+        },
+        {
+            "c": 1,
+            "r": 0,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                }
+            ]
+        },
+        {
+            "c": 2,
+            "r": 0,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 5
+                }
+            ]
+        },
+        {
+            "c": 3,
+            "r": 0,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 10
+                }
+            ]
+        },
+        {
+            "c": 4,
+            "r": 0,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 5,
+            "r": 0,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 21
+                },
+                {
+                    "depth": 2,
+                    "reference": 22
+                }
+            ]
+        },
+        {
+            "c": 6,
+            "r": 0,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 7,
+            "r": 0,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 28
+                }
+            ]
+        },
+        {
+            "c": 8,
+            "r": 0,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 28
+                }
+            ]
+        },
+        {
+            "c": 9,
+            "r": 0,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 0,
+            "r": 1,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                }
+            ]
+        },
+        {
+            "c": 1,
+            "r": 1,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 2
+                }
+            ]
+        },
+        {
+            "c": 2,
+            "r": 1,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 4
+                }
+            ]
+        },
+        {
+            "c": 3,
+            "r": 1,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 4,
+            "r": 1,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 15
+                },
+                {
+                    "depth": 2,
+                    "reference": 16
+                }
+            ]
+        },
+        {
+            "c": 5,
+            "r": 1,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 23
+                }
+            ]
+        },
+        {
+            "c": 6,
+            "r": 1,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 25
+                }
+            ]
+        },
+        {
+            "c": 7,
+            "r": 1,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 25
+                }
+            ]
+        },
+        {
+            "c": 8,
+            "r": 1,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                },
+                {
+                    "depth": 2,
+                    "reference": 32
+                }
+            ]
+        },
+        {
+            "c": 9,
+            "r": 1,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 0,
+            "r": 2,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                }
+            ]
+        },
+        {
+            "c": 1,
+            "r": 2,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                }
+            ]
+        },
+        {
+            "c": 2,
+            "r": 2,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 6
+                }
+            ]
+        },
+        {
+            "c": 3,
+            "r": 2,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 11
+                }
+            ]
+        },
+        {
+            "c": 4,
+            "r": 2,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 17
+                }
+            ]
+        },
+        {
+            "c": 5,
+            "r": 2,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 6,
+            "r": 2,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 7,
+            "r": 2,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                },
+                {
+                    "depth": 2,
+                    "reference": 29
+                }
+            ]
+        },
+        {
+            "c": 8,
+            "r": 2,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 21
+                }
+            ]
+        },
+        {
+            "c": 9,
+            "r": 2,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 10
+                },
+                {
+                    "depth": 2,
+                    "reference": 32
+                }
+            ]
+        },
+        {
+            "c": 0,
+            "r": 3,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 1
+                }
+            ]
+        },
+        {
+            "c": 1,
+            "r": 3,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                }
+            ]
+        },
+        {
+            "c": 2,
+            "r": 3,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 2
+                }
+            ]
+        },
+        {
+            "c": 3,
+            "r": 3,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 4
+                }
+            ]
+        },
+        {
+            "c": 4,
+            "r": 3,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 17
+                }
+            ]
+        },
+        {
+            "c": 5,
+            "r": 3,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 10
+                }
+            ]
+        },
+        {
+            "c": 6,
+            "r": 3,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 26
+                }
+            ]
+        },
+        {
+            "c": 7,
+            "r": 3,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 15
+                }
+            ]
+        },
+        {
+            "c": 8,
+            "r": 3,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 23
+                }
+            ]
+        },
+        {
+            "c": 9,
+            "r": 3,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 0,
+            "r": 4,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                }
+            ]
+        },
+        {
+            "c": 1,
+            "r": 4,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                }
+            ]
+        },
+        {
+            "c": 2,
+            "r": 4,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                },
+                {
+                    "depth": 2,
+                    "reference": 7
+                }
+            ]
+        },
+        {
+            "c": 3,
+            "r": 4,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 4
+                }
+            ]
+        },
+        {
+            "c": 4,
+            "r": 4,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 18
+                }
+            ]
+        },
+        {
+            "c": 5,
+            "r": 4,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 24
+                }
+            ]
+        },
+        {
+            "c": 6,
+            "r": 4,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 27
+                }
+            ]
+        },
+        {
+            "c": 7,
+            "r": 4,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 23
+                },
+                {
+                    "depth": 2,
+                    "reference": 30
+                }
+            ]
+        },
+        {
+            "c": 8,
+            "r": 4,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 9,
+            "r": 4,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 25
+                }
+            ]
+        },
+        {
+            "c": 0,
+            "r": 5,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                }
+            ]
+        },
+        {
+            "c": 1,
+            "r": 5,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 2
+                }
+            ]
+        },
+        {
+            "c": 2,
+            "r": 5,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                }
+            ]
+        },
+        {
+            "c": 3,
+            "r": 5,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 12
+                }
+            ]
+        },
+        {
+            "c": 4,
+            "r": 5,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 19
+                }
+            ]
+        },
+        {
+            "c": 5,
+            "r": 5,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 17
+                }
+            ]
+        },
+        {
+            "c": 6,
+            "r": 5,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 10
+                }
+            ]
+        },
+        {
+            "c": 7,
+            "r": 5,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                },
+                {
+                    "depth": 2,
+                    "reference": 31
+                }
+            ]
+        },
+        {
+            "c": 8,
+            "r": 5,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 25
+                },
+                {
+                    "depth": 2,
+                    "reference": 30
+                }
+            ]
+        },
+        {
+            "c": 9,
+            "r": 5,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 25
+                }
+            ]
+        },
+        {
+            "c": 0,
+            "r": 6,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                }
+            ]
+        },
+        {
+            "c": 1,
+            "r": 6,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                }
+            ]
+        },
+        {
+            "c": 2,
+            "r": 6,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 3
+                },
+                {
+                    "depth": 2,
+                    "reference": 7
+                }
+            ]
+        },
+        {
+            "c": 3,
+            "r": 6,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 13
+                }
+            ]
+        },
+        {
+            "c": 4,
+            "r": 6,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                },
+                {
+                    "depth": 2,
+                    "reference": 14
+                }
+            ]
+        },
+        {
+            "c": 5,
+            "r": 6,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 17
+                }
+            ]
+        },
+        {
+            "c": 6,
+            "r": 6,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 7,
+            "r": 6,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 25
+                },
+                {
+                    "depth": 2,
+                    "reference": 30
+                }
+            ]
+        },
+        {
+            "c": 8,
+            "r": 6,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 25
+                },
+                {
+                    "depth": 2,
+                    "reference": 30
+                }
+            ]
+        },
+        {
+            "c": 9,
+            "r": 6,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 10
+                }
+            ]
+        },
+        {
+            "c": 0,
+            "r": 7,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                }
+            ]
+        },
+        {
+            "c": 1,
+            "r": 7,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 2
+                }
+            ]
+        },
+        {
+            "c": 2,
+            "r": 7,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 4
+                }
+            ]
+        },
+        {
+            "c": 3,
+            "r": 7,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 10
+                },
+                {
+                    "depth": 2,
+                    "reference": 14
+                }
+            ]
+        },
+        {
+            "c": 4,
+            "r": 7,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 15
+                },
+                {
+                    "depth": 2,
+                    "reference": 14
+                }
+            ]
+        },
+        {
+            "c": 5,
+            "r": 7,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 23
+                }
+            ]
+        },
+        {
+            "c": 6,
+            "r": 7,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 25
+                }
+            ]
+        },
+        {
+            "c": 7,
+            "r": 7,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 25
+                }
+            ]
+        },
+        {
+            "c": 8,
+            "r": 7,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 25
+                }
+            ]
+        },
+        {
+            "c": 9,
+            "r": 7,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 28
+                }
+            ]
+        },
+        {
+            "c": 0,
+            "r": 8,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 1
+                }
+            ]
+        },
+        {
+            "c": 1,
+            "r": 8,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 3
+                }
+            ]
+        },
+        {
+            "c": 2,
+            "r": 8,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 8
+                }
+            ]
+        },
+        {
+            "c": 3,
+            "r": 8,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 4,
+            "r": 8,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 17
+                }
+            ]
+        },
+        {
+            "c": 5,
+            "r": 8,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 10
+                }
+            ]
+        },
+        {
+            "c": 6,
+            "r": 8,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 7,
+            "r": 8,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 25
+                }
+            ]
+        },
+        {
+            "c": 8,
+            "r": 8,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 25
+                }
+            ]
+        },
+        {
+            "c": 9,
+            "r": 8,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 0,
+            "r": 9,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 0
+                }
+            ]
+        },
+        {
+            "c": 1,
+            "r": 9,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 4
+                }
+            ]
+        },
+        {
+            "c": 2,
+            "r": 9,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 3,
+            "r": 9,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 4,
+            "r": 9,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 20
+                }
+            ]
+        },
+        {
+            "c": 5,
+            "r": 9,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 6,
+            "r": 9,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 7,
+            "r": 9,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        },
+        {
+            "c": 8,
+            "r": 9,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 10
+                }
+            ]
+        },
+        {
+            "c": 9,
+            "r": 9,
+            "layers": [
+                {
+                    "depth": 0,
+                    "reference": 9
+                }
+            ]
+        }
+    ],
+    "script": {
+        "events": [
+            {
+                "conditions": [
+                    {
+                        "type": "startGame"
+                    }
+                ],
+                "responses": [
+                    {
+                        "type": "disableMorale"
+                    },
+                    {
+                        "type": "disableControllers"
+                    },
+                    {
+                        "type": "chat",
+                        "sender": "GENERAL PEARL",
+                        "message": "As an officer in the Northern Federation, you will often find yourself in control of ground, air and sea forces.",
+                        "avatar": "pearl",
+                        "color": "FFFF0000"
+                    },
+                    {
+                        "type": "chat",
+                        "sender": "GENERAL PEARL",
+                        "message": "In this scenario you are being tasked with eliminating the enemy naval fleet and ground forces using a combination of your air force and ground troops.",
+                        "avatar": "pearl",
+                        "color": "FFFF0000"
+                    },
+                    {
+                        "type": "highlight",
+                        "x": 7,
+                        "y": 5,
+                        "show": true
+                    },
+                    {
+                        "type": "chat",
+                        "sender": "GENERAL PEARL",
+                        "message": "The Condor Bomber is one of the most powerful units in the game. It can do massive damage to ground and sea targets.",
+                        "avatar": "pearl",
+                        "color": "FFFF0000"
+                    },
+                    {
+                        "type": "highlight",
+                        "x": 7,
+                        "y": 5
+                    },
+                    {
+                        "type": "highlight",
+                        "x": 7,
+                        "y": 2,
+                        "show": true
+                    },
+                    {
+                        "type": "chat",
+                        "sender": "GENERAL PEARL",
+                        "message": "Beware the enemy Rocket Truck. It is capable of firing on air, sea and ground targets and it has an impressive range, though it tends to be more effective against heavily armored targets.",
+                        "avatar": "pearl",
+                        "color": "FFFF0000"
+                    },
+                    {
+                        "type": "highlight",
+                        "x": 7,
+                        "y": 2
+                    },
+                    {
+                        "type": "highlight",
+                        "x": 2,
+                        "y": 4,
+                        "show": true
+                    },
+                    {
+                        "type": "highlight",
+                        "x": 2,
+                        "y": 6,
+                        "show": true
+                    },
+                    {
+                        "type": "chat",
+                        "sender": "GENERAL PEARL",
+                        "message": "The enemy Battlecruisers have a longer attack range than any other unit on the battlefield. Luckily, its guns cannot fire on your air units.",
+                        "avatar": "pearl",
+                        "color": "FFFF0000"
+                    },
+                    {
+                        "type": "highlight",
+                        "x": 2,
+                        "y": 4
+                    },
+                    {
+                        "type": "highlight",
+                        "x": 2,
+                        "y": 6
+                    },
+                    {
+                        "type": "chat",
+                        "sender": "GENERAL PEARL",
+                        "message": "Remember to review the important tactical information that appears in the recon panel when you click on a unit or terrain. Good luck soldier!",
+                        "avatar": "pearl",
+                        "color": "FFFF0000"
+                    },
+                    {
+                        "type": "disableControllers",
+                        "disable": false
+                    }
+                ]
+            },
+            {
+                "conditions": [
+                    {
+                        "type": "endGame",
+                        "player": 1,
+                        "victory": false
+                    }
+                ],
+                "responses": [
+                    {
+                        "type": "chat",
+                        "sender": "GENERAL PEARL",
+                        "message": "You can win this battle without your ground forces.",
+                        "avatar": "pearl",
+                        "color": "FFFF0000"
+                    },
+                    {
+                        "type": "chat",
+                        "sender": "GENERAL PEARL",
+                        "message": "Focus on eliminating the Rocket Truck and Flak Tank. If even one of your air units survives the encounter, the enemy will be unable to stop you.",
+                        "avatar": "pearl",
+                        "color": "FFFF0000"
+                    },
+                    {
+                        "type": "chat",
+                        "sender": "GENERAL PEARL",
+                        "message": "Ready to give it another go?",
+                        "avatar": "pearl",
+                        "color": "FFFF0000"
+                    }
+                ]
+            },
+            {
+                "conditions": [
+                    {
+                        "type": "endGame",
+                        "player": 1
+                    }
+                ],
+                "responses": [
+                    {
+                        "type": "chat",
+                        "sender": "GENERAL PEARL",
+                        "message": "Generally speaking, you will be commanding multi-disciplinary forces. Picking the right mix of air, sea and ground forces is the key to strategic victory. Let's move on to the next lesson.",
+                        "avatar": "pearl",
+                        "color": "FFFF0000"
+                    }
+                ]
+            }
+        ]
+    }
+}

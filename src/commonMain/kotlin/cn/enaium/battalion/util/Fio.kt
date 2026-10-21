@@ -2,6 +2,7 @@ package cn.enaium.battalion.util
 
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.createDirectories
+import io.github.vinceglb.filekit.exists
 import io.github.vinceglb.filekit.isDirectory
 import io.github.vinceglb.filekit.list
 import io.github.vinceglb.filekit.name
@@ -33,6 +34,15 @@ object Fio {
             PlatformFile(path).readString()
         } catch (t: Throwable) {
             null
+        }
+    }
+
+    /** True when [path] exists (file or directory). */
+    fun exists(path: String): Boolean = runBlocking {
+        try {
+            PlatformFile(path).exists()
+        } catch (t: Throwable) {
+            false
         }
     }
 

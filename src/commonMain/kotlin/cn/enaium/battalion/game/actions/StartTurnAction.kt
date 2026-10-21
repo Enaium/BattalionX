@@ -46,6 +46,22 @@ class StartTurnAction : Action() {
         val gameManager = GameManager.instance
         val controller = gameManager.activeController ?: return
 
+        // A player with nothing left to command (no deployed unit, no structure) cannot take a
+        // turn. Surrender them instead of cycling an empty turn forever: a hand-authored map's
+        // palette can still name a colour whose last unit was deleted, and such a team never
+        // received a NO_UNITS trigger because it never lost a unit.
+        if (controller.units.none { it.isDeployed() && it.isAlive() } &&
+            controller.structures.isEmpty()
+        ) {
+            val index = gameManager.getPlayer(controller)
+            if (index >= 0) {
+                val surrender = SurrenderAction(index)
+                surrender.isNetworked = false
+                ActionManager.add(surrender, toFront = true)
+                return
+            }
+        }
+
         // Reset the action state of every OTHER unit too: at the start of a turn no unit —
         // friend or foe — may still appear spent (moved/fired) from the previous turn. The
         // original only reset the active controller's units, which left enemy units marked

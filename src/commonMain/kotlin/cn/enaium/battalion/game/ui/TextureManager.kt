@@ -3,6 +3,7 @@ package cn.enaium.battalion.game.ui
 import cn.enaium.battalion.data.AssetLoader
 import cn.enaium.battalion.data.SpriteAtlasConfig
 import cn.enaium.battalion.data.SpriteRegionConfig
+import cn.enaium.battalion.mod.ModRegistry
 import cn.enaium.battalion.util.Fio
 import cn.enaium.sdl.SDLBlendMode
 import cn.enaium.sdl.SDLColor
@@ -24,6 +25,10 @@ import cn.enaium.sdl.image.SDLImage
  *
  * Sheet slicing (regions/grids for multi-frame art: avatars, explosions, cursor cells) comes
  * from `assets/data/sprites.json` ([SpriteAtlasConfig]) — no pixel offsets live in the code.
+ *
+ * Mods extend this index: every file under `<mod>/images/` is addressable by its id (its path
+ * without the extension, e.g. `items/crystal_sword`), and a mod's file overrides a game sprite
+ * of the same id. Later-loaded mods override earlier ones.
  */
 class TextureManager(
     private val assetsDir: String,
@@ -53,6 +58,8 @@ class TextureManager(
     /** Scans the images directory and builds the sprite-name -> file index. */
     fun load() {
         if (loaded) return
+        // Make sure the mod layers exist before the index is built (idempotent per assets dir).
+        ModRegistry.ensureLoaded(assetsDir)
         for (file in Fio.listDir(imagesDir).orEmpty()) {
             if (!file.endsWith(".png") && !file.endsWith(".jpg") && !file.endsWith(".jpeg")) continue
             // Assets are stored under their sprite key already (e.g. `scorpion.png`,
@@ -62,8 +69,35 @@ class TextureManager(
                 index[name] = "$imagesDir/$file"
             }
         }
+        // Mod images, in load order, so a later mod overrides the base game and earlier mods.
+        for (mod in ModRegistry.mods) {
+            for ((id, path) in mod.images) index[id] = path
+        }
         loaded = true
     }
+
+    /**
+     * Rebuilds the sprite index (and drops cached textures) after the mod set changed, so
+     * switching a mod off/on takes effect without restarting the game.
+     *
+     * The textures themselves are RETIRED, not closed: a renderer keeps the texture objects it
+     * resolved (a match's terrain and unit textures, the editor's preview) and closes them out
+     * from under itself — `SDL texture is closed` — the moment anything draws with them. Retired
+     * textures are released together with the manager instead.
+     */
+    fun reloadIndex() {
+        index.clear()
+        retired += cache.values
+        cache.clear()
+        retired += teamCache.values
+        teamCache.clear()
+        sizes.clear()
+        loaded = false
+        load()
+    }
+
+    /** Textures dropped by [reloadIndex], kept alive until the manager itself is closed. */
+    private val retired = mutableListOf<SDLTexture>()
 
     /** The file path for a sprite name, or null (used for diagnostics / fallbacks). */
     fun pathFor(name: String): String? = index[name]
@@ -308,11 +342,13 @@ class TextureManager(
         )
     }
 
-    /** Releases every cached texture. */
+    /** Releases every cached texture (including the ones retired by a mod reload). */
     fun close() {
         cache.values.forEach { it.close() }
         teamCache.values.forEach { it.close() }
         cache.clear()
         teamCache.clear()
+        retired.forEach { it.close() }
+        retired.clear()
     }
 }
