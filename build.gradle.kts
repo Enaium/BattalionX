@@ -82,12 +82,22 @@ kotlin {
     linuxArm64 {
         binaries.executable {
             entryPoint = "cn.enaium.battalion.main"
+            // Cross-linking from x86_64 needs the aarch64 libgcc for the atomic builtins
+            // (__aarch64_cas*/swp*/ldadd*); the cross toolchain installs it outside the
+            // default search path.
+            val gccCross = listOf("13", "14", "12")
+                .map { File("/usr/lib/gcc-cross/aarch64-linux-gnu/$it") }
+                .firstOrNull { it.isDirectory }
+            if (gccCross != null) linkerOpts("-L${gccCross.absolutePath}")
+            linkerOpts("-lgcc")
         }
     }
 
     mingwX64 {
         binaries.executable {
             entryPoint = "cn.enaium.battalion.main"
+            // SDL's Windows HID/COM support resolves through MinGW import libraries.
+            linkerOpts("-loleaut32", "-lhid")
         }
     }
 
