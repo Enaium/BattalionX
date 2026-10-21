@@ -20,8 +20,8 @@ sdl-mixer = "1.0.0"               # SDL3_mixer (sound & music playback)
 kotlinx-serialization = "1.9.0"   # JSON serialization for save / data files
 kotlinx-coroutines = "1.10.2"     # Coroutines for async asset loading / loops
 
-# --- File loading ----------------------------------------------------------
-filekit = "0.15.0"                # Cross-platform file loading (assets)
+# --- File I/O --------------------------------------------------------------
+kotlinx-io = "0.9.1"              # Multiplatform file I/O (native targets)
 
 # --- Android ---------------------------------------------------------------
 android-gradle = "9.4.1"          # Android Gradle Plugin
@@ -38,8 +38,8 @@ sdl-kmp-android-jvm = { module = "cn.enaium.sdl:sdl-kmp-android-jvm", version.re
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 
-# File loading
-filekit-core = { module = "io.github.vinceglb:filekit-core", version.ref = "filekit" }
+# File I/O
+kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

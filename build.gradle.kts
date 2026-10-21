@@ -67,7 +67,25 @@ kotlin {
         }
     }
 
+    macosX64 {
+        binaries.executable {
+            entryPoint = "cn.enaium.battalion.main"
+        }
+    }
+
     linuxX64 {
+        binaries.executable {
+            entryPoint = "cn.enaium.battalion.main"
+        }
+    }
+
+    linuxArm64 {
+        binaries.executable {
+            entryPoint = "cn.enaium.battalion.main"
+        }
+    }
+
+    mingwX64 {
         binaries.executable {
             entryPoint = "cn.enaium.battalion.main"
         }
@@ -110,10 +128,13 @@ kotlin {
         val nativeMain = maybeCreate("nativeMain")
         nativeMain.dependsOn(commonMain.get())
         nativeMain.dependencies {
-            implementation(libs.filekit.core)
+            implementation(libs.kotlinx.io.core)
         }
         getByName("macosArm64Main").dependsOn(nativeMain)
+        getByName("macosX64Main").dependsOn(nativeMain)
         getByName("linuxX64Main").dependsOn(nativeMain)
+        getByName("linuxArm64Main").dependsOn(nativeMain)
+        getByName("mingwX64Main").dependsOn(nativeMain)
         nativeMain.dependsOn(sdlAddonsMain)
 
         commonTest.dependencies {
