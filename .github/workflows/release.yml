@@ -145,6 +145,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+      - name: Locate aarch64 libgcc
+        run: find /usr/lib/gcc-cross /usr/lib/gcc -name libgcc.a 2>/dev/null | head
       - name: Build native executable
         run: ./gradlew --no-daemon --stacktrace linkReleaseExecutableLinuxArm64
       - name: Stage asset

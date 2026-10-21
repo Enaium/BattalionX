@@ -83,13 +83,21 @@ kotlin {
         binaries.executable {
             entryPoint = "cn.enaium.battalion.main"
             // Cross-linking from x86_64 needs the aarch64 libgcc for the atomic builtins
-            // (__aarch64_cas*/swp*/ldadd*); the cross toolchain installs it outside the
-            // default search path.
-            val gccCross = listOf("13", "14", "12")
-                .map { File("/usr/lib/gcc-cross/aarch64-linux-gnu/$it") }
-                .firstOrNull { it.isDirectory }
-            if (gccCross != null) linkerOpts("-L${gccCross.absolutePath}")
-            linkerOpts("-lgcc")
+            // (__aarch64_cas*/swp*/ldadd*) that SDL's static archives reference. K/N links its
+            // own runtime/compiler-rt, so the cross libgcc has to be supplied explicitly.
+            val gccCross = listOf(
+                "/usr/lib/gcc-cross/aarch64-linux-gnu",
+                "/usr/lib/gcc/aarch64-linux-gnu",
+            ).flatMap { root -> File(root).listFiles()?.toList().orEmpty() }
+                .firstOrNull { File(it, "libgcc.a").isFile }
+            if (gccCross != null) {
+                linkerOpts(
+                    "-Wl,--allow-multiple-definition",
+                    "-Wl,--whole-archive",
+                    File(gccCross, "libgcc.a").absolutePath,
+                    "-Wl,--no-whole-archive",
+                )
+            }
         }
     }
 
